@@ -1352,13 +1352,16 @@ function calculateMultipleRegression(X_map: Record<string, number[]>, Y: number[
     ...squaredKeys.map(key => X_squared[key][i])
   ]);
 
-  // 6. X'X (k x k)
+  // 6. X'X (k x k) - Otimizado usando simetria (triangular superior) para dobrar a velocidade
   const XtX = Array.from({ length: k }, () => Array(k).fill(0));
   for (let i = 0; i < k; i++) {
-    for (let j = 0; j < k; j++) {
+    for (let j = i; j < k; j++) {
+      let sum = 0;
       for (let l = 0; l < n; l++) {
-        XtX[i][j] += X_matrix[l][i] * X_matrix[l][j];
+        sum += X_matrix[l][i] * X_matrix[l][j];
       }
+      XtX[i][j] = sum;
+      XtX[j][i] = sum;
     }
   }
 

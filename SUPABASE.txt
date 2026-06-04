@@ -1,0 +1,13 @@
+SIMUBOI
+
+supabase: senha Simu26*$DZ12
+          Publishable key: sb_publishable_28N0mZ6HazfaK93c4KBFaA_VzPwtvJB
+          Secret keys: sb_secret_Cqisub1k2GgwDh6As6kupg_woRXBxwg
+       
+          project URL: https://edtbocpxthodckjtxgxm.supabase.co
+          anon public: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVkdGJvY3B4dGhvZGNranR4Z3htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzODY3NTAsImV4cCI6MjA5NTk2Mjc1MH0.aksB29HOLzfzr1Ziu9HKSyIf-cKUZHhLo3fyeWlLtBk
+          service_role: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVkdGJvY3B4dGhvZGNranR4Z3htIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDM4Njc1MCwiZXhwIjoyMDk1OTYyNzUwfQ.-d5sfOt9rIfsNpQrvu29Qrzy8MEIoQStjlUP4kR38ho
+          
+vercel:   chave API Gemini: AQ.Ab8RN6J09luwPdZoGjfr6uxHg8yjlHxVX39534ia8wjtzFWxMw
+URL: simuboi.vercel.app
+          

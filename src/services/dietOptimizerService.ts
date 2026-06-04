@@ -34,12 +34,12 @@ export function calculateRequirements(profile: DietAnimalProfile): DietRequireme
   const BW = (weight + finalWeight) / 2;
   const ADG = adg || profile.gmd; // Fallback to gmd if adg is not explicitly provided in the profile
 
-  // NRC 2016 (BCNRM 2016) Equations
+  // NRC/NASEM 2016 (BCNRM 2016) Equations
   const SBW = BW * 0.96;
   const EBW = SBW * 0.891;
   const EBG = ADG * 0.951;
 
-  // DMI Prediction for finishing cattle (NRC 2016 / Global Reference)
+  // DMI Prediction for finishing cattle (such as NRC/NASEM 2016 Table 25.1 / global empirical base)
   let DMI = sex === 'femea' 
     ? 3.184 + 0.01536 * SBW 
     : 3.83 + 0.0143 * SBW;
@@ -49,22 +49,23 @@ export function calculateRequirements(profile: DietAnimalProfile): DietRequireme
   if (frameSize === 'grande') DMI *= 1.05;
 
   // NEm Requirement (Base is 0.077 * SBW^0.75)
-  // Race Adjustment: Zebu consumes ~10% less NEm for maintenance
+  // Race Adjustment: Zebu (Nellore in Brazil) has ~10% lower maintenance requirement
   const raceMultiplier = raca === 'zebuino' ? 0.90 : 1.0;
-  // Sex Adjustment: Intact males (inteiro) have ~15% higher maintenance
+  // Sex Adjustment: Intact males (inteiro) have ~15% higher maintenance than steers/heifers
   const sexMultiplier = sex === 'inteiro' ? 1.15 : 1.0;
 
   const NEm = 0.077 * Math.pow(SBW, 0.75) * raceMultiplier * sexMultiplier;
   
   // Standard Reference Weight is 478kg for standard steer
   const SRW = 478;
-  const FBW = profile.finalWeight || 550;
+  const FBW = finalWeight || 550;
   const EQSBW = SBW * (SRW / FBW);
   
   const NEg = 0.0635 * Math.pow(EQSBW, 0.75) * Math.pow(EBG, 1.097);
 
-  const MPm = 3.8 * Math.pow(SBW, 0.75);
-  // NPg calculation (NRC 2016 standard)
+  // NASEM 2016 standard metabolizable protein for maintenance
+  const MPm = 4.1 * Math.pow(SBW, 0.75);
+  // NPg calculation (NRC/NASEM 2016 standard)
   const NPg = EBG * (268 - (29.4 * (NEg / EBG)));
   
   const kGain = 0.492;
@@ -73,13 +74,21 @@ export function calculateRequirements(profile: DietAnimalProfile): DietRequireme
   // CP Estimation (approximate efficiency for NRC)
   const CP = MPtotal / 0.67;
 
-  // Mineral reqs NRC 2016 (approximate based on BW and ADG)
+  // Mineral reqs NRC/NASEM 2016 (approximate based on BW and ADG)
   const CaReq = (0.0154 * SBW) + (0.071 * NPg);
   const PReq = (0.016 * SBW) + (0.039 * NPg);
 
+  // Exact NDT requirement from ME requirement:
+  // NEm_req and NEg_req are converted to ME using average finishing efficiencies (km = 0.64, kg = 0.42)
+  const ME_m = NEm / 0.64;
+  const ME_g = NEg / 0.42;
+  const ME_total = ME_m + ME_g;
+  // ME (Mcal/kg DM) = 0.03615 * NDT (%) -> NDT (%) = (ME_total / DMI) / 0.03615
+  const ndtNeeded = (ME_total / DMI) / 0.03615;
+
   return {
     pbMin: Math.max(9, (CP / 1000 / DMI) * 100),
-    ndtMin: Math.max(62, ((NEm + NEg) / 0.66 / DMI / 4.4) * 100),
+    ndtMin: Math.max(62, Math.min(85, ndtNeeded)),
     fdnMin: 18,
     fdnMax: 28,
     caMin: (CaReq / 1000 / DMI / 0.5) * 100, // Efficiency ~50%
@@ -102,10 +111,8 @@ function predictGMD(nutritionalProfile: any, profile: DietAnimalProfile, cms: nu
   const BW = (weight + finalWeight) / 2;
   const NDT = nutritionalProfile.ndt;
 
-  // Improved GMD prediction based on energy intake (NRC 2016)
   // NDT to ME (Mcal/kg) approx: ME = 0.04409 * NDT * 0.82
   const ME = 0.04409 * NDT * 0.82;
-  
   const SBW = BW * 0.96;
   
   // Race and Sex adjustments for maintenance
@@ -113,20 +120,25 @@ function predictGMD(nutritionalProfile: any, profile: DietAnimalProfile, cms: nu
   const sexMultiplier = sex === 'inteiro' ? 1.15 : 1.0;
   const NEm_req = 0.077 * Math.pow(SBW, 0.75) * raceMultiplier * sexMultiplier;
   
-  // NRC 2016 typical finishing efficiencies
-  const km = 0.64;
-  const kg = 0.42;
+  // NEm and NEg of diet (Garrett & Lofgreen equations used in NRC/NASEM 2016)
+  const ME_capped = Math.max(1.5, Math.min(3.5, ME));
+  const NEm_diet = 1.37 * ME_capped - 0.138 * Math.pow(ME_capped, 2) + 0.0105 * Math.pow(ME_capped, 3) - 1.12;
+  const NEg_diet = 1.42 * ME_capped - 0.174 * Math.pow(ME_capped, 2) + 0.0122 * Math.pow(ME_capped, 3) - 1.65;
   
-  const totalME = ME * cms;
-  const MEm = NEm_req / km;
-  const MEg = Math.max(0, totalME - MEm);
-  const NEg_available = MEg * kg;
+  // DMI required for maintenance
+  const DMI_m = NEm_req / NEm_diet;
+  // DMI remaining for gain
+  const DMI_g = Math.max(0, cms - DMI_m);
+  // Net energy available for gain
+  const NEg_available = DMI_g * NEg_diet;
   
   const SRW = 478;
-  const FBW = profile.finalWeight || 550;
+  const FBW = finalWeight || 550;
   const EQSBW = SBW * (SRW / FBW);
   
+  // EBG (Empty Body Weight Gain) from NEg available
   const EBG = Math.pow(NEg_available / (0.0635 * Math.pow(EQSBW, 0.75)), 1 / 1.097);
+  // ADG (Average Daily Gain) = EBG / 0.951
   const ADG = EBG / 0.951;
   
   return isNaN(ADG) ? 0 : ADG;
@@ -225,16 +237,16 @@ export function optimizeDiet(
         feasible: false,
         ingredients: [],
         totalCost: 0,
-        totalCostNM: 0,
+        totalCostMN: 0,
         foragePercentage: 0,
         concentratePercentage: 0,
         cmsPercentageBW: 0,
-        forageIntakeNM: 0,
-        concentrateIntakeNM: 0,
-        forageCostNM: 0,
-        concentrateCostNM: 0,
-        forageCostPerKgNM: 0,
-        concentrateCostPerKgNM: 0,
+        forageIntakeMN: 0,
+        concentrateIntakeMN: 0,
+        forageCostMN: 0,
+        concentrateCostMN: 0,
+        forageCostPerKgMN: 0,
+        concentrateCostPerKgMN: 0,
         forageCostPerKgMS: 0,
         concentrateCostPerKgMS: 0,
         predictedGmd: 0,
@@ -296,15 +308,15 @@ function processSolution(
   let actualS = 0;
   let actualVitA = 0;
   let actualVitE = 0;
-  let totalNMWeight = 0;
+  let totalMNWeight = 0;
   let totalUrea = 0;
   
   let foragePercentage = 0;
   let concentratePercentage = 0;
-  let forageIntakeNM = 0;
-  let concentrateIntakeNM = 0;
-  let forageCostNM = 0;
-  let concentrateCostNM = 0;
+  let forageIntakeMN = 0;
+  let concentrateIntakeMN = 0;
+  let forageCostMN = 0;
+  let concentrateCostMN = 0;
   let forageCostMS = 0;
   let concentrateCostMS = 0;
 
@@ -330,24 +342,24 @@ function processSolution(
     actualS += (optIng.percentage / 100) * (ing.s || 0);
     actualVitA += (optIng.percentage / 100) * (ing.vitA || 0);
     actualVitE += (optIng.percentage / 100) * (ing.vitE || 0);
-    totalNMWeight += (optIng.percentage / (ing.ms || 100));
+    totalMNWeight += (optIng.percentage / (ing.ms || 100));
     if (ing.isUrea) totalUrea += optIng.percentage;
 
     if (ing.type === 'volumoso') {
       foragePercentage += optIng.percentage;
-      forageIntakeNM += intakeNM;
-      forageCostNM += costNM;
+      forageIntakeMN += intakeNM;
+      forageCostMN += costNM;
       forageCostMS += optIng.costContribution;
     } else {
       concentratePercentage += optIng.percentage;
-      concentrateIntakeNM += intakeNM;
-      concentrateCostNM += costNM;
+      concentrateIntakeMN += intakeNM;
+      concentrateCostMN += costNM;
       concentrateCostMS += optIng.costContribution;
     }
   });
 
   const totalCostDM = optimizedIngredients.reduce((sum, ing) => sum + ing.costContribution, 0);
-  const totalCostNM = totalCostDM / totalNMWeight;
+  const totalCostMN = totalCostDM / totalMNWeight;
   const cmsPercentageBW = (cms / BW) * 100;
   const waterIntake = 0.05 * BW + 4 * cms;
 
@@ -392,17 +404,17 @@ function processSolution(
     feasible: true,
     ingredients: optimizedIngredients,
     totalCost: totalCostDM,
-    totalCostNM: totalCostNM,
+    totalCostMN: totalCostMN,
     cms: cms,
     foragePercentage,
     concentratePercentage,
     cmsPercentageBW,
-    forageIntakeNM,
-    concentrateIntakeNM,
-    forageCostNM,
-    concentrateCostNM,
-    forageCostPerKgNM: forageIntakeNM > 0 ? forageCostNM / forageIntakeNM : 0,
-    concentrateCostPerKgNM: concentrateIntakeNM > 0 ? concentrateCostNM / concentrateIntakeNM : 0,
+    forageIntakeMN: forageIntakeMN,
+    concentrateIntakeMN: concentrateIntakeMN,
+    forageCostMN: forageCostMN,
+    concentrateCostMN: concentrateCostMN,
+    forageCostPerKgMN: forageIntakeMN > 0 ? forageCostMN / forageIntakeMN : 0,
+    concentrateCostPerKgMN: concentrateIntakeMN > 0 ? concentrateCostMN / concentrateIntakeMN : 0,
     forageCostPerKgMS: foragePercentage > 0 ? (forageCostMS / (foragePercentage / 100)) : 0,
     concentrateCostPerKgMS: concentratePercentage > 0 ? (concentrateCostMS / (concentratePercentage / 100)) : 0,
     predictedGmd,

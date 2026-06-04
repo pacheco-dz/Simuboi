@@ -334,17 +334,17 @@ export interface DietOptimizationResult {
   feasible: boolean;
   ingredients: { name: string; percentage: number; costContribution: number }[];
   totalCost: number; // R$ per kg of DM
-  totalCostNM: number; // R$ per kg of NM (as fed)
+  totalCostMN: number; // R$ per kg of MN (as fed)
   cms?: number; // Consumo de Matéria Seca (kg/dia)
   foragePercentage: number;
   concentratePercentage: number;
   cmsPercentageBW: number;
-  forageIntakeNM: number;
-  concentrateIntakeNM: number;
-  forageCostNM: number;
-  concentrateCostNM: number;
-  forageCostPerKgNM: number;
-  concentrateCostPerKgNM: number;
+  forageIntakeMN: number;
+  concentrateIntakeMN: number;
+  forageCostMN: number;
+  concentrateCostMN: number;
+  forageCostPerKgMN: number;
+  concentrateCostPerKgMN: number;
   forageCostPerKgMS: number;
   concentrateCostPerKgMS: number;
   predictedGmd: number;

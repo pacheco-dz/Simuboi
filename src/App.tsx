@@ -60,7 +60,10 @@ import {
   EyeOff,
   User,
   LogOut,
-  Key
+  Key,
+  Pencil,
+  Copy,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -400,9 +403,10 @@ export default function App() {
   const [stressResults, setStressResults] = useState<any[]>([]);
   const [whatIfInput, setWhatIfInput] = useState<string>('');
   const [whatIfChange, setWhatIfChange] = useState<number>(10);
-  const [mcIterations, setMcIterations] = useState(100000);
+  const [mcIterations, setMcIterations] = useState(10000);
   const [riskSubTab, setRiskSubTab] = useState<'risco' | 'cenarios' | 'impacto' | 'dominancia'>('risco');
   const [customStressScenarios, setCustomStressScenarios] = useState<any[]>([]);
+  const [editingStressId, setEditingStressId] = useState<string | null>(null);
   const [isAddingStress, setIsAddingStress] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
@@ -706,8 +710,37 @@ export default function App() {
             boiMagro: avgMagro,
             boiGordo: avgGordo,
             weight: inputs.pesoVivoInicial || 350,
-            label: "Média Regional"
+            label: "Média de Todos os Estados"
           };
+        }
+      } else if (agioSelectedState.startsWith('Regiao-')) {
+        const regionMapping: Record<string, string[]> = {
+          'Regiao-Sudeste': ['SP', 'MG'],
+          'Regiao-Sul': ['RS', 'PR', 'SC'],
+          'Regiao-Centro-Oeste': ['MS', 'MT', 'GO'],
+          'Regiao-Norte': ['PA', 'RO', 'TO'],
+          'Regiao-Nordeste': ['BA', 'MA']
+                        };
+        const targetStates = regionMapping[agioSelectedState];
+        if (targetStates) {
+          const validValues = marketPrices.filter(p => targetStates.includes(p.state.toUpperCase()) && p.boiGordo > 0);
+          if (validValues.length > 0) {
+            const avgMagro = validValues.reduce((acc, p) => acc + p.boiMagro, 0) / validValues.length;
+            const avgGordo = validValues.reduce((acc, p) => acc + p.boiGordo, 0) / validValues.length;
+            const regionLabels: Record<string, string> = {
+              'Regiao-Sudeste': 'Região Sudeste',
+              'Regiao-Sul': 'Região Sul',
+              'Regiao-Centro-Oeste': 'Região Centro-Oeste',
+              'Regiao-Norte': 'Região Norte',
+              'Regiao-Nordeste': 'Região Nordeste'
+            };
+            priceSource = {
+              boiMagro: avgMagro,
+              boiGordo: avgGordo,
+              weight: inputs.pesoVivoInicial || 350,
+              label: `Média ${regionLabels[agioSelectedState]}`
+            };
+          }
         }
       } else {
         const found = marketPrices.find(p => p.state.toUpperCase() === agioSelectedState.toUpperCase());
@@ -728,14 +761,18 @@ export default function App() {
     const activeAgioVal = pArrobaGordo > 0 ? ((pArrobaMagro / pArrobaGordo) - 1) * 100 : 0;
 
     let text = "";
-    if (activeAgioVal > 30) {
-      text = `O ágio de referência (${label}) está elevado em ${activeAgioVal.toFixed(1)}%. Fortes pressões sobre as margens, considere usar mecanismos de proteção de preços (hedge).`;
-    } else if (activeAgioVal > 20) {
-      text = `O ágio de referência (${label}) está em nível moderado (${activeAgioVal.toFixed(1)}%). Recomendável focar em conversão alimentar de custo mínimo na dieta e máximo GMD.`;
-    } else if (activeAgioVal > 10) {
-      text = `Ágio de reposição (${label}) está em ${activeAgioVal.toFixed(1)}%, facilitando compras competitivas de gado magro para o ciclo de engorda.`;
+    if (activeAgioVal >= 0) {
+      if (activeAgioVal > 30) {
+        text = `O ágio de referência (${label}) está elevado em ${activeAgioVal.toFixed(1)}%. Fortes pressões sobre as margens, considere usar mecanismos de proteção de preços (hedge).`;
+      } else if (activeAgioVal > 20) {
+        text = `O ágio de referência (${label}) está em nível moderado (${activeAgioVal.toFixed(1)}%). Recomendável focar em conversão alimentar de custo mínimo na dieta e máximo GMD.`;
+      } else if (activeAgioVal > 10) {
+        text = `Ágio de reposição (${label}) está em ${activeAgioVal.toFixed(1)}%, facilitando compras competitivas de gado magro para o ciclo de engorda.`;
+      } else {
+        text = `Oportunidade excepcional: ágio de reposição em patamar extremamente favorável de ${activeAgioVal.toFixed(1)}% (${label}).`;
+      }
     } else {
-      text = `Oportunidade excepcional: ágio de reposição em patamar extremamente favorável de ${activeAgioVal.toFixed(1)}% (${label}).`;
+      text = `Deságio de referência detectado (${label}): o gado magro está cotado a ${Math.abs(activeAgioVal).toFixed(1)}% abaixo do boi gordo por arroba, representando uma excelente margem de compra!`;
     }
 
     return {
@@ -1277,8 +1314,8 @@ export default function App() {
         yPos += 5;
 
         const optData = [
-          { l: 'Custo Total Dieta (MS)', v: `R$ ${dietResult.totalCost.toFixed(3)}/kg` },
-          { l: 'Custo Total Dieta (NM)', v: `R$ ${dietResult.totalCostNM.toFixed(3)}/kg` },
+          { l: 'Custo Total Dieta (Matéria Seca - MS)', v: `R$ ${dietResult.totalCost.toFixed(3)}/kg` },
+          { l: 'Custo Total Dieta (Matéria Natural - MN)', v: `R$ ${dietResult.totalCostMN.toFixed(3)}/kg` },
           { l: 'GMD Predito', v: `${dietResult.predictedGmd.toFixed(3)} kg/dia` },
           { l: 'Conversão Alimentar', v: `${dietResult.feedConversion.toFixed(2)}:1` },
           { l: 'Relação Volumoso:Concentrado', v: `${dietResult.foragePercentage.toFixed(0)}:${dietResult.concentratePercentage.toFixed(0)}` },
@@ -1307,7 +1344,7 @@ export default function App() {
         });
 
         yPos += 5;
-        const optParecer = `A dieta formulada apresenta um custo de R$ ${dietResult.totalCostNM.toFixed(3)} por kg de matéria natural. O GMD predito de ${dietResult.predictedGmd.toFixed(3)} kg/dia é compatível com as exigências nutricionais do lote.`;
+        const optParecer = `A dieta formulada apresenta um custo de R$ ${dietResult.totalCostMN.toFixed(3)} por kg de matéria natural. O GMD predito de ${dietResult.predictedGmd.toFixed(3)} kg/dia é compatível com as exigências nutricionais do lote.`;
         yPos = addParecer('Parecer Técnico - Nutrição', optParecer, margin, yPos);
         yPos += 5;
       }
@@ -1701,8 +1738,8 @@ export default function App() {
                 <span class="grid-val">R$ ${dietResult.totalCost.toFixed(3)}</span>
               </div>
               <div class="grid-row">
-                <span class="grid-label">Custo por kg MN</span>
-                <span class="grid-val">R$ ${dietResult.totalCostNM.toFixed(3)}</span>
+                <span class="grid-label">Custo por kg de Matéria Natural (MN)</span>
+                <span class="grid-val">R$ ${dietResult.totalCostMN.toFixed(3)}</span>
               </div>
               <div class="grid-row">
                 <span class="grid-label">Custo Animal/Dia</span>
@@ -2042,10 +2079,10 @@ export default function App() {
       // 5. Apply to main simulation
       setInputs(prev => ({
         ...prev,
-        cmsVolumoso: result.forageIntakeNM,
-        cmsConcentrado: result.concentrateIntakeNM,
-        precoVolumoso: result.forageCostPerKgNM,
-        precoConcentrado: result.concentrateCostPerKgNM
+        cmsVolumoso: result.forageIntakeMN,
+        cmsConcentrado: result.concentrateIntakeMN,
+        precoVolumoso: result.forageCostPerKgMN,
+        precoConcentrado: result.concentrateCostPerKgMN
       }));
 
       const goalLabels = { cost: 'Custo Mínimo', gmd: 'Meta GMD' };
@@ -2127,20 +2164,20 @@ export default function App() {
   const handleApplyOptimizedDiet = () => {
     if (!dietResult || !dietResult.feasible) return;
     
-    // Update simulation inputs with NM values from diet
+    // Update simulation inputs with MN values from diet
     setInputs(prev => ({
       ...prev,
-      cmsVolumoso: dietResult.forageIntakeNM,
-      cmsConcentrado: dietResult.concentrateIntakeNM,
-      precoVolumoso: dietResult.forageCostPerKgNM,
-      precoConcentrado: dietResult.concentrateCostPerKgNM
+      cmsVolumoso: dietResult.forageIntakeMN,
+      cmsConcentrado: dietResult.concentrateIntakeMN,
+      precoVolumoso: dietResult.forageCostPerKgMN,
+      precoConcentrado: dietResult.concentrateCostPerKgMN
     }));
     
     showToast("Dados da dieta aplicados na simulação!\n\n" +
-          `Consumo Volumoso: ${dietResult.forageIntakeNM.toFixed(2)} kg NM\n` +
-          `Consumo Concentrado: ${dietResult.concentrateIntakeNM.toFixed(2)} kg NM\n` +
-          `Preço Volumoso: R$ ${dietResult.forageCostPerKgNM.toFixed(2)}/kg NM\n` +
-          `Preço Concentrado: R$ ${dietResult.concentrateCostPerKgNM.toFixed(2)}/kg NM`, 'success');
+          `Consumo Volumoso: ${dietResult.forageIntakeMN.toFixed(2)} kg de Matéria Natural (MN)\n` +
+          `Consumo Concentrado: ${dietResult.concentrateIntakeMN.toFixed(2)} kg de Matéria Natural (MN)\n` +
+          `Preço Volumoso: R$ ${dietResult.forageCostPerKgMN.toFixed(2)}/kg MN\n` +
+          `Preço Concentrado: R$ ${dietResult.concentrateCostPerKgMN.toFixed(2)}/kg MN`, 'success');
   };
 
   const handleDownloadCSV = () => {
@@ -2224,10 +2261,16 @@ export default function App() {
     }
     setIsSimulating(true);
     setTimeout(() => {
-      const mc = runLHSSimulation(inputs, mcIterations);
-      setLhsResults(mc);
-      setIsSimulating(false);
-      setActiveTab('risk');
+      try {
+        const mc = runLHSSimulation(inputs, mcIterations);
+        setLhsResults(mc);
+        setIsSimulating(false);
+        setActiveTab('risk');
+      } catch (err) {
+        console.error("Erro na simulação LHS: ", err);
+        showToast('Erro ao executar a análise de risco: ' + (err instanceof Error ? err.message : String(err)), 'error');
+        setIsSimulating(false);
+      }
     }, 500);
   };
 
@@ -3044,7 +3087,7 @@ export default function App() {
             <div className="bg-gradient-to-tr from-emerald-600 to-teal-500 p-2 rounded-xl shadow-lg shadow-emerald-500/15 shrink-0">
               <TrendingUp className="text-white w-5 h-5" />
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col shrink-0">
               <h1 className="text-lg font-display font-black tracking-tight text-white leading-none">
                 Simu<span className="text-emerald-400 font-semibold">Boi</span>
               </h1>
@@ -3052,7 +3095,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <nav className="hidden md:flex items-center gap-1.5 bg-[#101726]/80 p-1 rounded-xl border border-slate-800/60 shadow-inner select-none">
+            <nav className="hidden md:flex items-center gap-1.5 bg-gradient-to-r from-emerald-950/50 via-[#101726] to-teal-950/50 p-1.5 rounded-2xl border border-emerald-500/30 shadow-lg shadow-emerald-950/20 select-none">
               <div className="relative group/menu-par">
                 <button
                   onClick={() => setActiveTab('inputs')}
@@ -3269,7 +3312,7 @@ export default function App() {
         </div>
         {/* Mobile Nav */}
         <div className="md:hidden flex justify-center pb-2 px-4">
-          <nav className="flex gap-1 bg-[#101726]/80 p-1 rounded-xl w-full overflow-x-auto custom-scrollbar border border-slate-800/60 shadow-inner">
+          <nav className="flex gap-1 bg-gradient-to-r from-emerald-950/50 via-[#101726]/95 to-teal-950/50 p-1.5 rounded-2xl w-full overflow-x-auto custom-scrollbar border border-emerald-500/30 shadow-lg shadow-emerald-950/20">
               {(['inputs', 'results', 'risk', 'diet', 'esg', 'market'] as const).map((tab, idx) => {
                 const isDisabled = (tab === 'results') ? !results : (tab === 'risk') ? !results : false;
               return (
@@ -3295,9 +3338,25 @@ export default function App() {
             })}
           </nav>
         </div>
+
+        {/* Subtle, highly premium context banner right below the menu/options */}
+        <div className="border-t border-slate-800/40 bg-[#080d19]/80 py-2.5 px-4 sm:px-6 lg:px-8 select-none">
+          <div className={`${screenWidth === 'standard' ? 'max-w-7xl' : screenWidth === 'wide' ? 'max-w-[1600px]' : 'max-w-full'} mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2`}>
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              <p className="text-[11px] text-slate-400 font-sans tracking-wide">
+                <strong className="text-slate-200 font-display">Viabilidade econômica avançada:</strong> Simulação estocástica de Monte Carlo, formulação precisa de dietas e indicadores ESG integrados.
+              </p>
+            </div>
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Simulador de Confinamento</span>
+            </div>
+          </div>
+        </div>
       </header>
 
       <main className={`${screenWidth === 'standard' ? 'max-w-7xl' : screenWidth === 'wide' ? 'max-w-[1600px]' : 'max-w-full'} mx-auto px-4 sm:px-6 lg:px-8 py-8`}>
+
         <AnimatePresence mode="wait">
           {activeTab === 'inputs' && (
             <motion.div
@@ -3344,11 +3403,11 @@ export default function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
                       <InputGroup icon={Scale} label="Peso Inicial" name="pesoVivoInicial" value={inputs.pesoVivoInicial} unit="kg" onChange={handleInputChange} tooltip={`Peso médio dos animais na entrada do confinamento. Define o capital empatado inicial (estoque) e é a base para o cálculo do ganho de peso total. Na simulação de risco, assume-se um desvio padrão de ${DEFAULT_INPUTS.desviosPadrao.pesoVivoInicial} kg.`} error={errors.pesoVivoInicial} />
                       <InputGroup icon={Scale} label="Peso Final" name="pesoVivoFinal" value={inputs.pesoVivoFinal} unit="kg" onChange={handleInputChange} tooltip={`Peso médio projetado para a venda. Determina a receita bruta total e o volume de carne produzido (arrobas). Na simulação de risco, assume-se um desvio padrão de ${DEFAULT_INPUTS.desviosPadrao.pesoVivoFinal} kg.`} error={errors.pesoVivoFinal} />
-                      <InputGroup icon={Activity} label="GMD" name="gmd" value={inputs.gmd} unit="kg/dia" onChange={handleInputChange} step={0.1} tooltip={`Ganho Médio Diário esperado. É o principal indicador de eficiência biológica.`} error={errors.gmd} />
-                      <InputGroup icon={TrendingUp} label="Rend. Inicial" name="rendimentoCarcacaInicial" value={inputs.rendimentoCarcacaInicial} unit="%" onChange={handleInputChange} step={0.1} tooltip="Rendimento de carcaça estimado na entrada (boi magro). Geralmente 50%." error={errors.rendimentoCarcacaInicial} />
-                      <InputGroup icon={TrendingUp} label="Rend. Final" name="rendimentoCarcaca" value={inputs.rendimentoCarcaca} unit="%" onChange={handleInputChange} step={0.1} tooltip="Rendimento de carcaça projetado na venda (boi gordo). Geralmente 54%." error={errors.rendimentoCarcaca} />
+                      <InputGroup icon={Activity} label="Ganho Médio Diário (GMD)" name="gmd" value={inputs.gmd} unit="kg/dia" onChange={handleInputChange} step={0.1} tooltip={`Ganho Médio Diário esperado. É o principal indicador de eficiência biológica.`} error={errors.gmd} />
+                      <InputGroup icon={TrendingUp} label="Rendimento Inicial" name="rendimentoCarcacaInicial" value={inputs.rendimentoCarcacaInicial} unit="%" onChange={handleInputChange} step={0.1} tooltip="Rendimento de carcaça estimado na entrada (boi magro). Geralmente 50%." error={errors.rendimentoCarcacaInicial} />
+                      <InputGroup icon={TrendingUp} label="Rendimento Final" name="rendimentoCarcaca" value={inputs.rendimentoCarcaca} unit="%" onChange={handleInputChange} step={0.1} tooltip="Rendimento de carcaça projetado na venda (boi gordo). Geralmente 54%." error={errors.rendimentoCarcaca} />
                       <InputGroup icon={Clock} label="Tempo" name="tempoAlimentacao" value={inputs.tempoAlimentacao} unit="dias" onChange={handleInputChange} disabled tooltip="Período total de confinamento necessário para atingir o peso final. Quanto maior o tempo, maior o custo operacional total e menor a rotatividade do capital (Giro de Estoque)." error={errors.tempoAlimentacao} />
-                      <InputGroup icon={ArrowRightLeft} label="Quebra Transp." name="quebraPesoTransportePerc" value={inputs.quebraPesoTransportePerc} unit="%" onChange={handleInputChange} step={0.1} tooltip="Percentual de perda de peso (shrinkage) durante o transporte para o frigorífico." error={errors.quebraPesoTransportePerc} />
+                      <InputGroup icon={ArrowRightLeft} label="Quebra de Transporte" name="quebraPesoTransportePerc" value={inputs.quebraPesoTransportePerc} unit="%" onChange={handleInputChange} step={0.1} tooltip="Percentual de perda de peso (shrinkage) durante o transporte para o frigorífico." error={errors.quebraPesoTransportePerc} />
                       <InputGroup icon={AlertCircle} label="Mortalidade" name="taxaMortalidade" value={inputs.taxaMortalidade} unit="%" onChange={handleInputChange} step={0.1} tooltip="Taxa de perda de animais durante o ciclo." error={errors.taxaMortalidade} />
                     </div>
                   </div>
@@ -3608,13 +3667,13 @@ export default function App() {
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                           <TeamInput label="Gerente" value={inputs.equipe.gerente} onChange={(v) => handleTeamChange('gerente', v)} />
                           <TeamInput label="Encarregado" value={inputs.equipe.encarregado} onChange={(v) => handleTeamChange('encarregado', v)} />
-                          <TeamInput label="Adm/Apont." value={inputs.equipe.administrativo} onChange={(v) => handleTeamChange('administrativo', v)} />
+                          <TeamInput label="Administrativo/Apontador" value={inputs.equipe.administrativo} onChange={(v) => handleTeamChange('administrativo', v)} />
                           <TeamInput label="Tratorista" value={inputs.equipe.tratorista} onChange={(v) => handleTeamChange('tratorista', v)} />
-                          <TeamInput label="Mistura/Fáb." value={inputs.equipe.mistura} onChange={(v) => handleTeamChange('mistura', v)} />
-                          <TeamInput label="Curral/Man." value={inputs.equipe.curral} onChange={(v) => handleTeamChange('curral', v)} />
+                          <TeamInput label="Mistura/Fábrica" value={inputs.equipe.mistura} onChange={(v) => handleTeamChange('mistura', v)} />
+                          <TeamInput label="Curral/Manejo" value={inputs.equipe.curral} onChange={(v) => handleTeamChange('curral', v)} />
                           <TeamInput label="Sanidade" value={inputs.equipe.sanidade} onChange={(v) => handleTeamChange('sanidade', v)} />
                           <TeamInput label="Mecânico" value={inputs.equipe.manutencao} onChange={(v) => handleTeamChange('manutencao', v)} />
-                          <TeamInput label="Serv. Gerais" value={inputs.equipe.servicosGerais} onChange={(v) => handleTeamChange('servicosGerais', v)} />
+                          <TeamInput label="Serviços Gerais" value={inputs.equipe.servicosGerais} onChange={(v) => handleTeamChange('servicosGerais', v)} />
                         </div>
                       </div>
                     </div>
@@ -3634,11 +3693,11 @@ export default function App() {
                       <InputGroup label="Pró-labore" name="proLaboreMes" value={inputs.proLaboreMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Remuneração mensal dos gestores. O dimensionamento profissional sugere valores de R$ 8.000 a R$ 35.000 conforme o porte da operação." error={errors.proLaboreMes} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <InputGroup label="Energia Elétrica" name="energiaEletricaMes" value={inputs.energiaEletricaMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Gastos fixos com energia, água e internet." error={errors.energiaEletricaMes} />
-                        <InputGroup label="Reparos & Manut." name="reparosManutencaoMes" value={inputs.reparosManutencaoMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Provisão mensal para reparos e manutenção de benfeitorias e máquinas." error={errors.reparosManutencaoMes} />
+                        <InputGroup label="Reparos & Manutenção" name="reparosManutencaoMes" value={inputs.reparosManutencaoMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Provisão mensal para reparos e manutenção de benfeitorias e máquinas." error={errors.reparosManutencaoMes} />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <InputGroup label="Seguros" name="segurosMes" value={inputs.segurosMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Custo mensal com seguros patrimoniais." error={errors.segurosMes} />
-                        <InputGroup label="ITR" name="itrMes" value={inputs.itrMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Imposto Territorial Rural rateado mensalmente." error={errors.itrMes} />
+                        <InputGroup label="Imposto Territorial Rural (ITR)" name="itrMes" value={inputs.itrMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Imposto Territorial Rural rateado mensalmente." error={errors.itrMes} />
                       </div>
                       <InputGroup label="Financiamento" name="financiamentoMes" value={inputs.financiamentoMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Parcelas mensais de financiamentos (amortização + juros)." error={errors.financiamentoMes} />
                     </div>
@@ -3784,9 +3843,9 @@ export default function App() {
                     <div className="space-y-4">
                       <InputGroup label="Boi Magro" name="precoBoiMagro" value={inputs.precoBoiMagro} unit="R$/ani" onChange={handleInputChange} isCurrency tooltip={`Valor pago por animal na compra.`} extraInfo={`R$ ${(inputs.precoBoiMagro / inputs.pesoVivoInicial).toFixed(2)}/kg`} error={errors.precoBoiMagro} />
                       <InputGroup label="Boi Gordo" name="precoBoiGordo" value={inputs.precoBoiGordo} unit="R$/@" onChange={handleInputChange} step={0.01} isCurrency tooltip={`Preço de venda projetado por arroba.`} extraInfo={`R$ ${((inputs.rendimentoCarcaca / 100) * (inputs.precoBoiGordo / 15)).toFixed(2)}/kg`} error={errors.precoBoiGordo} />
-                      <InputGroup label="TMA Anual" name="tmaAnual" value={inputs.tmaAnual} unit="%" onChange={handleInputChange} step={0.01} tooltip="Taxa Mínima de Atratividade." error={errors.tmaAnual} />
+                      <InputGroup label="Taxa Mínima de Atratividade (TMA) Anual" name="tmaAnual" value={inputs.tmaAnual} unit="%" onChange={handleInputChange} step={0.01} tooltip="Taxa Mínima de Atratividade." error={errors.tmaAnual} />
                       <div className="grid grid-cols-2 gap-3">
-                        <InputGroup label="Bonif." name="bonificacaoPerc" value={inputs.bonificacaoPerc} unit="%" onChange={handleInputChange} step={0.1} error={errors.bonificacaoPerc} />
+                        <InputGroup label="Bonificação" name="bonificacaoPerc" value={inputs.bonificacaoPerc} unit="%" onChange={handleInputChange} step={0.1} error={errors.bonificacaoPerc} />
                         <InputGroup label="Funrural" name="funruralPerc" value={inputs.funruralPerc} unit="%" onChange={handleInputChange} step={0.01} error={errors.funruralPerc} />
                       </div>
                     </div>
@@ -3808,12 +3867,12 @@ export default function App() {
                     
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-3">
-                        <InputGroup label="Cons. Vol." name="cmsVolumoso" value={inputs.cmsVolumoso} unit="kg NM" onChange={handleInputChange} step={0.01} error={errors.cmsVolumoso} />
-                        <InputGroup label="Cons. Conc." name="cmsConcentrado" value={inputs.cmsConcentrado} unit="kg NM" onChange={handleInputChange} step={0.01} error={errors.cmsConcentrado} />
+                        <InputGroup label="Consumo Volumoso" name="cmsVolumoso" value={inputs.cmsVolumoso} unit="kg MN" onChange={handleInputChange} step={0.01} error={errors.cmsVolumoso} />
+                        <InputGroup label="Consumo Concentrado" name="cmsConcentrado" value={inputs.cmsConcentrado} unit="kg MN" onChange={handleInputChange} step={0.01} error={errors.cmsConcentrado} />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <InputGroup label="Preço Vol." name="precoVolumoso" value={inputs.precoVolumoso} unit="R$/kg" onChange={handleInputChange} step={0.01} isCurrency error={errors.precoVolumoso} />
-                        <InputGroup label="Preço Conc." name="precoConcentrado" value={inputs.precoConcentrado} unit="R$/kg" onChange={handleInputChange} step={0.01} isCurrency error={errors.precoConcentrado} />
+                        <InputGroup label="Preço de Volumoso" name="precoVolumoso" value={inputs.precoVolumoso} unit="R$/kg MN" onChange={handleInputChange} step={0.01} isCurrency error={errors.precoVolumoso} />
+                        <InputGroup label="Preço de Concentrado" name="precoConcentrado" value={inputs.precoConcentrado} unit="R$/kg MN" onChange={handleInputChange} step={0.01} isCurrency error={errors.precoConcentrado} />
                       </div>
                       <InputGroup label="Sobras no cocho" name="sobrasCochoPerc" value={inputs.sobrasCochoPerc} unit="%" onChange={handleInputChange} step={0.1} error={errors.sobrasCochoPerc} />
                     </div>
@@ -3831,10 +3890,36 @@ export default function App() {
                       </div>
                     </div>
                     <div className="space-y-4">
-                      <InputGroup label="Invest. Social" name="investimentoSocialAnual" value={inputs.investimentoSocialAnual} unit="R$/ano" onChange={handleInputChange} isCurrency error={errors.investimentoSocialAnual} />
+                      <InputGroup 
+                        label="Investimento Social" 
+                        name="investimentoSocialAnual" 
+                        value={inputs.investimentoSocialAnual} 
+                        unit="R$/ano" 
+                        onChange={handleInputChange} 
+                        isCurrency 
+                        tooltip="Total investido anualmente em desenvolvimento comunitário local, projetos sociais e infraestrutura de apoio à comunidade."
+                        error={errors.investimentoSocialAnual} 
+                      />
                       <div className="grid grid-cols-2 gap-3">
-                        <InputGroup label="Treinam." name="horasTreinamentoFuncionarioAno" value={inputs.horasTreinamentoFuncionarioAno} unit="h/ano" onChange={handleInputChange} error={errors.horasTreinamentoFuncionarioAno} />
-                        <InputGroup label="B.E. Animal" name="indiceBemEstarAnimal" value={inputs.indiceBemEstarAnimal} unit="0-10" onChange={handleInputChange} step={1} error={errors.indiceBemEstarAnimal} />
+                        <InputGroup 
+                          label="Treinamento de Funcionários" 
+                          name="horasTreinamentoFuncionarioAno" 
+                          value={inputs.horasTreinamentoFuncionarioAno} 
+                          unit="h/ano" 
+                          onChange={handleInputChange} 
+                          tooltip="Horas de capacitação por funcionário ao ano focadas em manejo de baixa tensão, segurança, zootecnia de precisão e bem-estar."
+                          error={errors.horasTreinamentoFuncionarioAno} 
+                        />
+                        <InputGroup 
+                          label="Bem-Estar Animal" 
+                          name="indiceBemEstarAnimal" 
+                          value={inputs.indiceBemEstarAnimal} 
+                          unit="0-10" 
+                          onChange={handleInputChange} 
+                          step={1} 
+                          tooltip="Métrica estipulada de 0 a 10 que quantifica a adesão a rígidas práticas de ambiência, estresse mínimo e manejo humanizado de bovinos."
+                          error={errors.indiceBemEstarAnimal} 
+                        />
                       </div>
                     </div>
                   </div>
@@ -4839,15 +4924,37 @@ export default function App() {
                         className={`bg-[#0f172a] p-6 rounded-2xl border transition-all duration-300 relative overflow-hidden group/card ${colorStyles.split(' ').slice(0, 2).join(' ')}`}
                       >
                         {isCustom && (
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCustomStressScenarios(prev => prev.filter(cs => cs.id !== scenario.id));
-                            }}
-                            className="absolute top-2 right-2 p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg opacity-0 group-hover/card:opacity-100 transition-opacity z-20 cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity z-20">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const cs = customStressScenarios.find(s => s.id === scenario.id);
+                                if (cs) {
+                                  setNewStress({
+                                    name: cs.name,
+                                    changes: cs.changes || [],
+                                    color: cs.color || 'amber'
+                                  });
+                                  setEditingStressId(cs.id);
+                                  setIsAddingStress(true);
+                                }
+                              }}
+                              className="p-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 rounded-lg transition-all cursor-pointer"
+                              title="Editar Cenário"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCustomStressScenarios(prev => prev.filter(cs => cs.id !== scenario.id));
+                              }}
+                              className="p-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg transition-all cursor-pointer"
+                              title="Excluir Cenário"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                         <div className="absolute top-0 right-0 p-4 opacity-5 group-hover/card:opacity-10 transition-opacity">
                           <AlertTriangle className="w-16 h-16 text-slate-400" />
@@ -4911,7 +5018,11 @@ export default function App() {
 
                   {/* Add Custom Stress Card */}
                   <div 
-                    onClick={() => setIsAddingStress(true)}
+                    onClick={() => {
+                      setEditingStressId(null);
+                      setNewStress({ name: '', changes: [], color: 'amber' });
+                      setIsAddingStress(true);
+                    }}
                     className="bg-slate-900/30 p-6 rounded-2xl border-2 border-dashed border-slate-800/60 flex flex-col items-center justify-center gap-4 hover:bg-slate-900/60 hover:border-emerald-500/35 transition-all cursor-pointer group min-h-[300px]"
                   >
                     <div className="p-4 bg-slate-950 border border-slate-800 rounded-full shadow-sm group-hover:scale-110 transition-all group-hover:text-emerald-400">
@@ -4943,8 +5054,8 @@ export default function App() {
               <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-slate-100/80 rounded-xl">
-                      <ShieldAlert className="w-5 h-5 text-slate-700" />
+                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                      <ShieldAlert className="w-5 h-5 text-indigo-400" />
                     </div>
                     <div>
                       <h3 className="font-bold text-slate-100">Configurações de Simulação</h3>
@@ -4965,13 +5076,13 @@ export default function App() {
                       <select 
                         value={inputs.copulaType}
                         onChange={(e) => setInputs(prev => ({ ...prev, copulaType: e.target.value as any }))}
-                        className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="bg-slate-900 border border-slate-800 text-slate-100 rounded-xl px-3 py-2 text-xs font-semibold focus:border-indigo-500 hover:border-slate-700 transition-colors outline-none cursor-pointer"
                       >
-                        <option value="gaussian">Correlação Linear (Cópula Gaussiana)</option>
-                        <option value="spearman">Correlação de Postos (Spearman)</option>
-                        <option value="clayton">Cópula de Clayton (Risco de Cauda Inferior)</option>
-                        <option value="gumbel">Cópula de Gumbel (Risco de Cauda Superior)</option>
-                        <option value="independent">Independência Total (Sem Correlação)</option>
+                        <option value="gaussian" className="bg-slate-900">Correlação Linear (Cópula Gaussiana)</option>
+                        <option value="spearman" className="bg-slate-900">Correlação de Postos (Spearman)</option>
+                        <option value="clayton" className="bg-slate-900">Cópula de Clayton (Risco de Cauda Inferior)</option>
+                        <option value="gumbel" className="bg-slate-900">Cópula de Gumbel (Risco de Cauda Superior)</option>
+                        <option value="independent" className="bg-slate-900">Independência Total (Sem Correlação)</option>
                       </select>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -4979,24 +5090,25 @@ export default function App() {
                       <select 
                         value={mcIterations}
                         onChange={(e) => setMcIterations(parseInt(e.target.value))}
-                        className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="bg-slate-900 border border-slate-800 text-slate-100 rounded-xl px-3 py-2 text-xs font-semibold focus:border-indigo-500 hover:border-slate-700 transition-colors outline-none font-sans cursor-pointer"
                       >
-                        <option value={10000}>10.000 iterações</option>
-                        <option value={50000}>50.000 iterações</option>
-                        <option value={100000}>100.000 iterações</option>
+                        <option value={2000} className="bg-slate-900">2.000 iterações (Ultra Rápido)</option>
+                        <option value={5000} className="bg-slate-900">5.000 iterações (Recomendado)</option>
+                        <option value={10000} className="bg-slate-900">10.000 iterações (Alta Precisão)</option>
+                        <option value={25000} className="bg-slate-900">25.000 iterações (Máximo Seguro)</option>
                       </select>
                     </div>
                     <button
                       onClick={handleRunLHS}
                       disabled={isSimulating}
-                      className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
+                      className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-950/20 disabled:opacity-50"
                     >
                       {isSimulating ? 'Simulando...' : 'Recalcular'}
                     </button>
                   </div>
                 </div>
-                <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                  <p className="text-[10px] text-slate-700 leading-relaxed">
+                <div className="mt-4 p-4 bg-slate-900 border border-slate-800/85 rounded-xl">
+                  <p className="text-[10.5px] text-slate-300 leading-relaxed">
                     {inputs.copulaType === 'gaussian' && (
                       <>
                         <span className="font-bold">Correlação Linear (Gaussiana):</span> Utiliza a decomposição de Cholesky para impor a estrutura de correlação linear especificada. Ideal para capturar a dependência média histórica entre preços.
@@ -5033,7 +5145,7 @@ export default function App() {
                   <p className="text-xs text-slate-400 mt-2 mb-6">Execute a simulação de Hypercubo Latino (LHS) para analisar os riscos do projeto.</p>
                   <button
                     onClick={handleRunLHS}
-                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs transition-all tracking-wider shadow-lg shadow-blue-950/20 cursor-pointer animate-bounce"
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs transition-all tracking-wider shadow-lg shadow-indigo-950/20 cursor-pointer animate-bounce"
                   >
                     Simular Agora
                   </button>
@@ -5054,7 +5166,7 @@ export default function App() {
                         onClick={() => setRiskSubTab(item.id as any)}
                         className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all cursor-pointer ${
                           riskSubTab === item.id
-                            ? 'bg-blue-600 text-white shadow-md shadow-blue-950/20'
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/20'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
                         }`}
                       >
@@ -5126,7 +5238,7 @@ export default function App() {
                       <p className="text-3xl font-bold text-slate-100">{formatCurrency(lhsResults.vplMedio)}</p>
                       <p className="text-xs text-slate-400 mt-2">Média de {mcIterations.toLocaleString()} iterações aleatórias.</p>
                       {results && (
-                        <p className="text-[10px] text-blue-400 mt-1 font-medium">
+                        <p className="text-[10px] text-indigo-400 mt-1 font-medium">
                           VPL Determinístico: {formatCurrency(results.vpl)}
                         </p>
                       )}
@@ -5521,9 +5633,9 @@ export default function App() {
                             {results && (
                               <ReferenceLine 
                                 x={results.vpl} 
-                                stroke="#3b82f6" 
+                                stroke="#6366f1" 
                                 strokeDasharray="5 5" 
-                                label={{ value: 'VPL Determinístico', position: 'top', fill: '#3b82f6', fontSize: 10 }} 
+                                label={{ value: 'VPL Determinístico', position: 'top', fill: '#6366f1', fontSize: 10 }} 
                               />
                             )}
                             <Area type="monotone" dataKey="frequencia" stroke="#10b981" fillOpacity={1} fill="url(#colorFreq)" />
@@ -5536,7 +5648,7 @@ export default function App() {
                           <span>Limiar de VPL</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <div className="w-3 h-0.5 border-t-2 border-dashed border-blue-500" />
+                          <div className="w-3 h-0.5 border-t-2 border-dashed border-indigo-500" />
                           <span>VPL Determinístico</span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -5558,7 +5670,7 @@ export default function App() {
                             step={100}
                             value={vplThreshold} 
                             onChange={(e) => setVplThreshold(parseFloat(e.target.value))}
-                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 border border-slate-700/50"
                           />
                           <div className="flex justify-between mt-4 p-3 bg-[#070a13] rounded-xl border border-slate-850/50">
                             <div className="text-center flex-1 border-r border-slate-800">
@@ -5759,9 +5871,9 @@ export default function App() {
                             <Area 
                               type="monotone" 
                               dataKey="probabilidade" 
-                              stroke="#3b82f6" 
+                              stroke="#6366f1" 
                               strokeWidth={3}
-                              fill="#3b82f6" 
+                              fill="#6366f1" 
                               fillOpacity={0.1} 
                             />
                           </AreaChart>
@@ -5824,7 +5936,7 @@ export default function App() {
                               {lhsResults.regressao.map((entry, index) => (
                                 <Cell 
                                   key={`cell-${index}`} 
-                                  fill={entry.beta > 0 ? '#3b82f6' : '#ef4444'} 
+                                  fill={entry.beta > 0 ? '#6366f1' : '#ef4444'} 
                                 />
                               ))}
                               <LabelList 
@@ -5840,7 +5952,7 @@ export default function App() {
                                     <text 
                                       x={posX} 
                                       y={y + height / 2} 
-                                      fill={isPositive ? '#2563eb' : '#dc2626'} 
+                                      fill={isPositive ? '#4f46e5' : '#dc2626'} 
                                       fontSize={11} 
                                       fontWeight="bold"
                                       textAnchor={textAnchor}
@@ -6292,8 +6404,8 @@ export default function App() {
                                   key={sim.id}
                                   className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
                                     selectedSimsForDominance.includes(sim.id)
-                                      ? 'border-emerald-500 bg-emerald-50'
-                                      : 'border-gray-50 bg-gray-50 hover:border-gray-200'
+                                      ? 'border-indigo-500 bg-indigo-500/10 text-slate-150'
+                                      : 'border-slate-800 bg-[#0c1222] hover:border-slate-700/80 text-slate-300'
                                   }`}
                                 >
                                   <input 
@@ -6310,15 +6422,15 @@ export default function App() {
                                       }
                                     }}
                                   />
-                                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+                                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
                                     selectedSimsForDominance.includes(sim.id)
-                                      ? 'bg-emerald-500 border-emerald-500'
-                                      : 'bg-white border-gray-300'
-                                  }}`}>
+                                      ? 'bg-indigo-500 border-indigo-500'
+                                      : 'bg-[#121826] border-slate-700'
+                                  }`}>
                                     {selectedSimsForDominance.includes(sim.id) && <CheckCircle2 className="w-3 h-3 text-white" />}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-gray-700 truncate">{sim.name}</p>
+                                    <p className="text-sm font-bold text-slate-100 truncate">{sim.name}</p>
                                     <p className="text-[10px] text-slate-400">{new Date(sim.date).toLocaleDateString()}</p>
                                   </div>
                                 </label>
@@ -6336,9 +6448,9 @@ export default function App() {
                         {dominanceResults.length > 0 ? (
                           <>
                             {/* S-Curve Chart */}
-                            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                              <h3 className="text-lg font-bold text-slate-200 mb-6 flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-emerald-400" />
+                            <div className="bg-[#0f172a] p-8 rounded-3xl shadow-lg border border-slate-800/80">
+                              <h3 className="text-lg font-bold text-slate-150 mb-6 flex items-center gap-2">
+                                <Activity className="w-5 h-5 text-indigo-400" />
                                 Curvas de Probabilidade Acumulada (S-Curves)
                               </h3>
                               <div className="h-[400px] w-full">
@@ -6346,24 +6458,27 @@ export default function App() {
                                   <LineChart
                                     margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                                   >
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                                     <XAxis 
                                       dataKey="vpl" 
                                       type="number" 
                                       domain={['auto', 'auto']}
                                       tickFormatter={(val) => `R$ ${Math.round(val/1000)}k`}
-                                      label={{ value: 'VPL (R$)', position: 'insideBottom', offset: -5, fontSize: 12 }}
+                                      label={{ value: 'VPL (R$)', position: 'insideBottom', offset: -5, fontSize: 12, fill: '#94a3b8' }}
+                                      tick={{ fill: '#94a3b8', fontSize: 10 }}
                                     />
                                     <YAxis 
                                       domain={[0, 100]}
                                       tickFormatter={(val) => `${val}%`}
-                                      label={{ value: 'Probabilidade Acumulada', angle: -90, position: 'insideLeft', fontSize: 12 }}
+                                      label={{ value: 'Probabilidade Acumulada', angle: -90, position: 'insideLeft', fontSize: 12, fill: '#94a3b8' }}
+                                      tick={{ fill: '#94a3b8', fontSize: 10 }}
                                     />
                                     <Tooltip 
+                                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f1f5f9' }}
                                       formatter={(value: any) => [`${value}%`, 'Probabilidade']}
                                       labelFormatter={(label) => `VPL: ${formatCurrency(label)}`}
                                     />
-                                    <Legend />
+                                    <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '11px' }} />
                                     {dominanceResults.map((sim, idx) => (
                                       <Line
                                         key={sim.id}
@@ -6373,14 +6488,14 @@ export default function App() {
                                         name={sim.name}
                                         stroke={[
                                           '#10b981', // emerald
-                                          '#3b82f6', // blue
+                                          '#6366f1', // indigo
                                           '#f59e0b', // amber
                                           '#ef4444', // red
                                           '#8b5cf6', // violet
                                           '#ec4899', // pink
                                           '#f97316', // orange
                                           '#06b6d4', // cyan
-                                          '#6366f1', // indigo
+                                          '#3b82f6', // blue
                                           '#64748b'  // slate
                                         ][idx]}
                                         strokeWidth={3}
@@ -6391,8 +6506,8 @@ export default function App() {
                                   </LineChart>
                                 </ResponsiveContainer>
                               </div>
-                              <div className="mt-6 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                                <p className="text-xs text-slate-400 leading-relaxed">
+                              <div className="mt-6 p-4 bg-slate-900/50 rounded-2xl border border-slate-800">
+                                <p className="text-xs text-slate-400 leading-relaxed text-left">
                                   <strong>Como interpretar:</strong> Quanto mais à direita estiver a curva, melhor o cenário. 
                                   Se uma curva nunca cruza outra e está sempre à direita, ela possui <strong>Dominância de Primeira Ordem</strong>. 
                                   Se as curvas se cruzam, a análise de <strong>Segunda Ordem</strong> avalia qual cenário oferece menor risco para investidores avessos ao risco.
@@ -6401,12 +6516,12 @@ export default function App() {
                             </div>
 
                             {/* Statistical Comparison Table */}
-                            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                              <div className="p-6 border-b border-gray-50 flex items-center justify-between">
-                                <h3 className="font-bold text-gray-800">Comparativo Estatístico</h3>
+                            <div className="bg-[#0f172a] rounded-3xl shadow-lg border border-slate-800/80 overflow-hidden">
+                              <div className="p-6 border-b border-slate-800/80 flex items-center justify-between">
+                                <h3 className="font-bold text-slate-100">Comparativo Estatístico</h3>
                                 <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                                  <Info className="w-3 h-3" />
-                                  <span>Baseado em 5.000 iterações por cenário</span>
+                                  <Info className="w-3 h-3 text-indigo-400" />
+                                  <span>Baseado em {mcIterations.toLocaleString()} iterações por cenário</span>
                                 </div>
                               </div>
                               <div className="overflow-x-auto">
@@ -6508,7 +6623,7 @@ export default function App() {
                                               return s1.stats.vplMedio > s2.stats.vplMedio ? (
                                                 <span className="text-emerald-400 font-bold">{test.sim1} &gt; {test.sim2}</span>
                                               ) : (
-                                                <span className="text-blue-400 font-bold">{test.sim2} &gt; {test.sim1}</span>
+                                                <span className="text-indigo-400 font-bold">{test.sim2} &gt; {test.sim1}</span>
                                               );
                                             })()}
                                           </td>
@@ -6517,8 +6632,8 @@ export default function App() {
                                     </tbody>
                                   </table>
                                 </div>
-                                <div className="p-4 bg-slate-50 border-t border-slate-200">
-                                  <p className="text-[10px] text-slate-700 leading-tight">
+                                <div className="p-4 bg-slate-900/50 border-t border-slate-800">
+                                  <p className="text-[10px] text-slate-400 leading-tight">
                                     <strong>Nota Técnica:</strong> O teste K-S quantifica a distância entre as funções de distribuição acumulada. 
                                     Um p-valor &lt; 0,05 indica que as diferenças observadas entre as simulações não são fruto do acaso, 
                                     confirmando a superioridade estatística de um cenário sobre o outro.
@@ -6584,12 +6699,12 @@ export default function App() {
                             </div>
                           </>
                         ) : (
-                          <div className="bg-gray-50 h-[400px] rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-center p-12">
-                            <div className="p-6 bg-white rounded-full shadow-sm mb-6">
-                              <ArrowRightLeft className="w-12 h-12 text-gray-300" />
+                          <div className="bg-[#0f172a]/60 h-[400px] rounded-3xl border border-dashed border-slate-800/80 flex flex-col items-center justify-center text-center p-12 shadow-sm">
+                            <div className="p-4 bg-slate-900 border border-slate-800 rounded-full mb-6">
+                              <ArrowRightLeft className="w-8 h-8 text-slate-500" />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-700 mb-2">Pronto para Comparar</h3>
-                            <p className="text-slate-400 max-w-md text-sm">
+                            <h3 className="text-lg font-bold text-slate-200 mb-2 font-display">Pronto para Comparar</h3>
+                            <p className="text-slate-400 max-w-md text-sm leading-relaxed font-sans">
                               Selecione as simulações salvas na barra lateral e clique em "Analisar Dominância" para visualizar as Curvas S e o comparativo estatístico.
                             </p>
                           </div>
@@ -6621,7 +6736,7 @@ export default function App() {
                         <h3 className="font-bold text-slate-100 text-xl">Calculadora de Dieta</h3>
                         <InfoTooltip text="Ferramenta de formulação de dieta baseada em programação linear (Simplex). Calcula a combinação ideal de insumos para atingir as metas nutricionais e de desempenho." />
                       </div>
-                      <p className="text-xs text-slate-400">Formulação balanceada com os mais modernos padrões globais de nutrição (NRC 2016).</p>
+                      <p className="text-xs text-slate-400">Formulação balanceada com os mais modernos padrões globais de nutrição (NRC/NASEM 2016).</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -6811,7 +6926,7 @@ export default function App() {
                             <BrainCircuit className="w-4 h-4 text-emerald-400" />
                             <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest font-sans">Exigências Estimadas</h4>
                           </div>
-                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full font-mono">NRC 2016</span>
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full font-mono">NRC/NASEM 2016</span>
                         </div>
                         
                         {(() => {
@@ -6942,10 +7057,10 @@ export default function App() {
                               </th>
                               <th className="px-3 py-3 text-slate-200">
                                 Insumo
-                                <InfoTooltip text="Nome (MS = Matéria Seca | NM = Matéria Natural)" />
+                                <InfoTooltip text="Nome (MS = Matéria Seca | MN = Matéria Natural)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
-                                Preço (R$/kg NM)
+                              <th className="px-3 py-3 text-right text-slate-200 font-sans">
+                                Preço (R$/kg de Matéria Natural - MN)
                                 <InfoTooltip text="Preço por kg na Matéria Natural (como alimentado)" />
                               </th>
                               <th className="px-3 py-3 text-right text-slate-200">
@@ -7300,113 +7415,113 @@ export default function App() {
                       <>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                           <div className="bg-[#1e1b4b]/80 border border-purple-500/25 p-3 rounded-xl text-purple-200 shadow-md text-left">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-purple-300 opacity-90">GMD Predito</p>
-                            <p className="text-xl font-black font-mono text-purple-100">{dietResult.predictedGmd.toFixed(2)} <span className="text-xs font-normal text-purple-300">kg/d</span></p>
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-purple-300 opacity-90 font-sans">GMD Predito</p>
+                            <p className="text-xl font-black font-mono text-purple-100">{dietResult.predictedGmd.toFixed(2)} <span className="text-xs font-normal text-purple-300 font-sans">kg/dia</span></p>
                           </div>
                           <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 shadow-sm text-left">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Conversão</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">Conversão</p>
                             <p className="text-xl font-black text-slate-200 font-mono">{dietResult.feedConversion.toFixed(2)} <span className="text-xs font-normal text-slate-500">:1</span></p>
                           </div>
                           <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 shadow-sm text-left">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Consumo % PV</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">Consumo % PV</p>
                             <p className="text-xl font-black text-slate-200 font-mono">{dietResult.cmsPercentageBW.toFixed(2)} <span className="text-xs font-normal text-slate-500">%</span></p>
                           </div>
                           <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 shadow-sm text-left">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Custo Diário</p>
-                            <p className="text-xl font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostNM * (dietResult.forageIntakeNM + dietResult.concentrateIntakeNM))}</p>
-                            <p className="text-[8px] text-slate-500 font-bold uppercase">R$/animal/dia</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">Custo Diário</p>
+                            <p className="text-xl font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN * (dietResult.forageIntakeMN + dietResult.concentrateIntakeMN))}</p>
+                            <p className="text-[8px] text-slate-500 font-bold uppercase font-sans">R$/animal/dia</p>
                           </div>
                           <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 shadow-sm text-left">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Custo/@ Prod.</p>
-                            <p className="text-xl font-black text-slate-200 font-mono">{formatCurrency((dietResult.totalCostNM * (dietResult.forageIntakeNM + dietResult.concentrateIntakeNM)) / (dietResult.predictedGmd / 15 * inputs.rendimentoCarcaca / 100))}</p>
-                            <p className="text-[8px] text-slate-500 font-bold uppercase">R$/@ produzida</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">Custo/@ Prod.</p>
+                            <p className="text-xl font-black text-slate-200 font-mono">{formatCurrency((dietResult.totalCostMN * (dietResult.forageIntakeMN + dietResult.concentrateIntakeMN)) / (dietResult.predictedGmd / 15 * inputs.rendimentoCarcaca / 100))}</p>
+                            <p className="text-[8px] text-slate-500 font-bold uppercase font-sans">R$/@ produzida</p>
                           </div>
                         </div>
 
                         <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-wrap gap-4 justify-center items-center">
                           <div className="flex flex-col items-center px-4">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Custo Volumoso</span>
-                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.forageCostPerKgNM)}/kg NM</span>
-                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.forageCostPerKgMS)}/kg MS</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Volumoso</span>
+                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.forageCostPerKgMN)}/kg de Matéria Natural (MN)</span>
+                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.forageCostPerKgMS)}/kg de Matéria Seca (MS)</span>
                           </div>
                           <div className="h-8 w-px bg-slate-800" />
                           <div className="flex flex-col items-center px-4">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Custo Concentrado</span>
-                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.concentrateCostPerKgNM)}/kg NM</span>
-                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.concentrateCostPerKgMS)}/kg MS</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Concentrado</span>
+                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.concentrateCostPerKgMN)}/kg de Matéria Natural (MN)</span>
+                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.concentrateCostPerKgMS)}/kg de Matéria Seca (MS)</span>
                           </div>
                           <div className="h-8 w-px bg-slate-800" />
                           <div className="flex flex-col items-center px-4">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Custo Médio Dieta</span>
-                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostNM)}/kg NM</span>
-                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.totalCost)}/kg MS</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Médio Dieta</span>
+                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN)}/kg de Matéria Natural (MN)</span>
+                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.totalCost)}/kg de Matéria Seca (MS)</span>
                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800 shadow-sm">
-                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 text-left">Composição da Dieta (% MS)</h4>
-                          <div className="h-[200px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={dietResult.ingredients} layout="vertical" margin={{ left: 40 }}>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
-                                <XAxis type="number" hide />
-                                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} width={80} />
-                                <Tooltip 
-                                  cursor={{ fill: '#334155', opacity: 0.15 }}
-                                  contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #1e293b', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.4)' }}
-                                  formatter={(value: number) => [`${value.toFixed(2)}%`, 'Participação (MS)']}
-                                />
-                                <Bar dataKey="percentage" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={20}>
-                                  <LabelList dataKey="percentage" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-                                </Bar>
-                              </BarChart>
-                            </ResponsiveContainer>
+                          <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800 shadow-sm">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 text-left">Composição da Dieta (Matéria Seca - % MS)</h4>
+                            <div className="h-[200px]">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={dietResult.ingredients} layout="vertical" margin={{ left: 40 }}>
+                                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
+                                  <XAxis type="number" hide />
+                                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} width={80} />
+                                  <Tooltip 
+                                    cursor={{ fill: '#334155', opacity: 0.15 }}
+                                    contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #1e293b', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.4)' }}
+                                    formatter={(value: number) => [`${value.toFixed(2)}%`, 'Participação (MS)']}
+                                  />
+                                  <Bar dataKey="percentage" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={20}>
+                                    <LabelList dataKey="percentage" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800 shadow-sm">
-                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 text-left">Composição da Dieta (% Natural)</h4>
-                          <div className="h-[200px]">
-                            {(() => {
-                              const nmData = dietResult.ingredients.map(ing => {
-                                const original = dietIngredients.find(oi => oi.name === ing.name);
-                                return {
-                                  name: ing.name,
-                                  nmWeight: ing.percentage / (original?.ms || 100)
-                                };
-                              });
-                              const totalNM = nmData.reduce((sum, d) => sum + d.nmWeight, 0);
-                              const finalNMData = nmData.map(d => ({
-                                name: d.name,
-                                percentageNM: (d.nmWeight / totalNM) * 100
-                              }));
+                          <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800 shadow-sm">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 text-left">Composição da Dieta (Matéria Natural - % MN)</h4>
+                            <div className="h-[200px]">
+                              {(() => {
+                                const mnData = dietResult.ingredients.map(ing => {
+                                  const original = dietIngredients.find(oi => oi.name === ing.name);
+                                  return {
+                                    name: ing.name,
+                                    mnWeight: ing.percentage / (original?.ms || 100)
+                                  };
+                                });
+                                const totalMN = mnData.reduce((sum, d) => sum + d.mnWeight, 0);
+                                const finalMNData = mnData.map(d => ({
+                                  name: d.name,
+                                  percentageMN: (d.mnWeight / totalMN) * 100
+                                }));
 
-                              return (
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart data={finalNMData} layout="vertical" margin={{ left: 40 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
-                                    <XAxis type="number" hide />
-                                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} width={80} />
-                                    <Tooltip 
-                                      cursor={{ fill: '#334155', opacity: 0.15 }}
-                                      contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #1e293b', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.4)' }}
-                                      formatter={(value: number) => [`${value.toFixed(2)}%`, 'Participação (NM)']}
-                                    />
-                                    <Bar dataKey="percentageNM" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20}>
-                                      <LabelList dataKey="percentageNM" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-                                    </Bar>
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              );
-                            })()}
+                                return (
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={finalMNData} layout="vertical" margin={{ left: 40 }}>
+                                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
+                                      <XAxis type="number" hide />
+                                      <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} width={80} />
+                                      <Tooltip 
+                                        cursor={{ fill: '#334155', opacity: 0.15 }}
+                                        contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #1e293b', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.4)' }}
+                                        formatter={(value: number) => [`${value.toFixed(2)}%`, 'Participação (Matéria Natural - MN)']}
+                                      />
+                                      <Bar dataKey="percentageMN" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20}>
+                                        <LabelList dataKey="percentageMN" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
+                                      </Bar>
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                );
+                              })()}
+                            </div>
                           </div>
-                        </div>
 
 
                         <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800 shadow-sm col-span-1 md:col-span-2 text-left">
                           <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Acompanhamento Nutricional (NRC 2016 vs Alcançado)</h4>
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Acompanhamento Nutricional (NRC/NASEM 2016 vs Alcançado)</h4>
                             <button
                               onClick={() => setIsFullProfileModalOpen(true)}
                               className="text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
@@ -7749,7 +7864,7 @@ export default function App() {
                     </div>
                     <p className="text-emerald-100/80 text-sm max-w-xl leading-relaxed">
                       O ISP avalia o desempenho do seu confinamento em 15 indicadores-chave de sustentabilidade, 
-                      alinhados com as melhores práticas globais de ESG para a pecuária de corte.
+                      alinhados com as melhores práticas globais de ESG (Environmental, Social, and Governance - Ambiental, Social e Governança) para a pecuária de corte.
                     </p>
                   </div>
                   <div className="flex flex-col items-center justify-center bg-white/10 backdrop-blur-xl p-6 rounded-3xl border border-white/10 min-w-[200px]">
@@ -8230,89 +8345,141 @@ export default function App() {
                               <div className="h-px flex-1 bg-gradient-to-r from-slate-800 to-transparent" />
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                              {pricesInRegion.map((price, idx) => (
-                                <motion.div
-                                  key={price.state}
-                                  initial={{ opacity: 0, scale: 0.95 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  transition={{ delay: idx * 0.03 }}
-                                  className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all group shadow-sm text-left"
-                                >
-                                  <div className="flex justify-between items-start mb-4">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center font-bold text-indigo-400 shadow-sm border border-slate-800">
-                                        {price.state}
+                              {pricesInRegion.map((price, idx) => {
+                                const stateUpper = price.state.toUpperCase();
+                                const stateArrobaMagro = (price.boiMagro * 30) / (inputs.pesoVivoInicial || 350);
+                                const stateAgio = price.boiGordo > 0 ? ((stateArrobaMagro / price.boiGordo) - 1) * 100 : 0;
+
+                                const milhoPrice = price.ingredientPrices?.["Milho Moído"] || price.ingredientPrices?.["Milho Grão"] || {
+                                  SP: 1.20, MS: 1.12, MT: 1.02, GO: 1.10, MG: 1.18, RS: 1.28, PR: 1.15, SC: 1.25, PA: 1.35, RO: 1.30, TO: 1.22, BA: 1.28, MA: 1.32
+                                }[stateUpper] || 1.15;
+
+                                const sojaPrice = price.ingredientPrices?.["Farelo de Soja"] || {
+                                  SP: 2.38, MS: 2.25, MT: 2.10, GO: 2.20, MG: 2.32, RS: 2.45, PR: 2.30, SC: 2.42, PA: 2.60, RO: 2.55, TO: 2.40, BA: 2.48, MA: 2.52
+                                }[stateUpper] || 2.35;
+
+                                return (
+                                  <motion.div
+                                    key={price.state}
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ delay: idx * 0.03 }}
+                                    className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all group shadow-sm text-left animate-in fade-in zoom-in-95 duration-200"
+                                  >
+                                    <div className="flex justify-between items-start mb-4">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center font-bold text-indigo-400 shadow-sm border border-slate-800">
+                                          {price.state}
+                                        </div>
+                                        <span className="text-sm font-bold text-slate-200">Mercado {price.state}</span>
                                       </div>
-                                      <span className="text-sm font-bold text-slate-200">Mercado {price.state}</span>
+                                      <div className={`p-1 rounded-full ${
+                                        price.trend === 'up' ? 'bg-emerald-500/10 text-emerald-400' :
+                                        price.trend === 'down' ? 'bg-rose-500/10 text-rose-400' :
+                                        'bg-slate-800 text-slate-500'
+                                      }`}>
+                                        {price.trend === 'up' ? <TrendingUp className="w-4 h-4" /> :
+                                         price.trend === 'down' ? <TrendingUp className="w-4 h-4 rotate-180" /> :
+                                         <MoreHorizontal className="w-4 h-4" />}
+                                      </div>
                                     </div>
-                                    <div className={`p-1 rounded-full ${
-                                      price.trend === 'up' ? 'bg-emerald-500/10 text-emerald-400' :
-                                      price.trend === 'down' ? 'bg-rose-500/10 text-rose-400' :
-                                      'bg-slate-800 text-slate-500'
-                                    }`}>
-                                      {price.trend === 'up' ? <TrendingUp className="w-4 h-4" /> :
-                                       price.trend === 'down' ? <TrendingUp className="w-4 h-4 rotate-180" /> :
-                                       <MoreHorizontal className="w-4 h-4" />}
-                                    </div>
-                                  </div>
-                                  <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase">Boi Gordo (CEPEA)</span>
-                                      <span className="text-base font-bold text-slate-100 font-mono">R$ {price.boiGordo.toFixed(2)} /@</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase">Boi Magro (SCOT)</span>
-                                      <span className="text-sm font-semibold text-slate-300 font-mono">R$ {price.boiMagro.toLocaleString('pt-BR')}</span>
-                                    </div>
-                                    {price.ingredientPrices && Object.keys(price.ingredientPrices).length > 0 && (
-                                      <div className="pt-2.5 mt-2 border-t border-slate-800/80">
-                                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-2">Insumos Locais (CONAB)</p>
-                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                                          {Object.entries(price.ingredientPrices).slice(0, 4).map(([name, val]) => (
-                                            <div key={name} className="flex justify-between text-[9px]">
-                                              <span className="text-slate-400 truncate mr-1">{name}</span>
-                                              <span className="font-bold text-indigo-400 font-mono">R$ {val.toFixed(2)}</span>
-                                            </div>
-                                          ))}
+                                    <div className="space-y-3">
+                                      <div className="flex justify-between items-center text-left">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Boi Gordo (CEPEA)</span>
+                                        <span className="text-base font-bold text-slate-100 font-mono">R$ {price.boiGordo.toFixed(2)} /@</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-left">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Boi Magro (SCOT)</span>
+                                        <span className="text-sm font-semibold text-slate-300 font-mono">R$ {price.boiMagro.toLocaleString('pt-BR')}</span>
+                                      </div>
+
+                                      {/* ÁGIO ESPECÍFICO DO ESTADO */}
+                                      <div className="flex justify-between items-center pt-2.5 border-t border-slate-800/60 pb-1 text-left">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                          {stateAgio >= 0 ? 'Ágio' : 'Deságio'}
+                                        </span>
+                                        <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded-lg ${
+                                          stateAgio >= 0 
+                                            ? 'bg-rose-500/10 text-[#fb7185] border border-rose-500/20' 
+                                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                        }`}>
+                                          {stateAgio >= 0 ? `+${stateAgio.toFixed(1)}%` : `${stateAgio.toFixed(1)}%`}
+                                        </span>
+                                      </div>
+
+                                      {/* COTAÇÕES DE MILHO / SOJA */}
+                                      <div className="pt-2 border-t border-slate-800/80">
+                                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-2">Preços Principais Insumos</p>
+                                        <div className="grid grid-cols-2 gap-x-2.5">
+                                          <div className="flex flex-col p-2 bg-slate-900/60 rounded-xl border border-slate-800/60 transition-colors hover:border-slate-700/60">
+                                            <span className="text-[8px] font-semibold text-slate-450 uppercase truncate">Milho Moído</span>
+                                            <span className="text-xs font-bold text-indigo-400 font-mono mt-0.5 text-left">
+                                              R$ {milhoPrice.toFixed(2)}<span className="text-[8px] font-normal text-slate-500">/kg</span>
+                                            </span>
+                                          </div>
+                                          <div className="flex flex-col p-2 bg-slate-900/60 rounded-xl border border-slate-800/60 transition-colors hover:border-slate-700/60">
+                                            <span className="text-[8px] font-semibold text-slate-450 uppercase truncate">Farelo Soja</span>
+                                            <span className="text-xs font-bold text-indigo-400 font-mono mt-0.5 text-left">
+                                              R$ {sojaPrice.toFixed(2)}<span className="text-[8px] font-normal text-slate-500">/kg</span>
+                                            </span>
+                                          </div>
                                         </div>
                                       </div>
-                                    )}
-                                    <div className="pt-3 mt-3 border-t border-slate-800/80 flex justify-between items-center">
-                                      <span className="text-[9px] text-slate-500 font-mono">Ref: {price.date}</span>
-                                      <button 
-                                        onClick={() => {
-                                          setInputs(prev => ({
-                                            ...prev,
-                                            precoBoiGordo: price.boiGordo,
-                                            precoBoiMagro: price.boiMagro
-                                          }));
-                                          
-                                          // Sync diet ingredients if available
-                                          if (price.ingredientPrices) {
-                                            setDietIngredients(prev => prev.map(ing => {
-                                              if (price.ingredientPrices && price.ingredientPrices[ing.name]) {
-                                                return { ...ing, price: price.ingredientPrices[ing.name] };
-                                              }
-                                              return ing;
+
+                                      {price.ingredientPrices && Object.keys(price.ingredientPrices).length > 2 && (
+                                        <div className="pt-2.5 border-t border-slate-800/80">
+                                          <p className="text-[8px] font-bold text-slate-400 uppercase mb-1.5">Outros Insumos Locais</p>
+                                          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                            {Object.entries(price.ingredientPrices)
+                                              .filter(([name]) => !["Milho Moído", "Milho Grão", "Farelo de Soja"].includes(name))
+                                              .slice(0, 4)
+                                              .map(([name, val]) => (
+                                                <div key={name} className="flex justify-between text-[9px]">
+                                                  <span className="text-slate-400 truncate mr-1">{name}</span>
+                                                  <span className="font-bold text-indigo-400 font-mono">R$ {val.toFixed(2)}</span>
+                                                </div>
+                                              ))}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      <div className="pt-3 mt-3 border-t border-slate-800/80 flex justify-between items-center">
+                                        <span className="text-[9px] text-slate-500 font-mono">Ref: {price.date}</span>
+                                        <button 
+                                          onClick={() => {
+                                            setInputs(prev => ({
+                                              ...prev,
+                                              precoBoiGordo: price.boiGordo,
+                                              precoBoiMagro: price.boiMagro
                                             }));
                                             
-                                            setDietAnimalProfile(prev => ({
-                                              ...prev,
-                                              precoBoiGordo: price.boiGordo
-                                            }));
-                                          }
+                                            // Sync diet ingredients if available
+                                            if (price.ingredientPrices) {
+                                              setDietIngredients(prev => prev.map(ing => {
+                                                if (price.ingredientPrices && price.ingredientPrices[ing.name]) {
+                                                  return { ...ing, price: price.ingredientPrices[ing.name] };
+                                                }
+                                                return ing;
+                                              }));
+                                              
+                                              setDietAnimalProfile(prev => ({
+                                                ...prev,
+                                                precoBoiGordo: price.boiGordo
+                                              }));
+                                            }
 
-                                          setActiveTab('inputs');
-                                          showToast(`Preços de ${price.state} aplicados na simulação e na dieta!`, 'success');
-                                        }}
-                                        className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
-                                      >
-                                        Usar na Simulação
-                                      </button>
+                                            setActiveTab('inputs');
+                                            showToast(`Preços de ${price.state} aplicados na simulação e na dieta!`, 'success');
+                                          }}
+                                          className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                                        >
+                                          Usar na Simulação
+                                        </button>
+                                      </div>
                                     </div>
-                                  </div>
-                                </motion.div>
-                              ))}
+                                  </motion.div>
+                                );
+                              })}
                             </div>
                           </div>
                         );
@@ -8348,26 +8515,19 @@ export default function App() {
 
                         {/* State Selection */}
                         <div className="space-y-1.5">
-                          <label className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">Escolher Cotação do Estado</label>
+                          <label className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">Escolher Cotação de Referência</label>
                           <select
                             value={agioSelectedState}
                             onChange={(e) => setAgioSelectedState(e.target.value)}
                             className="w-full bg-slate-900/90 border border-slate-700 text-xs text-slate-100 rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-sans"
                           >
                             <option value="Médio" className="bg-slate-900">Média de Todos os Estados</option>
-                            {marketPrices.length > 0 ? (
-                              marketPrices.map((price) => (
-                                <option key={price.state} value={price.state} className="bg-slate-900">
-                                  Cotação {price.state} (Boi Gordo: R$ {price.boiGordo.toFixed(2)} | Magro: R$ {price.boiMagro.toLocaleString()})
-                                </option>
-                              ))
-                            ) : null}
+                            <option value="Regiao-Sudeste" className="bg-slate-900">Média Região Sudeste (SP, MG)</option>
+                            <option value="Regiao-Sul" className="bg-slate-900">Média Região Sul (RS, PR, SC)</option>
+                            <option value="Regiao-Centro-Oeste" className="bg-slate-900">Média Região Centro-Oeste (MS, MT, GO)</option>
+                            <option value="Regiao-Norte" className="bg-slate-900">Média Região Norte (PA, RO, TO)</option>
+                            <option value="Regiao-Nordeste" className="bg-slate-900">Média Região Nordeste (BA, MA)</option>
                           </select>
-                          {marketPrices.length === 0 && (
-                            <p className="text-[9px] text-slate-500 italic">
-                              *Clique em "Atualizar Preços" para habilitar cotações estaduais brasileiras.
-                            </p>
-                          )}
                         </div>
 
                         {/* Dica Text */}
@@ -8382,14 +8542,16 @@ export default function App() {
                               {marketStats.agioMedio >= 0 ? 'Ágio de Reposição' : 'Deságio de Reposição'} ({marketStats.label})
                             </p>
                             <p className={`text-xl font-black font-mono flex items-center gap-1.5 ${
-                              marketStats.agioMedio >= 0 ? 'text-emerald-400' : 'text-[#fb7185]'
+                              marketStats.agioMedio >= 0 ? 'text-[#fb7185]' : 'text-emerald-400'
                             }`}>
                               {marketStats.agioMedio > 0 ? '+' : ''}{marketStats.agioMedio.toFixed(1)}%
-                              {marketStats.agioMedio < 0 && (
-                                <span className="text-[9px] font-black font-sans uppercase tracking-widest bg-rose-500/10 border border-rose-500/20 text-[#fb7185] px-1.5 py-0.5 rounded">
-                                  Deságio
-                                </span>
-                              )}
+                              <span className={`text-[9px] font-black font-sans uppercase tracking-widest px-1.5 py-0.5 rounded-lg border ${
+                                marketStats.agioMedio >= 0
+                                  ? 'bg-rose-500/10 border-rose-500/20 text-[#fb7185]'
+                                  : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                              }`}>
+                                {marketStats.agioMedio >= 0 ? 'Ágio' : 'Deságio'}
+                              </span>
                             </p>
                           </div>
                           
@@ -8530,71 +8692,71 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="relative w-full max-w-2xl bg-[#0f172a] rounded-3xl shadow-2xl border border-slate-800 overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <div className="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
-                  <ArrowRightLeft className="w-5 h-5 text-blue-400" />
+                  <ArrowRightLeft className="w-5 h-5 text-indigo-400" />
                   <h2 className="text-lg font-bold text-slate-100">Entendendo Cópulas e Correlações</h2>
                 </div>
                 <button 
                   onClick={() => setIsCopulaInfoOpen(false)}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  className="p-2 hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
               
-              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 text-left">
                 <div className="space-y-4">
                   <section>
-                    <h3 className="text-sm font-bold text-gray-800 mb-2">O que é uma Cópula?</h3>
-                    <p className="text-xs text-gray-600 leading-relaxed">
+                    <h3 className="text-sm font-bold text-slate-200 mb-2">O que é uma Cópula?</h3>
+                    <p className="text-xs text-slate-400 leading-relaxed">
                       Em estatística, uma cópula é uma ferramenta que permite separar o comportamento individual de cada variável (sua distribuição marginal) da estrutura de dependência entre elas. 
                       Isso é fundamental em simulações de risco porque variáveis como "Preço do Boi Gordo" e "Preço do Boi Magro" não são independentes; elas tendem a subir e descer juntas.
                     </p>
                   </section>
 
-                  <section className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-                    <h3 className="text-sm font-bold text-blue-800 mb-2">Cópula Gaussiana (Padrão)</h3>
-                    <p className="text-xs text-blue-700 leading-relaxed">
+                  <section className="bg-indigo-500/10 p-4 rounded-2xl border border-indigo-500/25">
+                    <h3 className="text-sm font-bold text-indigo-400 mb-2">Cópula Gaussiana (Padrão)</h3>
+                    <p className="text-xs text-slate-300 leading-relaxed">
                       É o modelo mais comum. Ela assume que a dependência entre as variáveis segue uma estrutura de correlação linear (Pearson). 
-                      Utilizamos a <span className="font-bold">Decomposição de Cholesky</span> para transformar variáveis independentes em correlacionadas, mantendo as propriedades estatísticas desejadas.
+                      Utilizamos a <span className="font-bold text-indigo-350">Decomposição de Cholesky</span> para transformar variáveis independentes em correlacionadas, mantendo as propriedades estatísticas desejadas.
                     </p>
                   </section>
 
                   <section>
-                    <h3 className="text-sm font-bold text-gray-800 mb-2">Valores de Referência de Correlação</h3>
+                    <h3 className="text-sm font-bold text-slate-200 mb-2">Valores de Referência de Correlação</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                         <p className="text-[10px] font-bold text-slate-400 uppercase">Preço Gordo vs Magro</p>
                         <p className="text-xs font-bold text-emerald-400">0.85 a 0.95</p>
                         <p className="text-[9px] text-slate-400">Correlação muito alta. O ágio tende a ser estável no longo prazo.</p>
                       </div>
-                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                         <p className="text-[10px] font-bold text-slate-400 uppercase">Preço Milho vs Boi Gordo</p>
-                        <p className="text-xs font-bold text-blue-400">0.20 a 0.40</p>
+                        <p className="text-xs font-bold text-indigo-400">0.20 a 0.40</p>
                         <p className="text-[9px] text-slate-400">Correlação moderada. Insumos e produto final têm dinâmicas distintas.</p>
                       </div>
-                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                         <p className="text-[10px] font-bold text-slate-400 uppercase">GMD vs Consumo</p>
-                        <p className="text-xs font-bold text-purple-600">0.60 a 0.80</p>
+                        <p className="text-xs font-bold text-violet-400">0.60 a 0.80</p>
                         <p className="text-[9px] text-slate-400">Correlação biológica. Animais que comem mais tendem a ganhar mais peso.</p>
                       </div>
-                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                         <p className="text-[10px] font-bold text-slate-400 uppercase">Mortalidade vs GMD</p>
-                        <p className="text-xs font-bold text-red-600">-0.10 a -0.30</p>
+                        <p className="text-xs font-bold text-red-400">-0.10 a -0.30</p>
                         <p className="text-[9px] text-slate-400">Correlação negativa. Problemas sanitários reduzem o desempenho global.</p>
                       </div>
                     </div>
                   </section>
 
-                  <section className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
-                    <h3 className="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
+                  <section className="p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                    <h3 className="text-sm font-bold text-amber-405 text-amber-400 mb-2 flex items-center gap-2">
                       <ShieldAlert className="w-4 h-4" />
                       Por que visualizar?
                     </h3>
-                    <p className="text-xs text-amber-700 leading-relaxed">
+                    <p className="text-xs text-slate-350 leading-relaxed">
                       A visualização por dispersão (Scatter Plot) permite confirmar se a "nuvem de pontos" reflete a realidade econômica. 
                       Se você configurou uma correlação de 0.9, os pontos devem estar quase alinhados. Se configurou 0, devem formar um círculo disperso.
                     </p>
@@ -8602,10 +8764,10 @@ export default function App() {
                 </div>
               </div>
               
-              <div className="p-6 border-t border-slate-800/60 bg-gray-50 shrink-0">
+              <div className="p-6 border-t border-slate-800 bg-slate-900 shrink-0">
                 <button 
                   onClick={() => setIsCopulaInfoOpen(false)}
-                  className="w-full bg-gray-900 text-white py-3 rounded-2xl font-bold text-sm hover:bg-gray-800 transition-all"
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-2xl font-bold text-sm transition-colors cursor-pointer"
                 >
                   Entendi
                 </button>
@@ -8631,33 +8793,33 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="relative w-full max-w-2xl bg-[#0f172a] rounded-3xl shadow-2xl border border-slate-800 overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <div className="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
                   <Database className="w-5 h-5 text-emerald-400" />
                   <h2 className="text-lg font-bold text-slate-100">Calibração com Dados Históricos</h2>
                 </div>
                 <button 
                   onClick={() => setIsCalibrationOpen(false)}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  className="p-2 hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
               
-              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 text-left">
                 {!calibrationResults ? (
                   <div className="space-y-6">
-                    <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100">
+                    <div className="bg-emerald-500/10 p-6 rounded-2xl border border-emerald-500/20">
                       <h3 className="text-sm font-bold text-emerald-400 mb-2 flex items-center gap-2">
                         <Info className="w-4 h-4" />
                         Como preparar seu arquivo
                       </h3>
-                      <p className="text-xs text-emerald-400 leading-relaxed">
+                      <p className="text-xs text-slate-300 leading-relaxed font-sans">
                         O arquivo deve ser um CSV com cabeçalhos. O sistema tentará identificar automaticamente as colunas para:
                       </p>
-                      <div className="grid grid-cols-2 gap-2 mt-3">
+                      <div className="grid grid-cols-2 gap-2 mt-3 block">
                         {Object.values(CALIBRATION_KEYS).map((label, idx) => (
                           <div key={idx} className="flex items-center gap-2 text-[10px] text-emerald-400 font-medium">
                             <CheckCircle2 className="w-3 h-3" />
@@ -8667,7 +8829,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="border-2 border-dashed border-gray-200 rounded-3xl p-12 flex flex-col items-center justify-center gap-4 hover:border-emerald-300 hover:bg-emerald-50/30 transition-all cursor-pointer relative">
+                    <div className="border-2 border-dashed border-slate-800 rounded-3xl p-12 flex flex-col items-center justify-center gap-4 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all cursor-pointer relative">
                       <input 
                         type="file" 
                         accept=".csv"
@@ -8688,11 +8850,11 @@ export default function App() {
                           }
                         }}
                       />
-                      <div className="p-4 bg-gray-50 rounded-full group-hover:scale-110 transition-transform">
+                      <div className="p-4 bg-slate-900 border border-slate-800 rounded-full group-hover:scale-110 transition-transform">
                         <Download className="w-8 h-8 text-slate-400" />
                       </div>
                       <div className="text-center">
-                        <p className="text-sm font-bold text-gray-700">Clique ou arraste o arquivo CSV</p>
+                        <p className="text-sm font-bold text-slate-200">Clique ou arraste o arquivo CSV</p>
                         <p className="text-xs text-slate-400 mt-1">Formatos aceitos: .csv</p>
                       </div>
                     </div>
@@ -8700,14 +8862,14 @@ export default function App() {
                 ) : (
                   <div className="space-y-8">
                     <div className="space-y-4">
-                      <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
                         <Activity className="w-4 h-4 text-emerald-400" />
                         Estatísticas Identificadas
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {Object.entries(calibrationResults.stats).map(([key, stat]: [string, any]) => (
-                          <div key={key} className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{CALIBRATION_KEYS[key]}</p>
+                          <div key={key} className="p-4 bg-slate-900 rounded-2xl border border-slate-800">
+                            <p className="text-[10px] font-bold text-slate-450 uppercase tracking-widest mb-2">{CALIBRATION_KEYS[key]}</p>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
                                 <p className="text-[10px] text-slate-400">Média</p>
@@ -8722,8 +8884,8 @@ export default function App() {
                                 </p>
                               </div>
                             </div>
-                            <div className="mt-2 pt-2 border-t border-slate-800/60/50">
-                              <p className="text-[9px] text-slate-400">Coef. Variação: <span className="font-bold text-gray-700">{stat.cv.toFixed(1)}%</span></p>
+                            <div className="mt-2 pt-2 border-t border-slate-800/80">
+                              <p className="text-[9px] text-slate-400">Coef. Variação: <span className="font-bold text-slate-300">{stat.cv.toFixed(1)}%</span></p>
                             </div>
                           </div>
                         ))}
@@ -8731,7 +8893,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-4">
-                      <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
                         <ArrowRightLeft className="w-4 h-4 text-emerald-400" />
                         Matriz de Correlação
                       </h3>
@@ -8750,12 +8912,12 @@ export default function App() {
                           <tbody>
                             {Object.entries(calibrationResults.correlations).map(([k1, row]: [string, any]) => (
                               <tr key={k1} className="border-t border-slate-800/60">
-                                <td className="p-2 font-bold text-gray-600">{CALIBRATION_KEYS[k1].split('(')[0]}</td>
+                                <td className="p-2 font-bold text-slate-350">{CALIBRATION_KEYS[k1].split('(')[0]}</td>
                                 {Object.values(row).map((val: any, idx) => (
                                   <td key={idx} className="p-2 text-center">
                                     <span className={`px-2 py-1 rounded-lg font-bold ${
-                                      Math.abs(val) > 0.7 ? 'bg-emerald-100 text-emerald-400' :
-                                      Math.abs(val) > 0.4 ? 'bg-emerald-50 text-emerald-400' :
+                                      Math.abs(val) > 0.7 ? 'bg-emerald-500/20 text-emerald-300' :
+                                      Math.abs(val) > 0.4 ? 'bg-emerald-500/10 text-emerald-400' :
                                       'text-slate-400'
                                     }`}>
                                       {val.toFixed(2)}
@@ -8772,13 +8934,13 @@ export default function App() {
                 )}
               </div>
 
-              <div className="p-6 bg-gray-50 flex gap-3 shrink-0">
+              <div className="p-6 bg-slate-900 border-t border-slate-800 flex gap-3 shrink-0">
                 <button
                   onClick={() => {
                     setCalibrationResults(null);
                     setIsCalibrationOpen(false);
                   }}
-                  className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-xl transition-all"
+                  className="flex-1 py-3 text-slate-405 hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-bold rounded-xl transition-all cursor-pointer"
                 >
                   {calibrationResults ? 'Descartar' : 'Cancelar'}
                 </button>
@@ -8807,7 +8969,7 @@ export default function App() {
                       setCalibrationResults(null);
                       setIsCalibrationOpen(false);
                     }}
-                    className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all"
+                    className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-950/20 hover:bg-emerald-500 transition-all cursor-pointer"
                   >
                     Aplicar Calibração
                   </button>
@@ -9178,7 +9340,7 @@ export default function App() {
                               {new Date(diet.date).toLocaleDateString('pt-BR')}
                             </span>
                             <span className="text-[10px] text-purple-400 font-bold">
-                              R$ {formatNumber(diet.result.totalCostNM, 3)}/kg NM
+                              R$ {formatNumber(diet.result.totalCostMN, 3)}/kg MN
                             </span>
                           </div>
                         </div>
@@ -9794,7 +9956,11 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsAddingStress(false)}
+              onClick={() => {
+                setIsAddingStress(false);
+                setEditingStressId(null);
+                setNewStress({ name: '', changes: [], color: 'amber' });
+              }}
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             />
             <motion.div
@@ -9806,10 +9972,16 @@ export default function App() {
               <div className="p-6 border-b border-slate-800/60 flex items-center justify-between shrink-0 bg-[#070a13]">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-amber-550" />
-                  <h2 className="text-lg font-bold text-slate-100 font-display">Novo Cenário de Estresse</h2>
+                  <h2 className="text-lg font-bold text-slate-100 font-display">
+                    {editingStressId ? 'Editar Cenário de Estresse' : 'Novo Cenário de Estresse'}
+                  </h2>
                 </div>
                 <button 
-                  onClick={() => setIsAddingStress(false)}
+                  onClick={() => {
+                    setIsAddingStress(false);
+                    setEditingStressId(null);
+                    setNewStress({ name: '', changes: [], color: 'amber' });
+                  }}
                   className="p-2 hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5 text-slate-400" />
@@ -9929,7 +10101,11 @@ export default function App() {
 
               <div className="p-6 bg-[#070a13] border-t border-slate-800/60 flex gap-3 shrink-0">
                 <button
-                  onClick={() => setIsAddingStress(false)}
+                  onClick={() => {
+                    setIsAddingStress(false);
+                    setEditingStressId(null);
+                    setNewStress({ name: '', changes: [], color: 'amber' });
+                  }}
                   className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-800 border border-slate-800/85 hover:text-slate-200 rounded-xl transition-all cursor-pointer"
                 >
                   Cancelar
@@ -9937,16 +10113,21 @@ export default function App() {
                 <button
                   onClick={() => {
                     if (!newStress.name || newStress.changes.length === 0) return;
-                    const id = `custom-${Date.now()}`;
                     const description = newStress.changes.map(c => `${STRESS_INPUTS[c.inputKey]} ${c.changePerc > 0 ? '+' : ''}${c.changePerc}%`).join(', ');
-                    setCustomStressScenarios(prev => [...prev, { ...newStress, id, description }]);
+                    if (editingStressId) {
+                      setCustomStressScenarios(prev => prev.map(cs => cs.id === editingStressId ? { ...newStress, id: cs.id, description } : cs));
+                    } else {
+                      const id = `custom-${Date.now()}`;
+                      setCustomStressScenarios(prev => [...prev, { ...newStress, id, description }]);
+                    }
                     setIsAddingStress(false);
                     setNewStress({ name: '', changes: [], color: 'amber' });
+                    setEditingStressId(null);
                   }}
                   disabled={!newStress.name || newStress.changes.length === 0}
                   className="flex-1 py-3 bg-[#3b82f6] hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-950/20 transition-all disabled:opacity-55 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  Criar Cenário
+                  {editingStressId ? 'Salvar Alterações' : 'Criar Cenário'}
                 </button>
               </div>
             </motion.div>
@@ -9994,7 +10175,7 @@ export default function App() {
                     Quanto maior o número de iterações, mais precisa a simulação, porém mais lenta.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    {[50000, 100000, 150000, 200000].map((val) => (
+                    {[2000, 5000, 10000, 25000].map((val) => (
                       <button
                         key={val}
                         onClick={() => setMcIterations(val)}
@@ -10769,6 +10950,16 @@ function ResultRow({ label, value, bold = false, tooltip, extra, dotColor }: { l
 
 function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const [activeHelpTab, setActiveHelpTab] = useState<'about' | 'concepts' | 'quiz' | 'manual'>('about');
+  const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
+  
+  const handleCopy = (text: string, format: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedFormat(format);
+    setTimeout(() => {
+      setCopiedFormat(null);
+    }, 2000);
+  };
+
   const [quizState, setQuizState] = useState<{
     currentQuestion: number;
     score: number;
@@ -10793,51 +10984,95 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
         "Só funciona para variáveis de preço."
       ],
       correct: 1,
-      explanation: "O LHS divide a distribuição em intervalos de igual probabilidade, garantindo que cada parte da curva seja representada na simulação."
+      explanation: "O LHS divide a distribuição em intervalos de igual probabilidade, garantindo que cada parte da curva de incerteza seja representada homogeneamente na simulação."
     },
     {
-      question: "O que indica um Coeficiente de Variação (C.V.) de 45% no VPL simulado?",
+      question: "O que indica um Coeficiente de Variação (C.V.) de 45% no VPL simulado de um confinamento?",
       options: [
-        "Baixo risco, o VPL é muito estável.",
-        "Risco moderado.",
-        "Alto risco e alta dispersão dos resultados em relação à média.",
-        "O projeto é garantido."
+        "Baixo risco, indicando que o VPL é muito estável.",
+        "Risco moderado e margens controláveis.",
+        "Alto risco e forte dispersão dos resultados financeiros em relação à média.",
+        "O sucesso do empreendimento é totalmente garantido pelas cooperativas."
       ],
       correct: 2,
-      explanation: "Um C.V. acima de 30% geralmente indica alta variabilidade e, consequentemente, maior risco relativo."
+      explanation: "Um C.V. acima de 30% na pecuária indica alta variabilidade nas margens operacionais, exigindo do tomador de decisão um hedge rigoroso de preços."
     },
     {
-      question: "Para que serve a 'Semente' (Seed) em uma simulação?",
+      question: "Qual o diferencial da Cópula de Clayton em relação à Cópula de Gumbel na pecuária?",
       options: [
-        "Para aumentar o VPL.",
-        "Para garantir que os resultados sejam reprodutíveis (os mesmos números aleatórios são gerados).",
-        "Para plantar pastagem.",
-        "Para definir o peso inicial do animal."
+        "A Clayton foca em riscos de cauda inferior, isto é, quando múltiplas variáveis de mercado colapsam juntas sob estresse severo.",
+        "A Gumbel calcula apenas conversão alimentar.",
+        "A Clayton serve apenas para o cálculo de mão de obra e frete.",
+        "Ambas operam assumindo independência perfeita e correlação nula."
+      ],
+      correct: 0,
+      explanation: "A Cópula de Clayton modela a dependência de cauda inferior. Na prática pecuária, captura o cenário catastrófico onde o preço do boi gordo desaba no mesmo momento em que os preços de ração disparam."
+    },
+    {
+      question: "Como o SimuBoi trata a mortalidade de cocho sob a metodologia clássica de custos de Matsunaga?",
+      options: [
+        "Ignora as mortes para simplificar os relatórios contábeis.",
+        "Assume que animais falecidos são vendidos pelo preço residual.",
+        "Dilui os custos operacionais (compra e dieta) dos animais mortos sobre o rebanho sobrevivente comercializado.",
+        "Gera um empréstimo bancário automático para reposição das perdas."
+      ],
+      correct: 2,
+      explanation: "Pela metodologia Matsunaga de custos, os custos incorridos com cabeças que vão a óbito são rateados entre os sobreviventes, retratando o real prejuízo biológico sem mascarar o resultado líquido."
+    },
+    {
+      question: "Na análise de sensibilidade via Decomposição de Sobol, o que um alto índice de Efeito Total (STi) em comparação ao de Primeira Ordem (Si) revela?",
+      options: [
+        "Que a variável é irrelevante para a oscilação do VPL.",
+        "Que o fator possui fortes efeitos de alta ordem e interações sinérgicas complexas com outras variáveis.",
+        "Que a relação do fator com o lucro operacional é puramente linear estática.",
+        "Que a dosagem de nutriente é tóxica para as baias."
       ],
       correct: 1,
-      explanation: "A semente inicializa o gerador de números pseudo-aleatórios. Usar a mesma semente permite que outros pesquisadores cheguem ao mesmo resultado."
+      explanation: "O Índice Total (STi) engloba tanto o efeito direto individual quanto todas as interações combinadas com as demais variáveis. Uma grande diferença entre STi e Si indica que o impacto dessa variável depende criticamente do patamar dos outros insumos (sinergia)."
+    },
+    {
+      question: "Como se traduz o diferencial mercadológico de atingir Escore de Bem-Estar Animal ≥ 8 conjugado com Rastreabilidade Total?",
+      options: [
+        "Apenas cumprimento de burocracia ambiental com custo incremental.",
+        "Liberação de bônus de mercado premium (Cota Hilton / selos verdes de grife) que elevam a cotação da arroba vendida.",
+        "Isenção total de impostos de importação sobre grãos.",
+        "Aceleração biológica artificial do ganho de peso diário (GMD)."
+      ],
+      correct: 1,
+      explanation: "O mercado global e marcas nacionais de alto padrão bonificam o produtor em até R$ 10,00 por arroba pelo cumprimento simultâneo de rastreabilidade individual e bem-estar (pH muscular ideal, ausência de contusões), blindando a fazenda contra barreiras geopolíticas."
+    },
+    {
+      question: "Para que serve a 'Semente' (Seed) em uma simulação estocástica LHS?",
+      options: [
+        "Para aumentar o VPL de forma otimista.",
+        "Para garantir que os resultados sejam reprodutíveis, permitindo auditorias e auditorias externas.",
+        "Para plantar pastagem consorciada em tempo real.",
+        "Para definir o peso inicial ideal do lote magro."
+      ],
+      correct: 1,
+      explanation: "A semente estocástica fixa a sequência do gerador pseudo-aleatório do Latin Hypercube Sampling (LHS). Isso assegura que o investidor ou pesquisador consiga reproduzir rigorosamente os mesmos mil cenários simulados."
     },
     {
       question: "O que representa a área à esquerda da 'Linha de VPL Zero' no histograma?",
       options: [
-        "O VPL máximo esperado.",
-        "A probabilidade do projeto não atingir a TMA desejada (VPL negativo).",
-        "O custo fixo total.",
-        "A margem de segurança."
+        "O VPL máximo idealizado no melhor cenário.",
+        "A probabilidade real de prejuízo econômico do projeto, onde o retorno é menor que o custo mínimo exigido (TMA).",
+        "A despesa com volumoso de conservação.",
+        "A margem líquida líquida do varejo de carnes."
       ],
       correct: 1,
-      explanation: "Um VPL negativo indica que o projeto rende menos que a Taxa Mínima de Atratividade (TMA). A área à esquerda do zero quantifica esse risco."
+      explanation: "A área à esquerda de zero no histograma probabilístico de VPL consolida a probabilidade exata de o confinamento falhar em remunerar o capital à taxa mínima de atratividade (TMA)."
     },
     {
-      question: "Na análise de sensibilidade (Correlação), o que significa um impacto negativo?",
+      question: "Na análise de sensibilidade por tornado de correlação, um coeficiente r negativo indica:",
       options: [
-        "A variável não tem importância.",
-        "Quando essa variável aumenta, o VPL tende a diminuir.",
-        "O VPL sempre será negativo.",
-        "A variável é um custo fixo."
+        "Inexistência de relação estatística.",
+        "Que o aumento da variável reduz de forma direta o VPL do confinamento.",
+        "Que o projeto é financeiramente inviável.",
+        "Um erro grave no processamento de dados nas baias."
       ],
       correct: 1,
-      explanation: "Variáveis como 'Preço do Boi Magro' ou 'Preço do Concentrado' têm impacto negativo: se o custo sobe, o VPL cai."
+      explanation: "Variáveis de custo (preço da ração, preço do boi magro) têm impacto inverso: se o preço de aquisição do gado ou do insumo alimentar aumenta, o VPL gerado cai."
     }
   ];
 
@@ -11013,11 +11248,66 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           <h5 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-1.5 text-rose-450 mb-2 font-display">
                             <span className="w-2 h-2 rounded-full bg-rose-500" /> Didática Visual da S-Curve
                           </h5>
-                          <p className="text-xs text-slate-400 leading-relaxed">
+                          <p className="text-xs text-slate-400 leading-relaxed font-sans">
                             Traduzimos complexidade estatística no gráfico de <strong>Probabilidade Acumulada (S-Curve)</strong>. Uma curva muito deitada indica alta incerteza e variação brusca de caixa; uma curva mais íngreme e verticalizada à direita indica maior controle operacional e margens previsíveis, tornando complexos cálculos macroeconômicos compreensíveis para qualquer produtor.
                           </p>
                         </div>
                       </div>
+                    </div>
+                  </section>
+
+                  {/* NOVO: Destaque Educativo e Científico - Determinístico vs Probabilístico */}
+                  <section className="bg-[#070a13] p-8 rounded-3xl border border-slate-800 space-y-6 text-left">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
+                        <GraduationCap className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-slate-100 font-display">
+                          Ciência em Foco: Testes de Estresse são Determinísticos ou Probabilísticos?
+                        </h4>
+                        <p className="text-xs text-indigo-400 font-semibold uppercase tracking-wider mt-0.5">Entenda as diferenças conceituais e científicas</p>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-slate-300 leading-relaxed font-sans">
+                      Compreender a diferença entre ferramentas de planejamento financeiro é crucial para tomadas de decisões estratégicas de alta responsabilidade. Dentro da pecuária científica de alta performance, operamos com duas abordagens complementares disponíveis no SimuBoi:
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                      <div className="p-6 bg-[#0a0f1d] rounded-2xl border border-amber-500/20 flex flex-col justify-between">
+                        <div>
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 uppercase tracking-wider mb-4 font-mono">
+                            Abordagem Determinística
+                          </div>
+                          <h5 className="font-bold text-slate-200 text-sm mb-2 font-display">Testes de Estresse (Stress Testing)</h5>
+                          <p className="text-xs text-slate-400 leading-relaxed">
+                            São essencialmente <strong>DETERMINÍSTICOS</strong>. Eles testam a robustez do confinamento contra choques ad-hoc extremos, severos e pontuais previamente fixados (ex: uma queda abrupta de 20% no preço do boi gordo ou um aumento inesperado de 30% nos insumos). O foco é responder à pergunta: <em>"Se o pior cenário absoluto acontecer, nossa operação sobrevive?"</em>. Não se atribui uma curva de probabilidade estocástica a esse choque específico ocorrendo; analisa-se seu impacto direto no caixa operacional de forma estática e rigorosa.
+                          </p>
+                        </div>
+                        <div className="border-t border-slate-800/80 pt-4 mt-4 text-[10px] text-amber-400 font-mono">
+                          Métrica chave: Sobrevivência do caixa sob choques severos pré-determinados.
+                        </div>
+                      </div>
+
+                      <div className="p-6 bg-[#0a0f1d] rounded-2xl border border-emerald-500/20 flex flex-col justify-between">
+                        <div>
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 uppercase tracking-wider mb-4 font-mono">
+                            Abordagem Probabilística
+                          </div>
+                          <h5 className="font-bold text-slate-200 text-sm mb-2 font-display">Simulações Estocásticas (Monte Carlo / LHS)</h5>
+                          <p className="text-xs text-slate-400 leading-relaxed">
+                            São essencialmente <strong>PROBABILÍSTICAS</strong>. Em vez de projetar um único panorama estático ou fixo, geram-se milhares de iterações matemáticas amostrando flutuações simultâneas de preços a partir de distribuições contínuas de probabilidade. O foco é responder: <em>"Qual é a real probabilidade e frequência estatística (ex: 15% de chance) de registrarmos um VPL negativo?"</em>. Ela abrange todo o espectro de incertezas operacionais, fornecendo desvios padrões, intervalos de confiança e curvas acumuladas.
+                          </p>
+                        </div>
+                        <div className="border-t border-slate-800/80 pt-4 mt-4 text-[10px] text-emerald-400 font-mono">
+                          Métrica chave: Distribuição contínua de risco e probabilidade real de prejuízo.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#131b35]/40 p-4 rounded-xl border border-slate-800 text-xs text-slate-350 leading-relaxed font-sans">
+                      <strong className="text-slate-100">Sinergia Estratégica:</strong> No <strong>SimuBoi</strong>, integramos o melhor de ambos os mundos! Você pode rodar a <em>Simulação Probabilística global (LHS)</em> para estimar as probabilidades reais de sucesso da fazenda no dia a dia e, simultaneamente, aplicar os <em>Cenários de Estresse determinísticos</em> para blindar seu projeto contra catástrofes extremas de cauda.
                     </div>
                   </section>
 
@@ -11069,11 +11359,11 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                       <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
                       Foco Científico Ampliado: Do Consumo ao Mercado Premium
                     </h3>
-                    <p className="text-sm text-slate-300 leading-relaxed font-sans">
+                    <p className="text-sm text-slate-300 leading-relaxed font-sans text-left">
                       O SimuBoi foi desenhado não para ser apenas uma planilha de cálculo rápido, mas uma rede integrada de modelos biológicos e econômicos. Cada alteração inserida reflete de forma dinâmica os efeitos colaterais da operação:
                     </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="p-6 bg-[#070a13] rounded-2xl border border-slate-800/80">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                      <div className="p-6 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-emerald-500/10 transition-colors">
                         <div className="w-9 h-9 bg-emerald-500/10 text-emerald-400 rounded-xl flex items-center justify-center mb-3 border border-emerald-500/20">
                           <Activity className="w-5 h-5" />
                         </div>
@@ -11085,7 +11375,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                         </p>
                       </div>
 
-                      <div className="p-6 bg-[#070a13] rounded-2xl border border-slate-800/80">
+                      <div className="p-6 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-rose-500/10 transition-colors">
                         <div className="w-9 h-9 bg-rose-500/10 text-rose-450 rounded-xl flex items-center justify-center mb-3 border border-rose-500/25">
                           <Heart className="w-5 h-5 animate-pulse" />
                         </div>
@@ -11099,18 +11389,75 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                     </div>
                   </section>
 
-                  <section className="space-y-6">
-                    <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-                      <div className="w-1.5 h-6 bg-emerald-600 rounded-full" />
-                      Principais Funcionalidades Modeladas
-                    </h3>
-                    <p className="text-sm text-slate-600 leading-relaxed">
-                      O aplicativo é estruturado sob as melhores referências da zootecnia brasileira (incluindo pesquisas do DZ-UFSM e LAE-USP), apresentando módulos didáticos focados nas reais necessidades da cadeia produtiva:
+                  {/* NOVA SUBSEÇÃO DE IMERSÃO E ENTUSIASMO: DIFERENCIAL DE MERCADO */}
+                  <section className="bg-gradient-to-br from-indigo-900/10 via-slate-950/40 to-emerald-950/10 p-8 rounded-3xl border border-indigo-500/10 space-y-6 text-left">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400">
+                        <Sparkles className="w-6 h-6 text-indigo-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-100 font-display tracking-tight">
+                          O Grande Diferencial de Mercado do SimuBoi
+                        </h3>
+                        <p className="text-xs text-indigo-400 font-semibold uppercase tracking-wider">Por que o SimuBoi é o parceiro definitivo para decisões de alta responsabilidade?</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-1">
+                        <h4 className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-2 font-display">
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                          Transformando Incerteza em Lucratividade Prevista
+                        </h4>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                          Diga adeus às incertezas! Planilhas clássicas assumem preços fixos irreais. Com o algoritmo de amostragem <strong>LHS</strong>, simulamos 1.000 caminhos futuros combinando a inflação da dieta com a cotação do boi gordo. Você descobre a probabilidade exata de prejuízo para agir com antecedência no hedge de Bolsa (B3).
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h4 className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-2 font-display">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Nutrição Viva Casada com a Balança
+                        </h4>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                          Sua dieta interage em tempo real com as exigências de energia. Se você altera a concentração de volumoso ou farelos proteicos, o motor zootécnico recalcula o Ganho de Peso Diário (GMD), a espessura milimétrica de carcaça (EGS) e as diárias de confinamento.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h4 className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-2 font-display">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                          ESG Conversível em Bônus de Arroba (Cota Hilton)
+                        </h4>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                          Adote o selo verde e amplie seu faturamento. Unindo o escore de Bem-Estar Animal com Rastreabilidade Total individual, o SimuBoi qualifica digitalmente seu gado para canais de exportação exigentes, estimando bonificações diretas de até +R$ 10,00 por arroba.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h4 className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-2 font-display">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          Rateio Inteligente de Baixas e Óbitos de Cocho
+                        </h4>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                          Diferencial financeiro absoluto baseado na sistemática zootécnica de custos de Matsunaga. As despesas biológicas de cabeças perdidas são diluídas matematicamente para o rebanho sobrevivente comercializado, eliminando lucros fictícios.
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="space-y-6 text-left">
+                    <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2 font-display">
+                      <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                      Imersão Completa no Universo SimuBoi
+                    </h2>
+                    <p className="text-sm text-slate-350 leading-relaxed font-sans">
+                      O aplicativo é estruturado sob as melhores referências da zootecnia brasileira (incluindo pesquisas do DZ-UFSM e LAE-USP). Explore nossa gama completa de recursos integrados feitos para alavancar a rentabilidade pecuária:
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-rose-500/25 transition-colors">
-                        <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-450 flex items-center justify-center mb-4 border border-rose-500/20">
+                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-orange-500/20 hover:bg-orange-500/[0.01] transition-all duration-300">
+                        <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center mb-4 border border-orange-500/20">
                           <Calculator className="w-5 h-5" />
                         </div>
                         <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Simulação de Desempenho</h4>
@@ -11119,8 +11466,8 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                         </p>
                       </div>
 
-                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-emerald-500/25 transition-colors">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-4 border border-emerald-500/20">
+                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-[#10b981]/25 hover:bg-[#10b981]/[0.01] transition-all duration-300">
+                        <div className="w-9 h-9 rounded-xl bg-[#10b981]/10 text-[#10b981] flex items-center justify-center mb-4 border border-[#10b981]/20">
                           <Wand2 className="w-5 h-5" />
                         </div>
                         <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Formulação de Dietas</h4>
@@ -11129,8 +11476,8 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                         </p>
                       </div>
 
-                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-rose-500/25 transition-colors">
-                        <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-450 flex items-center justify-center mb-4 border border-rose-500/20">
+                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-sky-500/20 hover:bg-sky-500/[0.01] transition-all duration-300">
+                        <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center mb-4 border border-sky-500/20">
                           <Activity className="w-5 h-5" />
                         </div>
                         <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Ultrassonografia (EGS)</h4>
@@ -11139,33 +11486,33 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                         </p>
                       </div>
 
-                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-emerald-500/25 transition-colors">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-4 border border-emerald-500/20">
-                          <DollarSign className="w-5 h-5" />
+                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-indigo-500/20 hover:bg-indigo-500/[0.01] transition-all duration-300">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mb-4 border border-indigo-500/20">
+                          <BrainCircuit className="w-5 h-5" />
                         </div>
-                        <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Análise de Viabilidade</h4>
+                        <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Sensibilidade Global Avançada</h4>
                         <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                          Matriz determinística completa: computando VPL, Margem Bruta, Ponto de Equilíbrio Real da Arroba, Rentabilidade Líquida e Índice Benefício:Custo.
+                          Identifique de forma certeira quais insumos governam seus resultados. Empregamos o <strong>Método de Morris (OAT)</strong> para fator de triagem e a <strong>Decomposição de Variância de Sobol</strong> para mapear sinergias não-lineares.
                         </p>
                       </div>
 
-                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-rose-500/25 transition-colors">
-                        <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-450 flex items-center justify-center mb-4 border border-rose-500/20">
+                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-emerald-500/20 hover:bg-emerald-500/[0.01] transition-all duration-300">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-4 border border-emerald-500/20">
                           <Leaf className="w-5 h-5" />
                         </div>
-                        <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Métricas de ESG & Carbono</h4>
+                        <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Sustentabilidade ESG & Pegada de CH₄</h4>
                         <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                          Contabilidade de emissões de GEE (Metano Entérico) integrada, ajudando a calcular a intensidade de carbono do kg e no mm EGS produzido de acordo com as dietas.
+                          Estime eletronicamente a emissão de gases e a <strong>produção de metano entérico</strong> geradas no ciclo do rebanho. Perfeito para estruturar relatórios ambientais contemporâneos e preparar sua fazenda para créditos verdes de carbono.
                         </p>
                       </div>
 
-                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-emerald-500/25 transition-colors">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-4 border border-emerald-500/20">
-                          <Map className="w-5 h-5" />
+                      <div className="p-5 bg-[#070a13] rounded-2xl border border-slate-800/80 hover:border-rose-500/25 hover:bg-rose-500/[0.01] transition-all duration-300">
+                        <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-450 flex items-center justify-center mb-4 border border-rose-500/20">
+                          <ShieldAlert className="w-5 h-5" />
                         </div>
-                        <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Mercado & Ágio de Reposição</h4>
+                        <h4 className="font-bold text-slate-100 text-sm mb-2 font-display">Simulados de Testes de Estresse</h4>
                         <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                          Painel regional nativo integrado às cotações oficiais dos maiores polos pecuários do Brasil para simulação de ágio/deságio realísticos na compra do bezerro ou boi magro.
+                          Verifique de forma direta a liquidez financeira de sua fazenda em mercados turbulentos. Impõe pressões de preços extremos e surtos microbiológicos sanitários para testar a sobrevivência do caixa pecuário.
                         </p>
                       </div>
                     </div>
@@ -11173,176 +11520,669 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                 </div>
               ) : activeHelpTab === 'concepts' ? (
                 <div className="space-y-12">
-                  <section>
-                    <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                        <BookOpen className="w-5 h-5 text-indigo-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-display font-bold text-slate-100 text-lg tracking-tight">Fundamentação Teórica & Científica</h3>
+                        <p className="text-xs text-slate-400">Modelagem determinística, amostragem LHS, cópulas estatísticas, regressões, Sobol, Morris e testes de estresse.</p>
+                      </div>
+                    </div>
+                    <div className="prose prose-sm max-w-none text-slate-300 space-y-4 leading-relaxed font-sans text-xs sm:text-sm text-left">
+                      <p>
+                        A pecuária de corte contemporânea, especialmente o confinamento bovino, caracteriza-se por margens estreitas e alta suscetibilidade a riscos ecológicos, flutuações de preços de insumos e dinâmicas mercadológicas internacionais. Por essa razão, análises exclusivamente determinísticas são insuficientes para apoiar decisões operacionais de alta responsabilidade financeira.
+                      </p>
+                      <p>
+                        O <strong>SimuBoi</strong> integra formulações zootécnicas consolidadas com engenharia econômica e estatística de ponta. A plataforma modela de forma interconectada as incertezas de mercado e biológicas por meio de simulações estocásticas, provendo métricas precisas de sensibilidade global e suporte de decisão avançado para produtores, projetistas e pesquisadores.
+                      </p>
+                    </div>
+                  </section>
+                  <section className="space-y-6">
+                    <div className="flex items-center gap-2">
                       <div className="w-1.5 h-6 bg-indigo-500 rounded-full" />
-                      Análise de Risco na Zootecnia
-                    </h3>
-                    <div className="prose prose-sm max-w-none text-slate-300 space-y-4">
-                      <p className="leading-relaxed font-sans">
-                        A pecuária de corte, especialmente o confinamento, é uma atividade de alta complexidade caracterizada por margens estreitas e alta exposição ao mercado. Fatores como a volatilidade dos preços dos insumos (milho, farelo), as oscilações da arroba e as variações biológicas no desempenho animal (GMD) tornam o lucro determinístico insuficiente para uma gestão moderna.
-                      </p>
-                      <p className="leading-relaxed font-sans">
-                        A <strong>Análise de Risco</strong> via Simulação Estocástica permite que o gestor deixe de olhar apenas para o "resultado médio" e passe a compreender a <strong>probabilidade</strong> de sucesso. O SimuBoi utiliza o método <strong>LHS (Latin Hypercube Sampling)</strong> para gerar milhares de cenários possíveis, quantificando a incerteza e permitindo decisões baseadas em dados estatísticos robustos.
-                      </p>
+                      <h4 className="text-base font-bold text-slate-100 font-display">1. Indicadores Financeiros Determinísticos</h4>
+                    </div>
+                    
+                    <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-sans text-left">
+                      Métricas econômicas clássicas calculadas estaticamente a partir das médias de mercado e biofísicas projetadas no confinamento:
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* VPL */}
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all text-left">
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-indigo-500/20 text-indigo-400 bg-indigo-500/5">
+                          VALOR PRESENTE LÍQUIDO (VPL)
+                        </span>
+                        <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                          Soma de todos os fluxos de caixa do ciclo de cocho atualizados monetariamente à taxa mínima requerida TMA.
+                        </p>
+                        <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 select-all my-3 text-center overflow-x-auto">
+                          VPL = FC₀ + Σ [ FC_t / (1 + TMA_mensal)ᵗ ]  (para t de 1 a n)
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                          FC_0 = Investimento inicial de aquisição animal; FC_t = Fluxo líquido de caixa do período t; n = Período de alimentação equivalente em meses.
+                        </p>
+                      </div>
+
+                      {/* TMA MENSAL */}
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all text-left">
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-amber-500/20 text-amber-400 bg-amber-500/5">
+                          TMA EQUIVALENTE MENSAL
+                        </span>
+                        <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                          Harmonização temporal indispensável que converte a taxa de corte anual (TMA_anual) para a taxa mensal correspondente ao ciclo de alimentação.
+                        </p>
+                        <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 select-all my-3 text-center overflow-x-auto">
+                          TMA_mensal = (1 + TMA_anual)^(1/12) - 1
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                          Garante o desconto apropriado para horizontes curtos de terminação de bovinos.
+                        </p>
+                      </div>
+
+                      {/* VPL POR HECTARE */}
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all text-left">
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-indigo-500/20 text-indigo-400 bg-indigo-500/5">
+                          VPL POR HECTARE (VPL_ha)
+                        </span>
+                        <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                          Mapeia a rentabilidade econômica líquida escalonada por área de ocupação, integrando lotação física e probabilidade real de sobrevivência zootécnica.
+                        </p>
+                        <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 select-all my-3 text-center overflow-x-auto">
+                          VPL_ha = VPL × (1 - Mortalidade_% / 100) × Lotação_cab/ha
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                          Mortalidade % = Percentual de perdas acumuladas; Lotação = Número médio de cabeças comportadas por hectare.
+                        </p>
+                      </div>
+
+                      {/* IBC */}
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all text-left">
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-emerald-500/20 text-emerald-400 bg-emerald-500/5">
+                          ÍNDICE BENEFÍCIO-CUSTO (IB:C)
+                        </span>
+                        <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                          Relação de valor presente entre receitas recebidas e desembolsos amortizados operacionais totais do projeto.
+                        </p>
+                        <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 select-all my-3 text-center overflow-x-auto text-[11px]">
+                          IB:C = Σ [ Entradas_t / (1 + TMA_m)ᵗ ] / Σ [ Saídas_t / (1 + TMA_m)ᵗ ]  (para t de 0 a n)
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                          Resultados acima de 1.0 indicam retorno superior ao custo mínimo de oportunidade estipulado.
+                        </p>
+                      </div>
+
+                      {/* ROIA */}
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all text-left">
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-pink-500/20 text-pink-400 bg-pink-500/5">
+                          RETORNO ADICIONAL DESCONTADO (ROIA)
+                        </span>
+                        <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                          Mede a taxa periódica de ganho limpo gerado pelo confinamento além da TMA anualizada especificada.
+                        </p>
+                        <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 select-all my-3 text-center overflow-x-auto">
+                          ROIA_% = ( (IB:C)^(1/n) - 1 ) × 100
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                          Representa o ganho absoluto incremental líquido expressado sob forma de taxa equivalente mensal do ciclo.
+                        </p>
+                      </div>
+
+                      {/* TIR SIMPLIFICADA */}
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all text-left">
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-sky-500/20 text-sky-400 bg-sky-500/5">
+                          TAXA INTERNA DE RETORNO DO CICLO (TIR)
+                        </span>
+                        <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                          Mapeia a taxa mensal que anula o VPL do projeto, expressando de forma direta o rendimento geométrico do capital zootécnico investido.
+                        </p>
+                        <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 select-all my-3 text-center overflow-x-auto">
+                          TIR_% = ( Retorno Total / Investimento Total )^(1/n) - 1
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                          Investimento Total = Custo de Compra Inicial; Retorno Total = Receita Operacional Líquida de despesas recorrentes do ciclo.
+                        </p>
+                      </div>
+
+                      {/* PE */}
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all text-left">
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-rose-500/20 text-rose-400 bg-rose-500/5">
+                          PONTO DE EQUILÍBRIO DA @ (PE)
+                        </span>
+                        <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                          Preço final de boi gordo por arroba absoluto necessário para zerar o VPL econômico do ciclo, considerando receitas de amortização e bonificações.
+                        </p>
+                        <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 select-all my-3 text-center overflow-x-auto text-[11px]">
+                          PE_Preço = (CT - Valor Residual - Receita Esterco) / [ Arrobas Produzidas × (1 + Bonificação_%) ]
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                          CT = Custo de Produção Total do rebanho; Valor Residual = Amortizações líquidas; Receita Esterco = Receita proveniente de dejetos orgânicos.
+                        </p>
+                      </div>
+
+                      {/* AGIO REPOSICAO */}
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all text-left">
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-emerald-500/20 text-emerald-400 bg-emerald-500/5">
+                          ÁGIO DE REPOSIÇÃO
+                        </span>
+                        <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                          Mede o sobrepreço pago por arroba magra na compra do animal inicial frente ao valor médio de comercialização de venda da arroba gorda.
+                        </p>
+                        <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 select-all my-3 text-center overflow-x-auto">
+                          Ágio_% = [ (Preço Compra por @ Magra / Preço Venda por @ Gorda) - 1 ] × 100
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                          Preço Compra por @ Magra = (Preço Boi Magro x 30) / Peso Vivo de Entrada inicial.
+                        </p>
+                      </div>
                     </div>
                   </section>
 
-                  <section>
-                    <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
+                  {/* DESEMPENHO BIOECONOMICO */}
+                  <section className="space-y-6 text-left">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                      <h4 className="text-base font-bold text-slate-100 font-display">2. Ecoeficiência & Métricas Nutricionais</h4>
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-sans text-left">
+                      A eficiência física de conversão energética vegetal em deposição de massa muscular bovina rege a rentabilidade operacional:
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-emerald-500/30 transition-all text-left">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Scale className="w-4 h-4 text-emerald-400" />
+                          <h5 className="font-bold text-slate-205 text-xs uppercase tracking-wider font-display font-semibold">Conversão Alimentar (CA)</h5>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mb-4 leading-relaxed font-sans">
+                          Mapeia a ingestão total diária de alimento em quilos de matéria seca (CMS) gasta para produzir 1 kg de ganho médio diário (GMD) de carcaça.
+                        </p>
+                        <div className="p-2 bg-slate-950/90 rounded-lg border border-slate-800 font-mono text-xs text-emerald-400 select-all text-center">
+                          CA = (CMS_Volumoso + CMS_Concentrado) / GMD
+                        </div>
+                      </div>
+
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-emerald-500/30 transition-all text-left">
+                        <div className="flex items-center gap-2 mb-3">
+                          <TrendingUp className="w-4 h-4 text-emerald-400" />
+                          <h5 className="font-bold text-slate-205 text-xs uppercase tracking-wider font-display font-semibold">Custo por @ Produzida</h5>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mb-4 leading-relaxed font-sans">
+                          Métrica financeira crucial que divide o Custo Operacional Total pelas arrobas efetivamente ganhas nas baias do lote.
+                        </p>
+                        <div className="p-2 bg-slate-950/90 rounded-lg border border-slate-800 font-mono text-xs text-emerald-400 select-all text-center">
+                          Custo por Arroba = COT / Arrobas Produzidas
+                        </div>
+                      </div>
+
+                      <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-emerald-500/30 transition-all text-left">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Clock className="w-4 h-4 text-emerald-400" />
+                          <h5 className="font-bold text-slate-205 text-xs uppercase tracking-wider font-display font-semibold">Custo Operacional Diário</h5>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mb-4 leading-relaxed font-sans">
+                          Aferição das despesas fixas recorrentes diárias do cocho por animal, expurgando as variações conjunturais decorrentes de investimentos de capital de reposição bovina.
+                        </p>
+                        <div className="p-2 bg-slate-950/90 rounded-lg border border-slate-800 font-mono text-xs text-emerald-400 select-all text-center">
+                          COD = (COT - Custo Compra) / Dias de Alimentação
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* MODELAGEM ESTOCASTICA, CORRELACAO E COPULAS */}
+                  <section className="space-y-6 text-left">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-6 bg-rose-500 rounded-full" />
+                      <h4 className="text-base font-bold text-slate-100 font-display">3. Modelagem de Risco Estocástico & Cópulas Multivariadas</h4>
+                    </div>
+
+                    <div className="prose prose-sm max-w-none text-slate-300 space-y-4 text-xs sm:text-sm leading-relaxed font-sans text-left">
+                      <p>
+                        Cenários práticos pecuários sofrem oscilações simultâneas em premissas interdependentes (quando o preço de concentrados sobe, insumos substitutos sofrem pressões mercadológicas conjuntas). Para simular riscos reais, o <strong>SimuBoi</strong> adota amostragem estocástica sob o algoritmo <strong>Latin Hypercube Sampling (LHS)</strong> para varrer uniformemente o espaço probabilístico, associando as dependências de caudas através de formulas de <strong>Cópulas Estatísticas</strong>:
+                      </p>
+                      
+                      <div className="p-6 bg-[#0f172a] rounded-2xl border border-slate-800/80 hover:border-rose-500/20 transition-all relative overflow-hidden text-left font-sans">
+                        <h5 className="text-xs font-bold text-rose-400 font-display flex items-center gap-2 mb-3 uppercase tracking-wider">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                          Funções de Distribuições Copulares
+                        </h5>
+                        <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                          Sejam u e v distribuições marginais cumulativas unificadas no intervalo unitário [0, 1]. O mapeamento de tendências estocásticas opera conforme as categorias copulares:
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800/80">
+                            <span className="text-[10px] text-slate-400 font-mono block mb-1">CÓPULA GAUSSIANA (NORMAL)</span>
+                            <div className="font-mono text-rose-400 text-xs py-2 overflow-x-auto text-center font-semibold">
+                              C_R(u, v) = Φ₂ ( Φ⁻¹(u), Φ⁻¹(v), ρ )
+                            </div>
+                            <span className="text-[9px] text-slate-500 block leading-tight mt-1">Preserva dependência linear simétrica padrão através de matrizes de correlação empírica.</span>
+                          </div>
+                          
+                          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800/80">
+                            <span className="text-[10px] text-slate-400 font-mono block mb-1">CÓPULA CLAYTON (INFERIOR)</span>
+                            <div className="font-mono text-rose-400 text-xs py-2 overflow-x-auto text-center font-semibold">
+                              C_θ(u, v) = [ u⁻ᶿ + v⁻ᶿ - 1 ]⁻⁽¹/ᶿ⁾
+                            </div>
+                            <span className="text-[9px] text-slate-500 block leading-tight mt-1">Modela riscos assimétricos de cauda esquerda (períodos onde os fatores de mercado se deterioram conjuntamente).</span>
+                          </div>
+
+                          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800/80">
+                            <span className="text-[10px] text-slate-400 font-mono block mb-1">CÓPULA GUMBEL (SUPERIOR)</span>
+                            <div className="font-mono text-rose-400 text-xs py-2 overflow-x-auto text-center font-semibold">
+                              C_θ(u, v) = exp( - [ (-ln u)ᶿ + (-ln v)ᶿ ]^(1/θ) )
+                            </div>
+                            <span className="text-[9px] text-slate-500 block leading-tight mt-1">Captura fortes correlações de pico e tendências estocásticas em caudas extremas superiores.</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-405 leading-relaxed font-sans mt-3">
+                        O alinhamento estocástico é complementado pelo cálculo do coeficiente de correlação linear de postos de Pearson (r) para reportar a sensibilidade preliminar de dependência linear simples entre cada input e a dispersão final do VPL gerada:
+                      </p>
+                      <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-rose-400 select-all text-center">
+                        r_xy = ( N × Σ(X × Y) - ΣX × ΣY ) / √[ ( N × ΣX² - (ΣX)² ) × ( N × ΣY² - (ΣY)² ) ]
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* ESTIMATIVAS AVANCADAS DE SENSIBILIDADE */}
+                  <section className="space-y-6 text-left">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-6 bg-pink-500 rounded-full" />
+                      <h4 className="text-base font-bold text-slate-100 font-display">4. Análises de Sensibilidade Estatística Avançada</h4>
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-sans text-left">
+                      O SimuBoi disponibiliza múltiplos métodos avançados da estatística computacional para dissecar e ranquear precisamente quais inputs comandam o risco operacional:
+                    </p>
+
+                    <div className="space-y-6">
+                      {/* REGRESSAO LINEAR MULTIPLA */}
+                      <div className="bg-[#121826]/80 p-6 rounded-2xl border border-slate-800 hover:border-pink-500/25 transition-all text-left">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Activity className="w-5 h-5 text-pink-400" />
+                          <h5 className="font-bold text-slate-100 text-sm font-display">Regressão Linear Múltipla & Coeficientes Padronizados</h5>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                          Mapeamento estatístico multidimensional que realiza ajuste de MQO com dados normalizados pela média e desvio padrão. O modelo extrai os <strong>Betas Padronizados</strong> (Standardized Betas), isolando o efeito direto de cada fator em termos de desvios padrões induzidos no VPL das saídas.
+                        </p>
+                        <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-pink-400 select-all text-center mb-3 overflow-x-auto">
+                          Y_std_i = β₁ × X_std_1i + β₂ × X_std_2i + ... + β_k × X_std_ki + ε_i
+                        </div>
+                        <p className="text-xs text-slate-450 leading-relaxed mb-2">
+                          O ajuste geral e a fatia de variabilidade explicada pela matriz de dependências lineares aproximadas é avaliada pelo coeficiente de determinação <strong>R²</strong>:
+                        </p>
+                        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 font-mono text-xs text-pink-400 text-center overflow-x-auto">
+                          R² = 1 - [ Σ(Y_i - Ŷ_i)² / Σ(Y_i - Ȳ)² ]
+                        </div>
+                      </div>
+
+                      {/* METODO MORRIS */}
+                      <div className="bg-[#121826]/80 p-6 rounded-2xl border border-slate-800 hover:border-pink-500/25 transition-all text-left">
+                        <div className="flex items-center gap-2 mb-3">
+                          <BarChart3 className="w-5 h-5 text-pink-400" />
+                          <h5 className="font-bold text-slate-100 text-sm font-display">Método de Screening Morris (OAT Global)</h5>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                          Algoritmo OAT (One-Step-at-a-Time) que gera perturbações incrementais passo Δ do projeto de forma sequencial ao longo de r trajetórias no hipercubo de parâmetros. O modelo mensura o <strong>Efeito Elementar (EE)</strong> pontual do input sobre o resultado monetário:
+                        </p>
+                        <div className="p-4 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-pink-400 select-all text-center mb-3 overflow-x-auto">
+                          EE_i(x_vetor) = [ f(x₁, ..., x_i + Δ, ..., x_k) - f(x_vetor) ] / Δ
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="p-3 bg-slate-950 rounded-lg border border-slate-800/80">
+                            <span className="text-[10px] font-bold text-slate-400 block font-sans">MÉDIA ABSOLUTA (μ*)</span>
+                            <div className="font-mono text-pink-400 text-xs py-1.5 text-center">μ*_i = (1/r) × Σ |EE_i^(j)|  (para j de 1 a r)</div>
+                            <span className="text-[9px] text-slate-500 block leading-tight mt-1">Mede a influência e intensidade do impacto direto geral exercida pelo fator X_i sobre o VPL.</span>
+                          </div>
+                          
+                          <div className="p-3 bg-slate-950 rounded-lg border border-slate-800/80">
+                            <span className="text-[10px] font-bold text-slate-400 block font-sans">DESVIO PADRÃO (σ)</span>
+                            <div className="font-mono text-pink-400 text-xs py-1.5 text-center">σ_i = √[ (1/r) × Σ (EE_i^(j) - EE_média_i)² ]  (para j de 1 a r)</div>
+                            <span className="text-[9px] text-slate-500 block leading-tight mt-1">Indica comportamento altamente não linear da variável ou efeitos de alta ordem (sinergias).</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* INDICES SOBOL */}
+                      <div className="bg-[#121826]/80 p-6 rounded-2xl border border-slate-800 hover:border-pink-500/25 transition-all text-left">
+                        <div className="flex items-center gap-2 mb-3">
+                          <BrainCircuit className="w-5 h-5 text-pink-400" />
+                          <h5 className="font-bold text-slate-100 text-sm font-display">Decomposição de Variância de Sobol (ANOVA Funcional)</h5>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                          Delineamento matemático rigoroso de partição global que separa a variância estocástica total do VPL, V(Y), baseando-se na representação por polinômios ortogonais. O SimuBoi calcula numericamente dois coeficientes consagrados:
+                        </p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
+                          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800/80">
+                            <span className="text-[10px] font-bold text-slate-400 block">Índice de Primeira Ordem (Si)</span>
+                            <div className="p-2 bg-slate-900 border border-slate-800/60 rounded-lg font-mono text-[11px] text-pink-400 text-center my-2 select-all overflow-x-auto">
+                              S_i = V_X_i [ E_X_~i ( Y | X_i ) ] / V(Y)
+                            </div>
+                            <p className="text-[9px] text-slate-500 leading-tight">
+                              Quantifica a contribuição direta individual exclusiva de um determinado fator X_i sobre o risco geral de variação do VPL.
+                            </p>
+                          </div>
+
+                          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800/80">
+                            <span className="text-[10px] font-bold text-slate-400 block">Índice de Efeito Total (STi)</span>
+                            <div className="p-2 bg-slate-900 border border-slate-800/60 rounded-lg font-mono text-[11px] text-pink-400 text-center my-2 select-all overflow-x-auto">
+                              ST_i = 1 - V_X_~i [ E_X_i ( Y | X_~i ) ] / V(Y)
+                            </div>
+                            <p className="text-[9px] text-slate-500 leading-tight">
+                              Expressa a variabilidade completa gerada pelo fator, unindo seu impacto direto e as interações combinadas simultâneas com os demais parâmetros do modelo.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* METODOLOGIA DE CUSTOS E TRATAMENTO DE OBITOS */}
+                  <section className="space-y-6 text-left">
+                    <div className="flex items-center gap-2">
                       <div className="w-1.5 h-6 bg-amber-500 rounded-full" />
-                      Metodologia de Custos (Matsunaga et al., 1976)
-                    </h3>
-                    <div className="bg-amber-500/5 p-8 rounded-3xl border border-amber-500/10 space-y-6">
-                      <p className="text-sm text-amber-400 leading-relaxed font-medium font-sans">
-                        O SimuBoi adota a metodologia do IEA (Instituto de Economia Agrícola), que organiza os custos em uma hierarquia lógica para facilitar a identificação de gargalos operacionais e financeiros:
+                      <h4 className="text-base font-bold text-slate-100 font-display">5. Sistemática de Custos (Matsunaga) & Rateio de Óbitos</h4>
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-sans text-left">
+                      O simulador incorpora os pressupostos teóricos do Instituto de Economia Agrícola (Matsunaga et al., 1976), associando penalizações biológicas por óbito para maior rigor zootécnico:
+                    </p>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-sans">
+                      <div className="bg-[#0f172a] p-5 rounded-2xl border border-amber-500/10">
+                        <span className="text-[10px] font-bold text-amber-400 tracking-wider">CUSTO OPERACIONAL EFETIVO (COE)</span>
+                        <p className="text-xs text-slate-400 leading-relaxed mt-2 font-light">
+                          Desembolsos monetários efetivos imediatos ao longo do confinamento: ração, silagem, vacinas preventiva e curativa, remuneração operacional direta de mão de obra permanente, diesel gasta nas misturas e corretagem de compra.
+                        </p>
+                      </div>
+
+                      <div className="bg-[#0f172a] p-5 rounded-2xl border border-amber-500/10">
+                        <span className="text-[10px] font-bold text-amber-400 tracking-wider">CUSTO OPERACIONAL TOTAL (COT)</span>
+                        <p className="text-xs text-slate-400 leading-relaxed mt-2 font-light">
+                          Incorpora o desgaste material dos ativos tangíveis. É calculado agregando-se ao COE as depreciações físicas lineares calculadas conforme a vida útil de tratores, currais, comedouros e instalações gerais.
+                        </p>
+                        <div className="p-2 bg-slate-950/80 border border-slate-900 rounded-lg text-amber-500 font-mono text-[10px] mt-2 text-center">
+                          COT = COE + Depreciação
+                        </div>
+                      </div>
+
+                      <div className="bg-[#0f172a] p-5 rounded-2xl border border-amber-500/10">
+                        <span className="text-[10px] font-bold text-amber-400 tracking-wider">CUSTO TOTAL (CT)</span>
+                        <p className="text-xs text-slate-400 leading-relaxed mt-2 font-light">
+                          Mensa o rendimento econômico sistêmico completo. Soma-se ao COT os custos de oportunidade intangíveis alternativos, incluindo juros sobre capital circulante e remuneração da terra a taxas TMA.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-6 bg-[#070a13] rounded-2xl border border-amber-500/15 text-left font-sans">
+                      <h5 className="text-xs font-bold text-amber-400 font-display flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                        Repartição e Rateio por Mortalidade Biológica
+                      </h5>
+                      <p className="text-xs text-slate-350 leading-relaxed mb-3">
+                        Para evitar distorções econômicas comuns em modelos estáticos simples, o SimuBoi dilui matematicamente as despesas incorridas pelos animais que foram a óbito ao longo da engorda (taxa m = Mortalidade % / 100), majorando o custo real absorvido pelas cabeças sobreviventes vendidas:
                       </p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-[#070a13] p-5 rounded-2xl border border-amber-500/20 shadow-sm">
-                          <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center mb-4 border border-amber-500/20">
-                            <span className="text-amber-400 font-bold text-xs">COE</span>
-                          </div>
-                          <h5 className="font-bold text-slate-100 text-sm mb-2 font-display">Custo Operacional Efetivo</h5>
-                          <p className="text-[11px] text-slate-400 leading-relaxed font-sans">Representa todos os desembolsos diretos (caixa) realizados: insumos, mão de obra, sanidade, impostos e taxas.</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-900 text-center select-all">
+                          <span className="text-[9px] text-slate-500 font-mono block">CUSTO DE COMPRA AJUSTADO</span>
+                          <span className="font-mono text-emerald-400 text-xs font-semibold block mt-1">
+                            C_compra_sobreviventes = C_base / (1 - m)
+                          </span>
                         </div>
-                        <div className="bg-[#070a13] p-5 rounded-2xl border border-amber-500/20 shadow-sm">
-                          <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center mb-4 border border-amber-500/20">
-                            <span className="text-amber-400 font-bold text-xs">COT</span>
-                          </div>
-                          <h5 className="font-bold text-slate-100 text-sm mb-2 font-display">Custo Operacional Total</h5>
-                          <p className="text-[11px] text-slate-400 leading-relaxed font-sans">Soma o COE às <strong>Depreciações</strong> de máquinas, equipamentos e benfeitorias. Indica a sustentabilidade do negócio no longo prazo.</p>
-                        </div>
-                        <div className="bg-[#070a13] p-5 rounded-2xl border border-amber-500/20 shadow-sm">
-                          <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center mb-4 border border-amber-500/20">
-                            <span className="text-amber-400 font-bold text-xs">CT</span>
-                          </div>
-                          <h5 className="font-bold text-slate-100 text-sm mb-2 font-display">Custo Total</h5>
-                          <p className="text-[11px] text-slate-400 leading-relaxed font-sans">Inclui o COT e os <strong>Custos de Oportunidade</strong> (remuneração do capital e da terra). Define se o lucro é superior ao custo de capital.</p>
+                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-900 text-center select-all">
+                          <span className="text-[9px] text-slate-500 font-mono block">CUSTO DE DIETA AJUSTADO</span>
+                          <span className="font-mono text-emerald-400 text-xs font-semibold block mt-1">
+                            C_dieta_sobreviventes = C_dieta / (1 - m)
+                          </span>
                         </div>
                       </div>
                     </div>
                   </section>
 
-                  <section>
-                    <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
+                  {/* TESTE DE ESTRESSE */}
+                  <section className="bg-[#0f172a] p-8 rounded-3xl border border-slate-800 shadow-md text-left">
+                    <div className="flex items-center gap-3 mb-4 font-sans">
+                      <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl">
+                        <ShieldAlert className="w-5 h-5 text-rose-450" />
+                      </div>
+                      <div>
+                        <h4 className="font-display font-bold text-slate-100 text-base tracking-tight">6. Metodologia de Teste de Estresse (Stress Testing)</h4>
+                        <p className="text-[11px] text-slate-400 font-light font-sans">Projeções de resiliência orçamentária contra choques severos e anomalias sistêmicas de mercado.</p>
+                      </div>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4 font-sans text-left">
+                      O <strong>Teste de Estresse</strong> do SimuBoi avalia a vulnerabilidade do fluxo de caixa sob anomalias históricas de cauda. O mecanismo impõe perturbações combinadas severas que violam as premissas da curva gaussiana clássica, preparando o confinador para eventos do cisne negro (black swan events):
+                    </p>
+                    <ul className="list-disc pl-5 space-y-2 text-xs text-slate-400 font-sans leading-relaxed text-left">
+                      <li><strong>Choque Cambial e Superinflação de Insumos:</strong> Sobrecarrega simultaneamente o volumoso e farelos proteicos em <strong className="text-rose-400">+15% a +30%</strong>, replicando secas continentais extremas ou colapso nas cadeias logísticas do milho.</li>
+                      <li><strong>Desvalorização Abrupta da Carne Gorda:</strong> Aplica forte redução na arroba gorda (<strong className="text-rose-400">-10% a -20%</strong>), mimetizando fechamentos repentinos de fronteiras por barreiras não alfandegárias de sanidade ou embargos comerciais temporários.</li>
+                      <li><strong>Colapso Sanitário nas Baias:</strong> Eleva a mortalidade para patamares de <strong className="text-rose-400">5% a 10%</strong>, mimetizando enfermidades agudas (como pneumonia bovina severa ou anaplasmose), com severa redução na conversão e desempenho do lote sobrevivente.</li>
+                    </ul>
+                  </section>
+
+                  {/* DOMINANCIA ESTOCASTICA */}
+                  <section className="bg-[#070a13] p-8 rounded-3xl border border-slate-800 text-left">
+                    <h3 className="text-base font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
                       <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
-                      Desempenho Bioeconômico
+                      7. Teoria da Dominância Estocástica na Análise de Risco
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="space-y-4">
-                        <div className="p-5 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
-                          <h4 className="font-bold text-emerald-400 text-sm mb-2 flex items-center gap-2 font-display">
-                            <Scale className="w-4 h-4 text-emerald-400" />
-                            Conversão Alimentar (CA)
-                          </h4>
-                          <p className="text-xs text-slate-350 leading-relaxed font-sans">
-                            Mede a eficiência biológica: quantos kg de alimento (MS) são necessários para produzir 1 kg de peso vivo. Diferente da Eficiência Alimentar (GMD/CMS), a CA é o inverso e facilita a visualização do custo direto da dieta.
-                          </p>
-                        </div>
-                        <div className="p-5 bg-rose-500/5 rounded-2xl border border-rose-500/10">
-                          <h4 className="font-bold text-rose-400 text-sm mb-2 flex items-center gap-2 font-display">
-                            <TrendingUp className="w-4 h-4 text-rose-400" />
-                            Custo por @ Produzida
-                          </h4>
-                          <p className="text-xs text-slate-350 leading-relaxed font-sans">
-                            É o custo operacional total dividido pelo ganho em arrobas. Este indicador deve ser comparado diretamente com o preço de venda da arroba gorda para definir a margem sobre o ganho.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="space-y-4">
-                        <div className="p-5 bg-rose-500/5 rounded-2xl border border-rose-500/10">
-                          <h4 className="font-bold text-rose-400 text-sm mb-2 flex items-center gap-2 font-display">
-                            <Calculator className="w-4 h-4 text-rose-400" />
-                            Ponto de Equilíbrio (PE)
-                          </h4>
-                          <p className="text-xs text-slate-350 leading-relaxed font-sans">
-                            Preço mínimo de venda necessário para que o VPL seja zero. Representa o valor que cobre todos os custos operacionais e de oportunidade. Qualquer valor acima do PE é lucro real.
-                          </p>
-                        </div>
-                        <div className="p-5 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
-                          <h4 className="font-bold text-emerald-400 text-sm mb-2 flex items-center gap-2 font-display">
-                            <Clock className="w-4 h-4 text-emerald-400" />
-                            Custo Operacional Diário
-                          </h4>
-                          <p className="text-xs text-slate-350 leading-relaxed font-sans">
-                            Exclui o valor de compra do animal para focar no custo de manutenção e engorda. Essencial para monitorar a eficiência do manejo e da dieta dia a dia.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section>
-                    <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
-                      <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
-                      Indicadores Financeiros e de Risco
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="space-y-6">
-                        <div className="flex gap-4">
-                          <div className="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center shrink-0 border border-rose-500/15">
-                            <span className="text-rose-400 font-bold text-xs">VPL</span>
-                          </div>
-                          <div>
-                            <h5 className="font-bold text-slate-100 text-sm mb-1 font-display">Valor Presente Líquido</h5>
-                            <p className="text-xs text-slate-400 leading-relaxed font-sans">Soma de todos os fluxos de caixa descontados pela TMA. É o indicador soberano de viabilidade: se VPL &gt; 0, o projeto gera riqueza.</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-4">
-                          <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center shrink-0 border border-emerald-500/15">
-                            <span className="text-emerald-400 font-bold text-xs">IB:C</span>
-                          </div>
-                          <div>
-                            <h5 className="font-bold text-slate-100 text-sm mb-1 font-display">Índice Benefício:Custo</h5>
-                            <p className="text-xs text-slate-400 leading-relaxed font-sans">Razão entre o valor presente das receitas e o valor presente dos custos. Indica o retorno para cada R$ 1,00 investido.</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-4">
-                          <div className="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center shrink-0 border border-rose-500/15">
-                            <span className="text-rose-400 font-bold text-xs">ROIA</span>
-                          </div>
-                          <div>
-                            <h5 className="font-bold text-slate-100 text-sm mb-1 font-display">Retorno Adicional (ROIA)</h5>
-                            <p className="text-xs text-slate-400 leading-relaxed font-sans">Percentual de lucro que excede a Taxa Mínima de Atratividade (TMA). É o lucro "limpo" do projeto.</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="bg-[#070a13] text-white p-6 rounded-3xl space-y-6 border border-slate-800/80">
-                        <div>
-                          <h5 className="font-bold text-emerald-400 text-sm mb-2 flex items-center gap-2 font-display">
-                            <BarChart3 className="w-4 h-4 text-emerald-400" />
-                            Análise de Sensibilidade (Correlação)
-                          </h5>
-                          <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
-                            A análise de correlação identifica quais variáveis têm maior impacto no VPL. Variáveis com barras longas à esquerda (ex: Preço do Boi Magro) indicam que pequenos aumentos no custo reduzem drasticamente o lucro.
-                          </p>
-                        </div>
-                        <div>
-                          <h5 className="font-bold text-emerald-400 text-sm mb-2 flex items-center gap-2 font-display">
-                            <Activity className="w-4 h-4 text-[#f43f5e]" />
-                            Probabilidade de Prejuízo
-                          </h5>
-                          <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
-                            Calculada pela área da distribuição onde o VPL é menor que zero. Representa o risco real de o capital investido não ser remunerado sequer pela taxa mínima (TMA).
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="bg-[#070a13] p-8 rounded-3xl border border-slate-800/80">
-                    <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
-                      <ShieldAlert className="w-6 h-6 text-emerald-400" />
-                      Dominância Estocástica
-                    </h3>
-                    <div className="prose prose-sm max-w-none text-slate-300 space-y-4">
-                      <p className="leading-relaxed font-sans">
-                        Ao comparar dois cenários (ex: Dieta A vs Dieta B), a <strong>Curva de Probabilidade Acumulada (S-Curve)</strong> permite aplicar a teoria da Dominância Estocástica:
+                    <div className="prose prose-sm max-w-none text-slate-300 space-y-4 text-xs sm:text-sm leading-relaxed font-sans text-left">
+                      <p>
+                        Para dirimir conflitos de escolha na comparação de estratégias biotecnológicas (ex: Comparação de duas dietas), o simulador gera curvas de probabilidades acumuladas (S-Curves), viabilizando o escrutínio por dominâncias financeiras:
                       </p>
-                      <ul className="list-disc pl-5 space-y-2 font-sans font-normal text-slate-400">
-                        <li><strong>Primeira Ordem:</strong> Se a curva do Cenário A está totalmente à direita da curva do Cenário B, o Cenário A é preferível para qualquer investidor, pois oferece retornos maiores em todos os níveis de probabilidade.</li>
-                        <li><strong>Segunda Ordem:</strong> Se as curvas se cruzam, o investidor avesso ao risco prefere o cenário com menor área à esquerda (menor risco de resultados baixos).</li>
+                      <ul className="list-disc pl-5 space-y-2 text-slate-400 font-sans">
+                        <li>
+                          <strong>Dominância Estocástica de Primeira Ordem (FSD):</strong> A curva B domina A na tomada de decisão se a probabilidade acumulada for consistentemente igual ou inferior em toda a amplitude de VPL:
+                          <div className="p-2 bg-slate-950 rounded-lg text-emerald-450 font-mono text-[11px] text-center my-2 select-all font-semibold border border-slate-900/60">
+                            F_B(x) ≤ F_A(x), para todo x em ℝ
+                          </div>
+                        </li>
+                        <li>
+                          <strong>Dominância Estocástica de Segunda Ordem (SSD):</strong> Caso as curvas cumulativas se interceptem, o investidor adota o cenário de menor gravidade acumulada ponderada na cauda inferior esquerda:
+                          <div className="p-2 bg-slate-950 rounded-lg text-emerald-450 font-mono text-[11px] text-center my-2 select-all font-semibold border border-slate-900/60">
+                            ∫_(-∞ a x) F_B(t) dt ≤ ∫_(-∞ a x) F_A(t) dt, para todo x em ℝ
+                          </div>
+                        </li>
                       </ul>
+                    </div>
+                  </section>
+
+                  {/* EQUACOES DE DIETA NRC/NASEM 2016 */}
+                  <section className="bg-[#070a13] p-8 rounded-3xl border border-slate-800 text-left">
+                    <h3 className="text-base font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
+                      <div className="w-1.5 h-6 bg-purple-500 rounded-full" />
+                      8. Formulação, Exigências e Otimização da Dieta (NRC/NASEM 2016)
+                    </h3>
+                    <div className="prose prose-sm max-w-none text-slate-300 space-y-6 text-xs sm:text-sm leading-relaxed font-sans text-left">
+                      <p>
+                        O módulo de <strong>Dieta</strong> do SimuBoi implementa rigorosamente o modelo matemático-biológico desenvolvido pelo comitê do <strong>NASEM 2016 (National Academies of Sciences, Engineering, and Medicine - antigo NRC)</strong> para gado de corte. A seguir são detalhadas todas as equações empregadas para estimar as exigências nutricionais diárias do lote e predizer o Ganho Médio Diário (GMD) a partir da composição química dos insumos.
+                      </p>
+
+                      <div className="space-y-4">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                          A. Ajustes Iniciais de Peso Vivo e Conversões
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Os cálculos nutricionais e de consumo baseiam-se no Peso Corporal de Jejum (SBW) e Peso de Corpo Vazio (EBW):
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-3 bg-slate-950 rounded-xl border border-slate-900 text-center text-xs">
+                            <span className="text-slate-500 block font-mono">SBW (Shrunk Body Weight)</span>
+                            <span className="font-mono text-emerald-400 font-semibold block mt-1">SBW = BW × 0.96</span>
+                          </div>
+                          <div className="p-3 bg-slate-950 rounded-xl border border-slate-900 text-center text-xs">
+                            <span className="text-slate-500 block font-mono">EBW (Empty Body Weight)</span>
+                            <span className="font-mono text-emerald-400 font-semibold block mt-1">EBW = SBW × 0.891</span>
+                          </div>
+                          <div className="p-3 bg-slate-950 rounded-xl border border-slate-900 text-center text-xs">
+                            <span className="text-slate-500 block font-mono">EBG (Empty Body Gain)</span>
+                            <span className="font-mono text-emerald-400 font-semibold block mt-1">EBG = GMD × 0.951</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                          B. Estimativa de Consumo de Matéria Seca (CMS / DMI)
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          O consumo espontâneo diário é estimado usando regressões baseadas no peso vivo total do período (média entre entrada e saída), ajustado para o sexo e o frame size:
+                        </p>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2">
+                          <p className="font-mono text-xs text-emerald-400">
+                            Fêmeas: CMS (kg MS/dia) = [ 3.184 + 0.01536 × SBW ] × Ajuste_Frame
+                          </p>
+                          <p className="font-mono text-xs text-emerald-400">
+                            Machos (Castrados ou Inteiros): CMS (kg MS/dia) = [ 3.83 + 0.0143 × SBW ] × Ajuste_Frame
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            * Ajuste_Frame: 0.95 para Pequeno (precoce); 1.00 para Médio; 1.05 para Grande (tardio).
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                          C. Energia Líquida de Manutenção (NEm) e Ganho (NEg)
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          As exigências diárias de manutenção (NEm, Mcal/dia) e deposição de tecidos corporais (NEg, Mcal/dia) são equacionadas a partir do peso metabólico corrigido:
+                        </p>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3">
+                          <div>
+                            <span className="text-slate-500 block font-mono text-[10px]">EXIGÊNCIA DE MANUTENÇÃO (NEm)</span>
+                            <p className="font-mono text-xs text-emerald-400 mt-1">
+                              NEm (Mcal/dia) = 0.077 × SBW⁰.⁷⁵ × Mult_Raça × Mult_Sexo
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                              * Mult_Raça: 0.90 para Zebuínos (ex: Nelore no Brasil, que têm menor metabolismo basal); 1.00 para Europeus ou Cruzamento Industrial.<br />
+                              * Mult_Sexo: 1.15 para Macho Inteiro (maior metabolismo basal); 1.00 para Macho Castrado ou Fêmea.
+                            </p>
+                          </div>
+                          <div className="border-t border-slate-900 pt-3">
+                            <span className="text-slate-500 block font-mono text-[10px]">EXIGÊNCIA DE GANHO (NEg)</span>
+                            <p className="font-mono text-xs text-emerald-400 mt-1">
+                              EQSBW = SBW × (478 / FBW) <br />
+                              NEg (Mcal/dia) = 0.0635 × EQSBW⁰.⁷⁵ × EBG¹.⁰⁹⁷
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-1">
+                              * EQSBW é o peso de corpo vivo equivalente do animal com base no Peso Final (FBW) frente ao peso corporal padrão de referência (SRW = 478 kg) para terminação nos moldes clássicos do Garrett/NRC.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                          D. Proteína Metabolizável (PM) e Proteína Bruta (PB)
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          A exigência diária de Proteína Metabolizável (MP, g/dia) une os requerimentos para manutenção endógena (MPm) e para reposição celular de carcaça e visceral (NPg):
+                        </p>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-emerald-400">
+                          <div>
+                            <span className="text-slate-500 block text-[10px]">MANUTENÇÃO ENDÓGENA</span>
+                            <p className="mt-1">MPm (g/dia) = 4.1 × SBW⁰.⁷⁵</p>
+                          </div>
+                          <div className="border-t border-slate-900 pt-3">
+                            <span className="text-slate-500 block text-[10px]">DEPOSIÇÃO PROTEICA EM GANHO DE CARCAÇA (NPg)</span>
+                            <p className="mt-1">NPg (g/dia) = EBG × [ 268 - (29.4 × (NEg / EBG)) ]</p>
+                          </div>
+                          <div className="border-t border-slate-900 pt-3">
+                            <span className="text-slate-500 block text-[10px]">PROTEÍNA METABOLIZÁVEL TOTAL & TRADUÇÃO PARA PROTEÍNA BRUTA (PB)</span>
+                            <p className="mt-1">
+                              MP_Total (g/dia) = MPm + (NPg / 0.492) <br />
+                              PB_Mínima_Dieta (%) = Max[ 9 %, ( (MP_Total / 0.67) / 1000 / CMS ) × 100 ]
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                              * NPg é convertido a MP correspondente usando a eficiência clássica de ganho (0.492). <br />
+                              * A conversão de Proteína Metabolizável para Proteína Bruta (PB) assume uma eficiência nominal de aproveitamento ruminal/intestinal média de 67%.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                          E. Exigências Minerais (Cálcio e Fósforo)
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Calculados somando perdas endógenas de manutenção física e deposição muscular por grama de proteína retida (NPg), divididas pelo coeficiente de absorção alimentar líquida:
+                        </p>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-emerald-400">
+                          <div>
+                            <span className="text-slate-500 block text-[10px]">CÁLCIO MÍNIMO</span>
+                            <p className="mt-1">
+                              Ca_Líquido (g/dia) = (0.0154 × SBW) + (0.071 × NPg) <br />
+                              Ca_Mín_Dieta (%) = ( (Ca_Líquido / 0.50) / 1000 / CMS ) × 100
+                            </p>
+                            <span className="text-[10px] text-slate-500 block mt-0.5">* Assume eficiência de absorção dietética de cálcio de 50%.</span>
+                          </div>
+                          <div className="border-t border-slate-900 pt-3">
+                            <span className="text-slate-500 block text-[10px]">FÓSFORO MÍNIMO</span>
+                            <p className="mt-1">
+                              P_Líquido (g/dia) = (0.016 × SBW) + (0.039 × NPg) <br />
+                              P_Mín_Dieta (%) = ( (P_Líquido / 0.70) / 1000 / CMS ) × 100
+                            </p>
+                            <span className="text-[10px] text-slate-500 block mt-0.5">* Assume eficiência de absorção dietética de fósforo de 70%.</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                          F. Nutrientes Digestíveis Totais (NDT)
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          O NDT mínimo é balizado convertendo as exigências de NEm e NEg em equivalentes de Energia Metabolizável (ME) e então mapeando no consumo de matéria seca (CMS):
+                        </p>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 font-mono text-xs text-emerald-400 space-y-2">
+                          <p>ME_m = NEm / 0.64</p>
+                          <p>ME_g = NEg / 0.42</p>
+                          <p>ME_Total = ME_m + ME_g</p>
+                          <p>NDT_Exigido (%) = Max[ 62 %, Min[ 85 %, (ME_Total / CMS) / 0.03615 ] ]</p>
+                          <span className="text-[10px] text-slate-500 block leading-snug font-sans mt-2">
+                            * Eficiência de ME para NEm = 64%; ME para NEg = 42%. <br />
+                            * A relação fixa clássica estabelece que 1 kg de NDT equivale a 3.615 Mcal de ME (isto é, ME Mcal/kg = 0.03615 × % NDT).
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                          G. Predição de Ganho Médio Diário (GMD) via Balanço Energético
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Para estimar o ganho físico real a partir de uma dieta contendo x% de NDT, o software utiliza de forma reversa a clássica equação de Garrett e Lofgreen integrada no NRC para converter o alimento em energia real de retenção (RE):
+                        </p>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 font-mono text-xs text-emerald-400 space-y-3">
+                          <div>
+                            <p>ME_Dieta (Mcal/kg DM) = 0.04409 × NDT_% × 0.82</p>
+                            <p className="text-slate-500 text-[10px] my-1 leading-tight">
+                              Seja ME_Capped = Max(1.5, Min(3.5, ME_Dieta)) para tolerância de contorno biológico. O valor energético do alimento é modelado por:
+                            </p>
+                            <p>NEm_alimento = 1.37 × ME_Capped - 0.138 × ME_Capped² + 0.0105 × ME_Capped³ - 1.12</p>
+                            <p>NEg_alimento = 1.42 × ME_Capped - 0.174 × ME_Capped² + 0.0122 × ME_Capped³ - 1.65</p>
+                          </div>
+                          <div className="border-t border-slate-900 pt-2">
+                            <span className="text-slate-500 block text-[10px] mb-1">PARTIÇÃO DE CONSUMO E ENERGIA DISPONÍVEL</span>
+                            <p>CMS_Manutenção = NEm_req / NEm_alimento</p>
+                            <p>CMS_Ganho = Max(0, CMS - CMS_Manutenção)</p>
+                            <p>NEg_Disponível = CMS_Ganho × NEg_alimento</p>
+                          </div>
+                          <div className="border-t border-slate-900 pt-2">
+                            <span className="text-slate-500 block text-[10px] mb-1">CONVERSÃO DE ENERGIA RETIDA PARA CRESCIMENTO DIÁRIO (GMD)</span>
+                            <p>EBG = [ NEg_Disponível / (0.0635 × EQSBW⁰.⁷⁵) ] ^ (1 / 1.097)</p>
+                            <p>GMD_Predito (kg/dia) = EBG / 0.951</p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </section>
 
@@ -11361,8 +12201,8 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               <a href="https://doi.org/10.1590/S1516-35982014000900006" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982014000900006</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2012)</strong>. Probabilidade de risco econômico na terminação de novilhos em confinamento. Ciência Rural, v.42, n.12, p.2249-2255. 
-                              <a href="https://doi.org/10.1590/S0103-84782012005000109" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S0103-84782012005000109</a>
+                              <strong>PACHECO, P. S. et al. (2014)</strong>. Probabilidade de risco econômico na terminação de novilhos em confinamento. Ciência Rural, v.44, n.10, p.1874-1880. 
+                              <a href="https://doi.org/10.1590/0103-8478cr20131422" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20131422</a>
                             </li>
                             <li>
                               <strong>PACHECO, P. S. et al. (2006)</strong>. Simulação de risco econômico da terminação de novilhos em confinamento. Revista Brasileira de Zootecnia, v.35, n.2, p.493-502. 
@@ -11389,8 +12229,8 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               <a href="https://doi.org/10.1590/S1516-35982005000600025" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982005000600025</a>
                             </li>
                             <li>
-                              <strong>ALVES FILHO, D. C.; PACHECO, P. S. et al. (2016)</strong>. Economic analysis of finishing steers in feedlot with different concentrate levels. Semina: Ciências Agrárias, v.37, n.4, p.2193-2204.
-                              <a href="https://doi.org/10.5433/1679-0359.2016v37n4p2193" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.5433/1679-0359.2016v37n4p2193</a>
+                              <strong>ALVES FILHO, D. C.; PACHECO, P. S. et al. (2016)</strong>. Economic analysis of finishing steers in feedlot with different concentrate levels. Semina: Ciências Agrárias, v.37, n.4, p.2443-2454.
+                              <a href="https://doi.org/10.5433/1679-0359.2016v37n4p2443" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.5433/1679-0359.2016v37n4p2443</a>
                             </li>
                             <li>
                               <strong>MISSIO, R. L.; PACHECO, P. S. et al. (2009)</strong>. Desempenho e características da carcaça de novilhos terminados em confinamento recebendo diferentes níveis de concentrado na dieta. Revista Brasileira de Zootecnia, v.38, n.8, p.1596-1604.
@@ -11461,7 +12301,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               <strong>ASSAF NETO, A. (2021)</strong>. Engenharia Econômica e Análise de Investimentos. São Paulo: Atlas. (Livro)
                             </li>
                             <li>
-                              <strong>KASSAI, J. R. et al. (2007)</strong>. Retorno de investimento: abordagem multicriterial. São Paulo: Atlas. (Livro)
+                              <strong>KASSAI, J. R. et al. (1999)</strong>. Retorno de investimento: abordagem multicritério. São Paulo: Atlas. (Livro)
                             </li>
                           </ul>
                         </div>
@@ -11470,7 +12310,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           <h4 className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-3">Cenários e Testes de Estresse</h4>
                           <ul className="text-[10px] text-slate-350 space-y-3 list-disc pl-5">
                             <li>
-                              <strong>SCHOEMAKER, P. J. (1995)</strong>. Scenario planning: a tool for strategic thinking. MIT Sloan Management Review. 
+                              <strong>SCHOEMAKER, P. J. (1995)</strong>. Scenario planning: a tool for strategic thinking. MIT Sloan Management Review, v.36, n.2, p.25-40. 
                               <a href="https://sloanreview.mit.edu/article/scenario-planning-a-tool-for-strategic-thinking/" target="_blank" rel="noopener noreferrer" className="ml-1 text-rose-400 hover:underline">Acesso</a>
                             </li>
                             <li>
@@ -11493,29 +12333,75 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                       Como Citar este Aplicativo
                     </h3>
                     <p className="text-xs text-slate-400 leading-relaxed mb-6 font-sans">
-                      Se você utilizar o <strong>SimuBoi</strong> em pesquisas científicas, trabalhos acadêmicos de conclusão de curso, dissertações ou teses, por favor cite a nossa plataforma utilizando as seguintes referências padronizadas:
+                      Se você utilizar o <strong>SimuBoi</strong> em pesquisas científicas, trabalhos acadêmicos de conclusão de curso, relatórios técnicos, dissertações ou teses, por favor cite a nossa plataforma utilizando as referências padronizadas abaixo. A URL oficial de publicação é <a href="https://simuboi.vercel.app" target="_blank" rel="noopener noreferrer" className="text-emerald-400 font-bold hover:underline">https://simuboi.vercel.app</a>.
                     </p>
                     
                     <div className="space-y-4">
-                      <div className="p-5 rounded-2xl border border-slate-800 bg-[#070a13] hover:border-slate-700/80 transition-colors relative">
-                        <div className="absolute top-4 right-4 text-[10px] bg-[#131d35] text-slate-300 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider font-mono border border-slate-700/40">
-                          ABNT
+                      {[
+                        {
+                          id: 'abnt',
+                          title: 'Formato ABNT (NBR 6023)',
+                          text: 'PACHECO, P. S. SimuBoi: Simulador bioeconômico e estatístico de risco para confinamento bovino. Versão 1.0. Santa Maria: DZ - UFSM, 2026. Disponível em: https://simuboi.vercel.app. Acesso em: [Data de Acesso].'
+                        },
+                        {
+                          id: 'apa',
+                          title: 'Formato APA (7th Edition)',
+                          text: 'Pacheco, P. S. (2026). SimuBoi: Simulador bioeconômico e estatístico de risco para confinamento bovino (Version 1.0) [Software]. Department of Animal Science, Federal University of Santa Maria (DZ - UFSM). Available from https://simuboi.vercel.app.'
+                        },
+                        {
+                          id: 'bibtex',
+                          title: 'Formato BibTeX (LaTeX)',
+                          text: `@software{simuboi2026,\n  author = {Pacheco, Paulo Souza},\n  title = {SimuBoi: Simulador bioecon{\\^o}mico e estat{\\'\\i}stico de risco para confinamento bovino},\n  year = {2026},\n  version = {1.0},\n  publisher = {DZ - UFSM},\n  url = {https://simuboi.vercel.app}\n}`
+                        },
+                        {
+                          id: 'harvard',
+                          title: 'Formato Harvard (Author-Date)',
+                          text: 'Pacheco, P.S., 2026. SimuBoi: Simulador bioeconômico e estatístico de risco para confinamento bovino [software]. Versão 1.0. Santa Maria: DZ - UFSM. Disponível em: <https://simuboi.vercel.app> [Acesso em: [Data de Acesso]].'
+                        },
+                        {
+                          id: 'mla',
+                          title: 'Formato MLA (9th Edition)',
+                          text: 'Pacheco, Paulo Souza. SimuBoi: Simulador bioeconômico e estatístico de risco para confinamento bovino. Versão 1.0, DZ - UFSM, 2026, https://simuboi.vercel.app.'
+                        },
+                        {
+                          id: 'vancouver',
+                          title: 'Formato Vancouver',
+                          text: 'Pacheco PS. SimuBoi: Simulador bioeconômico e estatístico de risco para confinamento bovino [software]. Versão 1.0. Santa Maria: DZ - UFSM; 2026. Disponível em: https://simuboi.vercel.app.'
+                        }
+                      ].map((cit) => (
+                        <div key={cit.id} className="p-5 rounded-2xl border border-slate-800 bg-[#0c1322] hover:border-slate-700/80 transition-all duration-200 relative group">
+                          <div className="absolute top-4 right-4 flex items-center gap-2">
+                            <span className="text-[9px] bg-[#13223f] text-indigo-300 font-bold px-2 py-0.5 rounded-md uppercase tracking-wider font-mono border border-slate-700/50">
+                              {cit.id}
+                            </span>
+                            <button
+                              onClick={() => handleCopy(cit.text, cit.id)}
+                              className={`p-1.5 rounded-lg border transition-all duration-200 cursor-pointer flex items-center justify-center gap-1 text-[11px] font-medium font-sans ${
+                                copiedFormat === cit.id
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                              }`}
+                              title="Copiar referência"
+                            >
+                              {copiedFormat === cit.id ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span className="hidden sm:inline">Copiado!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5 text-slate-400" />
+                                  <span className="hidden sm:inline">Copiar</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <h4 className="text-xs font-bold text-slate-300 mb-2 font-display">{cit.title}</h4>
+                          <div className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-xl font-mono text-[10.5px] text-slate-320 leading-relaxed break-words whitespace-pre-wrap">
+                            {cit.text}
+                          </div>
                         </div>
-                        <h4 className="text-xs font-bold text-slate-300 mb-1 font-display">Formato ABNT</h4>
-                        <div className="p-3 bg-slate-500/5 border border-slate-800 rounded-xl select-all font-mono text-[10px] text-slate-300 leading-relaxed pr-16 break-all">
-                          PACHECO, P. S.; PIZZUTI, L. A. D. SimuBoi: Simulador bioeconômico e estatístico de risco para confinamento bovino. Versão 1.0. Santa Maria: DZ - UFSM, 2026. Disponível em: https://ais-pre-7f2zeureu5zdfqg5aqdxm4-170723044273.us-east1.run.app/. Acesso em: [Data de Acesso].
-                        </div>
-                      </div>
-
-                      <div className="p-5 rounded-2xl border border-slate-800 bg-[#070a13] hover:border-slate-700/80 transition-colors relative">
-                        <div className="absolute top-4 right-4 text-[10px] bg-[#131d35] text-slate-300 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider font-mono border border-slate-700/40">
-                          APA
-                        </div>
-                        <h4 className="text-xs font-bold text-slate-300 mb-1 font-display">Formato APA</h4>
-                        <div className="p-3 bg-slate-500/5 border border-slate-800 rounded-xl select-all font-mono text-[10px] text-slate-300 leading-relaxed pr-16 break-all">
-                          Pacheco, P. S., & Pizzuti, L. A. D. (2026). *SimuBoi: Simulador bioeconômico e estatístico de risco para confinamento bovino* (Version 1.0) [Software]. Department of Animal Science, Federal University of Santa Maria (DZ - UFSM). Available from https://ais-pre-7f2zeureu5zdfqg5aqdxm4-170723044273.us-east1.run.app/.
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   </section>
                 </div>
@@ -11576,23 +12462,232 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           <TrendingUp className="w-4 h-4 text-indigo-400" />
                           Aba Análise Determinística
                         </h4>
-                        <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5">
+                        <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5 text-left">
                           <li><strong>Viabilidade Econômica:</strong> VPL, ROIA e IB:C baseados no cenário médio (determinístico).</li>
-                          <li><strong>Desempenho Bioeconômico:</strong> Custos por kg de ganho, por arroba e por dia.</li>
-                          <li><strong>Fluxo de Caixa:</strong> Gráfico e tabela detalhando entradas e saídas mensais.</li>
+                          <li><strong>Desempenho Bioeconômico:</strong> Custos detalhados por kg de ganho, por arroba produzida e por dia de confinamento.</li>
+                          <li><strong>Fluxo de Caixa Dinâmico:</strong> Gráfico de barras e tabela analítica sequencial mapeando as entradas e saídas do caixa operacional ao longo dos meses.</li>
                         </ul>
                       </div>
 
                       <div className="p-4 bg-[#070a13] rounded-2xl border border-slate-800/80">
                         <h4 className="font-bold text-slate-100 text-sm mb-2 flex items-center gap-2 font-display">
                           <ShieldAlert className="w-4 h-4 text-amber-500" />
-                          Aba Análise de Risco
+                          Aba Análise de Risco (Simulação Probabilística LHS)
                         </h4>
-                        <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5">
-                          <li><strong>Histograma de VPL:</strong> Mostra a distribuição de probabilidade dos resultados.</li>
-                          <li><strong>Probabilidade de Prejuízo:</strong> A chance real do projeto não atingir a rentabilidade desejada.</li>
-                          <li><strong>Análise de Sensibilidade (Correlação):</strong> Identifica quais variáveis (preços, GMD, etc.) mais impactam o seu lucro.</li>
+                        <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5 text-left">
+                          <li><strong>Histograma do VPL & Curvação S-Curve:</strong> Visualize interativamente a probabilidade acumulada dos retornos do fluxo de caixa operacional.</li>
+                          <li><strong>Probabilidade de Prejuízo Real:</strong> A métrica central que dita o risco efetivo do projeto não atingir ou violar a TMA especificada.</li>
+                          <li><strong>Modelo de Dependência por Cópulas:</strong> Altere dinamicamente a modelagem de correlação conjunta de caudas (Gaussiana, Clayton para riscos e colapsos de baixa, Gumbel para escaladas otimistas).</li>
+                          <li><strong>Tornado de Sensibilidade por Pearson (r):</strong> Descubra a correlação linear imediata que rege a dispersão das variáveis do cocho.</li>
                         </ul>
+                      </div>
+
+                      <div className="p-4 bg-[#070a13] rounded-2xl border border-slate-800/80">
+                        <h4 className="font-bold text-slate-100 text-sm mb-2 flex items-center gap-2 font-display">
+                          <Leaf className="w-4 h-4 text-emerald-400" />
+                          Aba Bem-Estar & ESG (Sustentabilidade)
+                        </h4>
+                        <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5 text-left">
+                          <li><strong>Escore de Bem-Estar Animal:</strong> Avalie critérios estruturais de lama, espaço de cocho, sombra e sanidade (Status Requerido &ge; 8).</li>
+                          <li><strong>Rastreabilidade Individual Documentada:</strong> Simule o status do rebanho para desbloquear bônus industriais.</li>
+                          <li><strong>Bonificações de Mercado de Carne Premium:</strong> Conheça a qualificação do lote para bônus reais por arroba (Cota Hilton e marcas premium de cortes de grife).</li>
+                          <li><strong>Métrica Verde de Emissão de Metano entérico:</strong> Projete o volume volumétrico em kg e equivalentes das emissões gasosas estomacais de CO₂/CH₄ por ciclo do lote.</li>
+                        </ul>
+                      </div>
+
+                      <div className="p-4 bg-[#070a13] rounded-2xl border border-slate-800/80">
+                        <h4 className="font-bold text-slate-100 text-sm mb-2 flex items-center gap-2 font-display">
+                          <BrainCircuit className="w-4 h-4 text-pink-400" />
+                          Aba Sensibilidade Global Avançada (Sobol & Morris)
+                        </h4>
+                        <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5 text-left">
+                          <li><strong>Método de Screening Morris (OAT):</strong> Identifica quais inputs biológicos e financeiros agem com relações altamente não-lineares ou sinergias no rebanho.</li>
+                          <li><strong>Decomposição de Variância por Índices de Sobol:</strong> ANOVA funcional de precisão que destrincha a parcela exata do risco sob o VPL causada por cada cotação ou índice isoladamente.</li>
+                          <li><strong>Visualização por dispersão e gráficos dinâmicos:</strong> Interprete graficamente a influência e o grau de acoplamento das decisões nutricionais.</li>
+                        </ul>
+                      </div>
+
+                      <div className="p-4 bg-[#070a13] rounded-2xl border border-slate-800/80">
+                        <h4 className="font-bold text-slate-100 text-sm mb-2 flex items-center gap-2 font-display">
+                          <AlertCircle className="w-4 h-4 text-rose-455" />
+                          Aba Testes de Estresse (Choques Macroeconômicos)
+                        </h4>
+                        <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5 text-left">
+                          <li><strong>Macro-Choques pré-configurados estruturais:</strong> Simule instantaneamente crises cambiais severas que encarecem concentrados exógenos, embargos industriais com desvalorização cambial ou surto sanitário nas baias do confinamento.</li>
+                          <li><strong>Quebra do VPL e resiliência:</strong> Monitore as linhas de quebra do ponto de equilíbrio (Break-even pricing) e as perdas de rentabilidade reais sob eventos extremos de cauda.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="space-y-6">
+                    <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2 font-display">
+                       <div className="w-1.5 h-6 bg-pink-500 rounded-full" />
+                       Escore de Bem-Estar Animal & Sistema de Rastreabilidade
+                    </h3>
+                    <div className="p-6 bg-[#070a13] rounded-2xl border border-pink-500/10 hover:border-pink-500/20 transition-all font-sans relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-8 opacity-[0.02] pointer-events-none">
+                        <Heart className="w-24 h-24 text-pink-400" />
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                        O ecossistema analisa o Escore de Bem-Estar Animal de maneira cruzada com o sistema de Rastreabilidade:
+                      </p>
+                      <div className="space-y-4">
+                        <div className="p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/10">
+                          <h5 className="text-xs font-bold text-emerald-400 flex items-center gap-2 mb-1.5 font-display">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            Padrão Exportação (Score ≥ 8 + Rastreabilidade Total)
+                          </h5>
+                          <p className="text-xs text-slate-400 leading-relaxed font-normal">
+                            Habilita o confinamento a obter o status comercial máximo na aba de Resultados. Permite o enquadramento em bônus específicos (como a Cota Hilton (União Europeia), carnes de marca integrada ou nichos de mercado de prestígio), que chegam a bonificar o produtor em prêmios de preço por arroba.
+                          </p>
+                        </div>
+                        
+                        <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/10">
+                          <h5 className="text-xs font-bold text-amber-400 flex items-center gap-2 mb-1.5 font-display">
+                            <span className="w-2 h-2 rounded-full bg-amber-500" />
+                            Atenção Técnica (Apenas um dos requisitos atingido)
+                          </h5>
+                          <p className="text-xs text-slate-400 leading-relaxed font-normal">
+                            Se houver alto bem-estar físico, mas ausência de rastreabilidade documental confiável (ou vice-versa), o motor gera um aviso recomendando foco técnico. Sem o acoplamento simultâneo das duas práticas, o produtor não usufrui dos potenciais bônus comerciais oficiais por arroba comercializada.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-rose-500/5 rounded-xl border border-rose-500/10">
+                          <h5 className="text-xs font-bold text-rose-400 flex items-center gap-2 mb-1.5 font-display">
+                            <span className="w-2 h-2 rounded-full bg-rose-500" />
+                            Alerta de Risco (Abaixo de 7)
+                          </h5>
+                          <p className="text-xs text-slate-400 leading-relaxed font-normal">
+                            Alerta o produtor de que a operação está suscetível a penalizações, deságios fabris por contusões elevadas e exclusão comercial das principais cadeias varejistas contemporâneas.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* NOVO MANUAL: GUIA DE CENÁRIOS DE ALTA RESPONSABILIDADE */}
+                  <section className="space-y-6 text-left">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-450">
+                        <GraduationCap className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-100 font-display">
+                          Guia de Tomada de Decisão de Alta Responsabilidade
+                        </h3>
+                        <p className="text-xs text-emerald-400 font-semibold uppercase tracking-wider font-mono">Como usar a inteligência do SimuBoi em 3 simulações reais do campo profissional</p>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-slate-300 leading-relaxed font-sans">
+                      Diferente de planilhas de cálculo isolado, o SimuBoi interconecta os efeitos biológicos e de comércio. A seguir, veja como conduzir três fluxos práticos para mitigar riscos extremos e qualificar bônus comerciais:
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-6">
+                      {/* CENÁRIO 1 */}
+                      <div className="p-6 bg-slate-950/40 rounded-3xl border border-indigo-500/10 hover:border-indigo-500/25 transition-all">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="px-2.5 py-1 text-[10px] font-bold bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 rounded-lg font-mono">CASO ESTUDO 1</span>
+                          <h4 className="font-bold text-slate-100 text-sm font-display">
+                            Gestão de Insumos Voláteis & Trava na Bolsa (B3)
+                          </h4>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans mb-4">
+                          <strong>Desafio Comercial:</strong> O preço médio dos concentrados proteicos (farelo de soja) flutua rapidamente no mercado internacional. Qual o limite de sobrevivência da fazenda antes de necessitar de hedge futures (trava na B3)?
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans text-slate-405">
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80">
+                            <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-indigo-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Como Conduzir no software:
+                            </span>
+                            <ol className="list-decimal pl-4 space-y-1">
+                              <li>Insira a flutuação estimada em <strong>Preço do Concentrado</strong> e amplie o desvio padrão histórico nas configurações para simular tempos de crise severa.</li>
+                              <li>Acesse a aba <strong>"Sensibilidade Global"</strong> para auditar os Índices de Sobol.</li>
+                              <li>Se o índice de efeito total (STi) do Concentrado superar <strong>0.50</strong>, a volatilidade da ração rege a viabilidade do lote.</li>
+                            </ol>
+                          </div>
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80 flex flex-col justify-between">
+                            <div>
+                              <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ação Estratégica Recomendada:
+                              </span>
+                              <p className="text-[11px] leading-relaxed">
+                                Se a <strong>Probabilidade de Prejuízo</strong> ultrapassar seu apetite ao risco (ex: &gt; 15%), trave preventivamente a arroba no mercado futuro de boi gordo ou negocie contratos parciais de CPR física de milho antes da entrada do gado na engorda.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CENÁRIO 2 */}
+                      <div className="p-6 bg-slate-950/40 rounded-3xl border border-emerald-500/10 hover:border-emerald-500/25 transition-all">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="px-2.5 py-1 text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-355 rounded-lg font-mono">CASO ESTUDO 2</span>
+                          <h4 className="font-bold text-slate-100 text-sm font-display">
+                            Certificação ESG e Planejamento para Cota Hilton
+                          </h4>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans mb-4">
+                          <strong>Desafio Comercial:</strong> O confinamento busca vender em frigoríficos de exportação premium habilitados para quotas internacionais de valor agregado, mas precisa justificar investimentos estruturais em bem-estar.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans text-slate-405">
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80">
+                            <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-indigo-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Como Conduzir no software:
+                            </span>
+                            <ol className="list-decimal pl-4 space-y-1">
+                              <li>Na aba <strong>"Bem-Estar & ESG"</strong>, insira os parâmetros de lama nas baias, espaçamento linear de cocho e grau de sombra técnica.</li>
+                              <li>Altere a chave de <strong>Rastreabilidade Individual</strong> para ativada.</li>
+                              <li>Garanta que o <strong>Escore Geral</strong> final atinja um valor maior ou igual a 8.</li>
+                            </ol>
+                          </div>
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80 flex flex-col justify-between">
+                            <div>
+                              <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ação Estratégica Recomendada:
+                              </span>
+                              <p className="text-[11px] leading-relaxed">
+                                Audite na aba <strong>"Resultados"</strong> o incremento financeiro gerado pelo bônus de exportação por arroba de abate. Compare o custo incremental necessário para melhorar as instalações contra o ganho real de VPL e ROIA do ciclo completo.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CENÁRIO 3 */}
+                      <div className="p-6 bg-slate-950/40 rounded-3xl border border-rose-500/10 hover:border-rose-500/25 transition-all">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="px-2.5 py-1 text-[10px] font-bold bg-rose-500/10 border border-rose-500/20 text-rose-350 rounded-lg font-mono">CASO ESTUDO 3</span>
+                          <h4 className="font-bold text-slate-100 text-sm font-display">
+                            Gestão de Caixa Sob Crises de Óbitos de Curral
+                          </h4>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans mb-4">
+                          <strong>Desafio Comercial:</strong> Um surto imprevisto de pneumonia respiratória ou anaplasmose bovina nas primeiras três semanas de confinamento eleva as baixas de cocho. Como projetar a insolvência real do caixa da fazenda?
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans text-slate-405">
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80">
+                            <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-indigo-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Como Conduzir no software:
+                            </span>
+                            <ol className="list-decimal pl-4 space-y-1">
+                              <li>Vá até a aba de <strong>"Testes de Estresse"</strong>.</li>
+                              <li>Dispare e aplique o perfil de choque <strong>"Colapso Sanitário nas Baias"</strong>.</li>
+                              <li>Acompanhe como as perdas elevam de forma imediata o custo de reposição para as arrobas vendidas sobreviventes através da rotina de diluição de Matsunaga.</li>
+                            </ol>
+                          </div>
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80 flex flex-col justify-between">
+                            <div>
+                              <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ação Estratégica Recomendada:
+                              </span>
+                              <p className="text-[11px] leading-relaxed">
+                                Avalie a <strong>Quebra de VPL</strong> resultante e compare-a com as reservas de capital operacional da sua empresa rural. Determine se o novo Ponto de Equilíbrio exigido para a venda é realizável no mercado de gado atual.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </section>
@@ -11722,9 +12817,6 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                   <p className="font-semibold text-slate-400 uppercase tracking-wider text-[10px] font-mono">Desenvolvido por:</p>
                   <p className="mt-1 font-semibold text-slate-200">
                     2026&copy; Prof. Paulo Pacheco (<a href="mailto:paulo.pacheco@ufsm.br" className="text-indigo-400 hover:underline">paulo.pacheco@ufsm.br</a>) utilizando o Google AI Studio.
-                  </p>
-                  <p className="mt-1 text-slate-400">
-                    com colaboração científica e revisão técnica do Prof. Dr. Luiz &Acirc;ngelo Damian Pizzuti
                   </p>
                 </div>
                 <div className="text-center sm:text-right shrink-0 border-t sm:border-t-0 sm:border-l border-slate-800 pt-4 sm:pt-0 sm:pl-6">
