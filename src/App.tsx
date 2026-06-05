@@ -80,6 +80,7 @@ import {
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { optimizeDiet, calculateRequirements, DEFAULT_INGREDIENTS } from './services/dietOptimizerService';
 import { fetchMarketPrices } from './services/marketService';
 import { SimulationInputs, SimulationResults, LHSSimulationResults, Pesagem, Ultrassom, SavedSimulation, MarketPrice, DepreciationItem, Ingredient, DietRequirements, DietOptimizationResult, DietAnimalProfile, SavedDiet } from './types';
@@ -1459,6 +1460,277 @@ export default function App() {
       ingredients: dietIngredients
     } : d));
     showToast(`Dieta "${name}" modificada e salva com sucesso!`, 'success');
+  };
+
+  const handleExportXLSX = () => {
+    if (!dietResult) {
+      showToast('Nenhuma dieta otimizada encontrada para exportação.', 'error');
+      return;
+    }
+
+    const animalConfig = dietAnimalProfile;
+    const reqs = dietRequirements;
+    const profile = dietResult.nutritionalProfile;
+
+    // Process ingredients
+    const results = [...dietResult.ingredients].sort((a, b) => b.percentage - a.percentage);
+    const ingredientsWithMN = results.map(ing => {
+      const ingDef = dietIngredients.find(oi => oi.name === ing.name);
+      const msPct = ingDef ? ingDef.ms / 100 : 0.85;
+      const kgMS = (dietResult.cms || 0) * (ing.percentage / 100);
+      const kgMN = msPct > 0 ? (kgMS / msPct) : 0;
+      return {
+        ...ing,
+        type: ingDef ? ingDef.type : 'concentrado',
+        price: ingDef ? ingDef.price : 0,
+        kgMS,
+        kgMN,
+      };
+    });
+
+    const sumKgMN = ingredientsWithMN.reduce((sum, item) => sum + item.kgMN, 0);
+
+    const rows: any[][] = [];
+
+    // Header Panel
+    rows.push(["SIMUBOI - PLANEJAMENTO E FORMULAÇÃO DE DIETA (XLSX)"]);
+    rows.push(["Relatório de Otimização e Controle Nutricional"]);
+    rows.push(["Data de Geração:", `${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`]);
+    rows.push(["Ferramenta:", "SimuBoi FeedSim Pro (NRC/NASEM 2016)"]);
+    rows.push([]);
+
+    // Section 1: Perfil do Animal
+    rows.push(["1. PERFIL DO ANIMAL E CONFIGURAÇÕES DO LOTE"]);
+    rows.push(["Métrica", "Valor", "Unidade", "Propriedade", "Especificação"]);
+    rows.push([
+      "Peso Vivo Inicial", 
+      Number(animalConfig.weight), 
+      "kg", 
+      "Sexo (NRC)", 
+      animalConfig.sex === 'macho' ? 'Macho Castrado' : animalConfig.sex === 'inteiro' ? 'Macho Inteiro' : 'Fêmea'
+    ]);
+    rows.push([
+      "Peso Vivo Final (Meta)", 
+      Number(animalConfig.finalWeight), 
+      "kg", 
+      "Raça / Genética", 
+      animalConfig.raca === 'zebuino' ? 'Bos Indicus (Zebu)' : animalConfig.raca === 'europeu' ? 'Bos Taurus (Europeu)' : 'Cruzamento Industrial'
+    ]);
+    rows.push([
+      "Meta GMD", 
+      Number(animalConfig.gmd), 
+      "kg/dia", 
+      "Tamanho de Frame", 
+      animalConfig.frameSize.charAt(0).toUpperCase() + animalConfig.frameSize.slice(1)
+    ]);
+    rows.push([
+      "Idade do Lote", 
+      Number(animalConfig.idade), 
+      "meses", 
+      "ECC (1 a 9)", 
+      Number(animalConfig.ecc)
+    ]);
+    rows.push([
+      "Tamanho do Lote", 
+      Number(batchSize), 
+      "animais",
+      "",
+      ""
+    ]);
+    rows.push([]);
+
+    // Section 2: Desempenho Predito
+    rows.push(["2. DESEMPENHO BIOLÓGICO PREDITO"]);
+    rows.push(["Indicador de Desempenho", "Valor Estimado", "Unidade"]);
+    rows.push(["GMD Calculado do Lote", Number(dietResult.predictedGmd), "kg/dia"]);
+    rows.push(["Conversão Alimentar", Number(dietResult.feedConversion), ":1"]);
+    rows.push(["Consumo de Matéria Seca (CMS)", Number((dietResult.cms || 0)), "kg/dia"]);
+    rows.push(["CMS % Peso Vivo", Number((dietResult.cmsPercentageBW || ((dietResult.cms || 0) / animalConfig.weight * 105))), "% PV"]);
+    rows.push(["Ingestão de Água Estimada", Number(dietResult.waterIntake), "Litros/animal/dia"]);
+    rows.push([]);
+
+    // Section 3: Custos Econômicos por Animal e por Lote
+    const animalDailyCost = dietResult.totalCostMN * (dietResult.forageIntakeMN + dietResult.concentrateIntakeMN);
+    const batchDailyCost = animalDailyCost * batchSize;
+
+    rows.push(["3. RESUMO DE CUSTOS POR ANIMAL E POR LOTE"]);
+    rows.push(["Unidade de Ração / Gasto", "Custo / kg MS (R$)", "Custo / kg MN (R$)", "Custo / Animal / Dia (R$)", `Custo Diário Lote - ${batchSize} Animais (R$)`]);
+    rows.push([
+      "Volumoso", 
+      Number(dietResult.forageCostPerKgMS), 
+      Number(dietResult.forageCostPerKgMN), 
+      Number((dietResult.forageIntakeMN * dietResult.forageCostPerKgMN)),
+      Number((dietResult.forageIntakeMN * dietResult.forageCostPerKgMN * batchSize))
+    ]);
+    rows.push([
+      "Concentrado", 
+      Number(dietResult.concentrateCostPerKgMS), 
+      Number(dietResult.concentrateCostPerKgMN), 
+      Number((dietResult.concentrateIntakeMN * dietResult.concentrateCostPerKgMN)),
+      Number((dietResult.concentrateIntakeMN * dietResult.concentrateCostPerKgMN * batchSize))
+    ]);
+    rows.push([
+      "Custo Ração Otimizado (Total)", 
+      Number(dietResult.totalCost), 
+      Number(dietResult.totalCostMN), 
+      Number(animalDailyCost),
+      Number(batchDailyCost)
+    ]);
+    rows.push([]);
+
+    // Section 4: Formulação Atual - Insumos
+    rows.push(["4. DETALHAMENTO DA FORMULAÇÃO DA DIETA ATUAL"]);
+    rows.push([
+      "Insumo", 
+      "Categoria", 
+      "Inclusão (% MS)", 
+      "Inclusão (% MN)", 
+      "Qtd. MS / Cab (kg)", 
+      "Qtd. MN / Cab (kg)", 
+      `Total Diário Lote (${batchSize} anim) (kg)`, 
+      "Preço / kg MN (R$)", 
+      "Custo Cab/Dia (R$)"
+    ]);
+
+    let totalPctMS = 0;
+    let totalPctMN = 0;
+    let totalKgMS = 0;
+    let totalKgMN = 0;
+    let totalLoteMN = 0;
+    let totalCusto = 0;
+
+    ingredientsWithMN.forEach(ing => {
+      const pctMN = sumKgMN > 0 ? (ing.kgMN / sumKgMN) * 100 : 0;
+      const batchMN = ing.kgMN * batchSize;
+      const costPerAnimal = ing.kgMN * ing.price;
+
+      totalPctMS += ing.percentage;
+      totalPctMN += pctMN;
+      totalKgMS += ing.kgMS;
+      totalKgMN += ing.kgMN;
+      totalLoteMN += batchMN;
+      totalCusto += costPerAnimal;
+
+      let typeLabel = "Concentrado";
+      if (ing.type === 'volumoso') typeLabel = "Volumoso";
+      else if (ing.type === 'mineral') typeLabel = "Mineral";
+      else if (ing.type === 'aditivo') typeLabel = "Aditivo";
+
+      rows.push([
+        ing.name,
+        typeLabel,
+        Number(ing.percentage.toFixed(2)),
+        Number(pctMN.toFixed(2)),
+        Number(ing.kgMS.toFixed(3)),
+        Number(ing.kgMN.toFixed(3)),
+        Number(batchMN.toFixed(1)),
+        Number(ing.price.toFixed(3)),
+        Number(costPerAnimal.toFixed(2))
+      ]);
+    });
+
+    // Total Row
+    rows.push([
+      "Total Geral",
+      "—",
+      Number(totalPctMS.toFixed(2)),
+      Number(totalPctMN.toFixed(2)),
+      Number(totalKgMS.toFixed(3)),
+      Number(totalKgMN.toFixed(3)),
+      Number(totalLoteMN.toFixed(1)),
+      "—",
+      Number(totalCusto.toFixed(2))
+    ]);
+    rows.push([]);
+
+    // Section 5: Controle Nutricional
+    const checkStatus = (val: number, req: number) => val >= req ? "✔ Conforme" : "✘ Abaixo da Exigência";
+    const checkFDN = (val: number, min: number, max: number) => (val >= min && val <= max) ? "✔ Recomendado" : val < min ? "⚠ Abaixo da Fibra Mínima" : "⚠ Acima da Fibra Máxima";
+
+    rows.push(["5. EXIGÊNCIAS NUTRICIONAIS ATINGIDAS VS EXPERIMENTADAS (CONTROLE NUTRICIONAL)"]);
+    rows.push(["Nutriente", "Meta Mínima / Faixa Recom.", "Teor Formulado na Dieta", "Status de Conformidade"]);
+    rows.push([
+      "Proteína Bruta (PB)", 
+      `${reqs.pbMin.toFixed(2)}%`, 
+      `${profile.pb.toFixed(2)}%`, 
+      checkStatus(profile.pb, reqs.pbMin)
+    ]);
+    rows.push([
+      "Nutrientes Digestíveis Totais (NDT)", 
+      `${reqs.ndtMin.toFixed(2)}%`, 
+      `${profile.ndt.toFixed(2)}%`, 
+      checkStatus(profile.ndt, reqs.ndtMin)
+    ]);
+    rows.push([
+      "Fibra em Detergente Neutro (FDN)", 
+      `${reqs.fdnMin.toFixed(1)}% a ${reqs.fdnMax.toFixed(1)}%`, 
+      `${profile.fdn.toFixed(1)}%`, 
+      checkFDN(profile.fdn, reqs.fdnMin, reqs.fdnMax)
+    ]);
+    rows.push([
+      "Cálcio (Ca)", 
+      `${reqs.caMin.toFixed(2)}%`, 
+      `${profile.ca.toFixed(2)}%`, 
+      checkStatus(profile.ca, reqs.caMin)
+    ]);
+    rows.push([
+      "Fósforo (P)", 
+      `${reqs.pMin.toFixed(2)}%`, 
+      `${profile.p.toFixed(2)}%`, 
+      checkStatus(profile.p, reqs.pMin)
+    ]);
+    rows.push([
+      "Relação Cálcio:Fósforo (Ca:P)", 
+      "1.50 a 2.50", 
+      Number((profile.ca / Math.max(0.01, profile.p)).toFixed(2)), 
+      "✔ Conforme"
+    ]);
+    rows.push([
+      "Extrato Etéreo (Gorduras)", 
+      `Max ${reqs.eeMax?.toFixed(1) || '7.0'}%`, 
+      `${profile.ee.toFixed(2)}%`, 
+      "✔ Conforme"
+    ]);
+    rows.push([]);
+
+    // Section 6: Protocolo de Adaptação
+    rows.push(["6. PROTOCOLO DE ADAPTAÇÃO RECOMENDADO"]);
+    rows.push(["Fase", "Período", "Proporção Volumoso / Concentrado"]);
+    rows.push(["Fase 1", "Dias 1 a 7", "60% Volumoso / 40% Concentrado"]);
+    rows.push(["Fase 2", "Dias 8 a 14", "40% Volumoso / 60% Concentrado"]);
+    rows.push(["Fase 3", "Dias 15 a 21", "20% Volumoso / 80% Concentrado"]);
+    rows.push([]);
+
+    // Section 7: Alertas de Nutrição
+    if (dietResult.alerts.length > 0) {
+      rows.push(["7. ALERTA TÉCNICOS E AMBIENTAIS DE FORMULAÇÃO"]);
+      dietResult.alerts.forEach((alert, i) => {
+        rows.push([`Alerta ${i + 1}`, alert]);
+      });
+    } else {
+      rows.push(["7. ALERTAS TÉCNICOS"]);
+      rows.push(["Status", "Dieta totalmente estável e equilibrada."]);
+    }
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // Dynamic columns sizing
+    ws['!cols'] = [
+      { wch: 40 }, // A
+      { wch: 22 }, // B
+      { wch: 18 }, // C
+      { wch: 18 }, // D
+      { wch: 18 }, // E
+      { wch: 18 }, // F
+      { wch: 18 }, // G
+      { wch: 18 }, // H
+      { wch: 18 }  // I
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, "Dieta Otimizada");
+    XLSX.writeFile(wb, `SimuBoi_Relatorio_Dieta_${new Date().toISOString().substring(0,10)}.xlsx`);
+    showToast('Planilha XLSX exportada com sucesso!', 'success');
   };
 
   const handlePrintDiet = () => {
@@ -4292,7 +4564,17 @@ export default function App() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo kg Ganho</p>
                         <Info className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 transition-colors" />
                       </div>
-                      <p className="text-lg font-bold text-slate-100 font-mono">{formatCurrency(results.custoKgGanho)}</p>
+                      <p className="text-lg font-bold text-slate-100 font-mono">
+                        <motion.span
+                          key={results.custoKgGanho}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {formatCurrency(results.custoKgGanho)}
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       <p className="font-bold mb-1 text-emerald-400">Custo por kg de Ganho</p>
@@ -4309,7 +4591,17 @@ export default function App() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo Total / Dia</p>
                         <Info className="w-3 h-3 text-gray-300" />
                       </div>
-                      <p className="text-lg font-bold text-slate-100 font-mono">{formatCurrency(results.custoTotalPorAnimalDia)}</p>
+                      <p className="text-lg font-bold text-slate-100 font-mono">
+                        <motion.span
+                          key={results.custoTotalPorAnimalDia}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {formatCurrency(results.custoTotalPorAnimalDia)}
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       <p className="font-bold mb-1 text-emerald-400">Custo Total por Animal/Dia</p>
@@ -4326,7 +4618,17 @@ export default function App() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo Operacional / Dia</p>
                         <Info className="w-3 h-3 text-gray-300" />
                       </div>
-                      <p className="text-lg font-bold text-slate-100">{formatCurrency(results.custoTotalSemCompraDia)}</p>
+                      <p className="text-lg font-bold text-slate-100">
+                        <motion.span
+                          key={results.custoTotalSemCompraDia}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {formatCurrency(results.custoTotalSemCompraDia)}
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       <p className="font-bold mb-1 text-emerald-400">Custo Total/Dia (sem compra)</p>
@@ -4343,7 +4645,17 @@ export default function App() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo @ Produzida</p>
                         <Info className="w-3 h-3 text-gray-300" />
                       </div>
-                      <p className="text-lg font-bold text-slate-100">{formatCurrency(results.custoArrobaGanho)}</p>
+                      <p className="text-lg font-bold text-slate-100">
+                        <motion.span
+                          key={results.custoArrobaGanho}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {formatCurrency(results.custoArrobaGanho)}
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       <p className="font-bold mb-1 text-emerald-400">Custo por @ Produzida</p>
@@ -4361,7 +4673,17 @@ export default function App() {
                         <Info className="w-3 h-3 text-gray-300" />
                       </div>
                       <div className="flex items-baseline gap-2">
-                        <p className="text-lg font-bold text-slate-100">{formatCurrency(results.custoPorArroba)}</p>
+                        <p className="text-lg font-bold text-slate-100">
+                          <motion.span
+                            key={results.custoPorArroba}
+                            initial={{ opacity: 0.3, y: -2 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.25 }}
+                            className="inline-block"
+                          >
+                            {formatCurrency(results.custoPorArroba)}
+                          </motion.span>
+                        </p>
                         <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 whitespace-nowrap" title="Ponto de Equilíbrio">
                           PE: {formatCurrency(results.pontoEquilibrioPreco)}
                         </span>
@@ -4383,7 +4705,15 @@ export default function App() {
                         <Info className="w-3 h-3 text-gray-300" />
                       </div>
                       <p className={`text-lg font-bold ${results.agioDesagio > 0 ? 'text-amber-600' : 'text-emerald-400'}`}>
-                        {results.agioDesagio > 0 ? '+' : ''}{results.agioDesagio.toFixed(2)}%
+                        <motion.span
+                          key={results.agioDesagio}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {results.agioDesagio > 0 ? '+' : ''}{results.agioDesagio.toFixed(2)}%
+                        </motion.span>
                       </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
@@ -4415,7 +4745,17 @@ export default function App() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ganho Peso Total</p>
-                      <p className="text-lg font-bold text-slate-100">{results.ganhoPesoTotal.toFixed(1)} kg</p>
+                      <p className="text-lg font-bold text-slate-100 font-mono">
+                        <motion.span
+                          key={results.ganhoPesoTotal}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {results.ganhoPesoTotal.toFixed(1)} kg
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       Total de kg ganhos por animal durante todo o período de confinamento.
@@ -4428,7 +4768,17 @@ export default function App() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">@ Produzidas</p>
-                      <p className="text-lg font-bold text-slate-100">{results.arrobasProduzidas.toFixed(2)} @</p>
+                      <p className="text-lg font-bold text-slate-100 font-mono">
+                        <motion.span
+                          key={results.arrobasProduzidas}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {results.arrobasProduzidas.toFixed(2)} @
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       Quantidade de arrobas de carcaça produzidas no confinamento (Ganho de carcaça).
@@ -4441,7 +4791,17 @@ export default function App() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Eficiência Alimentar</p>
-                      <p className="text-lg font-bold text-slate-100">{results.eficienciaAlimentar.toFixed(3)}</p>
+                      <p className="text-lg font-bold text-slate-100 font-mono">
+                        <motion.span
+                          key={results.eficienciaAlimentar}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {results.eficienciaAlimentar.toFixed(3)}
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       <p className="font-bold mb-1 text-cyan-400">Conversão Alimentar</p>
@@ -4455,7 +4815,17 @@ export default function App() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tempo de Cocho</p>
-                      <p className="text-lg font-bold text-slate-100">{inputs.tempoAlimentacao} dias</p>
+                      <p className="text-lg font-bold text-slate-100 font-mono">
+                        <motion.span
+                          key={inputs.tempoAlimentacao}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {inputs.tempoAlimentacao} dias
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       Duração total do período de alimentação intensiva.
@@ -4468,7 +4838,17 @@ export default function App() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sobrecusto Dieta</p>
-                      <p className="text-lg font-bold text-slate-100">{formatCurrency(results.sobrecustoDieta)}</p>
+                      <p className="text-lg font-bold text-slate-100 font-mono">
+                        <motion.span
+                          key={results.sobrecustoDieta}
+                          initial={{ opacity: 0.3, y: -2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="inline-block"
+                        >
+                          {formatCurrency(results.sobrecustoDieta)}
+                        </motion.span>
+                      </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                       <p className="font-bold mb-1 text-red-400">Ineficiência Alimentar</p>
@@ -7030,6 +7410,15 @@ export default function App() {
                             Salvar Dieta
                           </button>
                           <button
+                            onClick={handleExportXLSX}
+                            disabled={!dietResult}
+                            className="px-3 py-1.5 bg-slate-900 text-slate-300 border border-slate-800 rounded-xl font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-50 cursor-pointer"
+                            title="Exportar planilha Excel formatada"
+                          >
+                            <Download className="w-3.5 h-3.5 text-emerald-400" />
+                            Exportar XLSX
+                          </button>
+                          <button
                             onClick={handlePrintDiet}
                             disabled={!dietResult}
                             className="px-3 py-1.5 bg-slate-900 text-slate-300 border border-slate-800 rounded-xl font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-50 cursor-pointer"
@@ -7318,12 +7707,12 @@ export default function App() {
                         <Target className="w-5 h-5 text-sky-400" />
                         <div>
                           <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest font-sans">Objetivo e Limites</h4>
-                          <p className="text-[10px] text-slate-400">Configure as metas de otimização, consumo e volumoso para o cálculo automático</p>
+                          <p className="text-[10px] text-slate-400">Configure as metas de otimização e limites de volumoso para o cálculo automático</p>
                         </div>
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">Meta de Otimização</label>
                         <select 
@@ -7334,19 +7723,6 @@ export default function App() {
                           <option value="cost" className="bg-[#121826]">Custo Mínimo (R$/kg MS)</option>
                           <option value="gmd" className="bg-[#121826]">Meta de GMD ({dietAnimalProfile.gmd} kg/d)</option>
                         </select>
-                      </div>
-                      
-                      <div>
-                        <div className="flex justify-between mb-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">CMS (kg MS/dia)</label>
-                          <span className="text-xs font-black text-purple-400 font-mono">{formatNumber(dietRequirements.cms || 0)} kg MS</span>
-                        </div>
-                        <input 
-                          type="range" min="5" max="25" step="0.1"
-                          value={dietRequirements.cms}
-                          onChange={(e) => setDietRequirements(prev => ({ ...prev, cms: parseFloat(e.target.value) }))}
-                          className="w-full accent-purple-500 cursor-pointer"
-                        />
                       </div>
 
                       <div>
@@ -7438,24 +7814,65 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-wrap gap-4 justify-center items-center">
-                          <div className="flex flex-col items-center px-4">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Volumoso</span>
-                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.forageCostPerKgMN)}/kg de Matéria Natural (MN)</span>
-                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.forageCostPerKgMS)}/kg de Matéria Seca (MS)</span>
+                        <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-wrap gap-4 justify-between items-center">
+                          <div className="flex flex-wrap gap-4 items-center justify-center flex-1">
+                            <div className="flex flex-col items-center px-4">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Volumoso</span>
+                              <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.forageCostPerKgMN)}/kg MN</span>
+                              <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.forageCostPerKgMS)}/kg MS</span>
+                            </div>
+                            <div className="h-8 w-px bg-slate-800" />
+                            <div className="flex flex-col items-center px-4">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Concentrado</span>
+                              <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.concentrateCostPerKgMN)}/kg MN</span>
+                              <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.concentrateCostPerKgMS)}/kg MS</span>
+                            </div>
+                            <div className="h-8 w-px bg-slate-800" />
+                            <div className="flex flex-col items-center px-4">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Médio Dieta</span>
+                              <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN)}/kg MN</span>
+                              <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.totalCost)}/kg MS</span>
+                            </div>
                           </div>
-                          <div className="h-8 w-px bg-slate-800" />
-                          <div className="flex flex-col items-center px-4">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Concentrado</span>
-                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.concentrateCostPerKgMN)}/kg de Matéria Natural (MN)</span>
-                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.concentrateCostPerKgMS)}/kg de Matéria Seca (MS)</span>
+                          
+                          <button
+                            onClick={handleApplyOptimizedDiet}
+                            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold text-[10px] tracking-wide uppercase shadow-lg shadow-emerald-950/25 transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-500/20 shrink-0"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5 animate-pulse" />
+                            Sincronizar com Parâmetros
+                          </button>
+                        </div>
+
+                        {/* NOVO: Consumo de Volumosos e Concentrado (MN e MS) + Sincronização */}
+                        <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-wrap gap-6 justify-between items-center">
+                          <div className="flex flex-wrap gap-6 items-center">
+                            <div className="flex flex-col text-left px-2">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-sans mb-1">Consumo de Volumoso</span>
+                              <span className="text-xs font-black text-[#10b981] font-mono">{dietResult.forageIntakeMN.toFixed(2)} kg <span className="text-[9px] font-semibold text-slate-400">MN/dia</span></span>
+                              <span className="text-[10px] text-slate-300 font-mono">{((dietResult.cms || 0) * (dietResult.foragePercentage / 100)).toFixed(2)} kg <span className="text-[8px] font-semibold text-slate-400">MS/dia</span></span>
+                            </div>
+                            <div className="h-10 w-px bg-slate-800 hidden md:block" />
+                            <div className="flex flex-col text-left px-2">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-sans mb-1">Consumo de Concentrado</span>
+                              <span className="text-xs font-black text-[#10b981] font-mono">{dietResult.concentrateIntakeMN.toFixed(2)} kg <span className="text-[9px] font-semibold text-slate-400">MN/dia</span></span>
+                              <span className="text-[10px] text-slate-300 font-mono">{((dietResult.cms || 0) * (dietResult.concentratePercentage / 100)).toFixed(2)} kg <span className="text-[8px] font-semibold text-slate-400">MS/dia</span></span>
+                            </div>
+                            <div className="h-10 w-px bg-slate-800 hidden md:block" />
+                            <div className="flex flex-col text-left px-2">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-sans mb-1">Consumo Total (CMS)</span>
+                              <span className="text-xs font-black text-purple-400 font-mono">{(dietResult.forageIntakeMN + dietResult.concentrateIntakeMN).toFixed(2)} kg <span className="text-[9px] font-semibold text-slate-400">MN/dia</span></span>
+                              <span className="text-[10px] text-purple-300 font-mono">{(dietResult.cms || 0).toFixed(2)} kg <span className="text-[8px] font-semibold text-slate-400">MS/dia</span></span>
+                            </div>
                           </div>
-                          <div className="h-8 w-px bg-slate-800" />
-                          <div className="flex flex-col items-center px-4">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Médio Dieta</span>
-                            <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN)}/kg de Matéria Natural (MN)</span>
-                            <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.totalCost)}/kg de Matéria Seca (MS)</span>
-                          </div>
+                          
+                          <button
+                            onClick={handleApplyOptimizedDiet}
+                            className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold text-[11px] tracking-wide uppercase shadow-lg shadow-purple-950/25 transition-all flex items-center justify-center gap-2 cursor-pointer border border-purple-500/20"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Sincronizar com Parâmetros
+                          </button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -7826,6 +8243,15 @@ export default function App() {
                     >
                       <Save className="w-3.5 h-3.5 text-white" />
                       Salvar Dieta
+                    </button>
+                    <button
+                      onClick={handleExportXLSX}
+                      disabled={!dietResult}
+                      className="px-4 py-2 bg-slate-900 text-slate-300 border border-slate-800 rounded-xl font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-50 cursor-pointer shadow-sm"
+                      title="Exportar planilha Excel formatada"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
+                      Exportar XLSX
                     </button>
                     <button
                       onClick={handlePrintDiet}
@@ -10907,8 +11333,30 @@ function ResultCard({ title, value, subValue, icon, color, tooltip }: { title: s
           {icon}
         </div>
       </div>
-      <div className="text-2xl font-display font-extrabold text-slate-100 tracking-tight">{value}</div>
-      {subValue && <div className="text-xs font-semibold text-slate-400 mt-1.5 flex items-center gap-1">{subValue}</div>}
+      <div className="text-2xl font-display font-extrabold text-slate-100 tracking-tight">
+        <motion.span
+          key={value}
+          initial={{ opacity: 0.3, y: -2 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="inline-block"
+        >
+          {value}
+        </motion.span>
+      </div>
+      {subValue && (
+        <div className="text-xs font-semibold text-slate-400 mt-1.5 flex items-center gap-1">
+          <motion.span
+            key={subValue}
+            initial={{ opacity: 0.3 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.25 }}
+            className="inline-block"
+          >
+            {subValue}
+          </motion.span>
+        </div>
+      )}
       {tooltip && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
           <p className="font-bold mb-1 text-slate-200">{title}</p>
@@ -12005,10 +12453,10 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                       </p>
 
                       <div className="space-y-4">
-                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400 font-display">
                           A. Ajustes Iniciais de Peso Vivo e Conversões
                         </h4>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-400 font-sans">
                           Os cálculos nutricionais e de consumo baseiam-se no Peso Corporal de Jejum (SBW) e Peso de Corpo Vazio (EBW):
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -12017,61 +12465,61 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <span className="font-mono text-emerald-400 font-semibold block mt-1">SBW = BW × 0.96</span>
                           </div>
                           <div className="p-3 bg-slate-950 rounded-xl border border-slate-900 text-center text-xs">
-                            <span className="text-slate-500 block font-mono">EBW (Empty Body Weight)</span>
+                            <span className="text-slate-550 block font-mono">EBW (Empty Body Weight)</span>
                             <span className="font-mono text-emerald-400 font-semibold block mt-1">EBW = SBW × 0.891</span>
                           </div>
                           <div className="p-3 bg-slate-950 rounded-xl border border-slate-900 text-center text-xs">
-                            <span className="text-slate-500 block font-mono">EBG (Empty Body Gain)</span>
+                            <span className="text-slate-550 block font-mono">EBG (Empty Body Gain)</span>
                             <span className="font-mono text-emerald-400 font-semibold block mt-1">EBG = GMD × 0.951</span>
                           </div>
                         </div>
                       </div>
 
                       <div className="space-y-4">
-                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400 font-display">
                           B. Estimativa de Consumo de Matéria Seca (CMS / DMI)
                         </h4>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-400 font-sans">
                           O consumo espontâneo diário é estimado usando regressões baseadas no peso vivo total do período (média entre entrada e saída), ajustado para o sexo e o frame size:
                         </p>
-                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2">
-                          <p className="font-mono text-xs text-emerald-400">
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2 font-mono text-xs text-emerald-400">
+                          <p>
                             Fêmeas: CMS (kg MS/dia) = [ 3.184 + 0.01536 × SBW ] × Ajuste_Frame
                           </p>
-                          <p className="font-mono text-xs text-emerald-400">
+                          <p>
                             Machos (Castrados ou Inteiros): CMS (kg MS/dia) = [ 3.83 + 0.0143 × SBW ] × Ajuste_Frame
                           </p>
-                          <p className="text-[11px] text-slate-500">
+                          <p className="text-[11px] text-slate-500 font-sans">
                             * Ajuste_Frame: 0.95 para Pequeno (precoce); 1.00 para Médio; 1.05 para Grande (tardio).
                           </p>
                         </div>
                       </div>
 
                       <div className="space-y-4">
-                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400 font-display">
                           C. Energia Líquida de Manutenção (NEm) e Ganho (NEg)
                         </h4>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-400 font-sans">
                           As exigências diárias de manutenção (NEm, Mcal/dia) e deposição de tecidos corporais (NEg, Mcal/dia) são equacionadas a partir do peso metabólico corrigido:
                         </p>
-                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3">
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-emerald-400">
                           <div>
-                            <span className="text-slate-500 block font-mono text-[10px]">EXIGÊNCIA DE MANUTENÇÃO (NEm)</span>
-                            <p className="font-mono text-xs text-emerald-400 mt-1">
+                            <span className="text-slate-500 block font-sans text-[10px]">EXIGÊNCIA DE MANUTENÇÃO (NEm)</span>
+                            <p className="mt-1">
                               NEm (Mcal/dia) = 0.077 × SBW⁰.⁷⁵ × Mult_Raça × Mult_Sexo
                             </p>
-                            <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                            <p className="text-[10px] text-slate-500 mt-1 leading-snug font-sans">
                               * Mult_Raça: 0.90 para Zebuínos (ex: Nelore no Brasil, que têm menor metabolismo basal); 1.00 para Europeus ou Cruzamento Industrial.<br />
                               * Mult_Sexo: 1.15 para Macho Inteiro (maior metabolismo basal); 1.00 para Macho Castrado ou Fêmea.
                             </p>
                           </div>
                           <div className="border-t border-slate-900 pt-3">
-                            <span className="text-slate-500 block font-mono text-[10px]">EXIGÊNCIA DE GANHO (NEg)</span>
-                            <p className="font-mono text-xs text-emerald-400 mt-1">
+                            <span className="text-slate-500 block font-sans text-[10px]">EXIGÊNCIA DE GANHO (NEg)</span>
+                            <p className="mt-1">
                               EQSBW = SBW × (478 / FBW) <br />
                               NEg (Mcal/dia) = 0.0635 × EQSBW⁰.⁷⁵ × EBG¹.⁰⁹⁷
                             </p>
-                            <p className="text-[10px] text-slate-500 mt-1">
+                            <p className="text-[10px] text-slate-500 mt-1 font-sans">
                               * EQSBW é o peso de corpo vivo equivalente do animal com base no Peso Final (FBW) frente ao peso corporal padrão de referência (SRW = 478 kg) para terminação nos moldes clássicos do Garrett/NRC.
                             </p>
                           </div>
@@ -12079,68 +12527,68 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                       </div>
 
                       <div className="space-y-4">
-                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400 font-display">
                           D. Proteína Metabolizável (PM) e Proteína Bruta (PB)
                         </h4>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-400 font-sans">
                           A exigência diária de Proteína Metabolizável (MP, g/dia) une os requerimentos para manutenção endógena (MPm) e para reposição celular de carcaça e visceral (NPg):
                         </p>
                         <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-emerald-400">
                           <div>
-                            <span className="text-slate-500 block text-[10px]">MANUTENÇÃO ENDÓGENA</span>
+                            <span className="text-slate-500 block text-[10px] font-sans">MANUTENÇÃO ENDÓGENA</span>
                             <p className="mt-1">MPm (g/dia) = 4.1 × SBW⁰.⁷⁵</p>
                           </div>
                           <div className="border-t border-slate-900 pt-3">
-                            <span className="text-slate-500 block text-[10px]">DEPOSIÇÃO PROTEICA EM GANHO DE CARCAÇA (NPg)</span>
+                            <span className="text-slate-500 block text-[10px] font-sans">DEPOSIÇÃO PROTEICA EM GANHO DE CARCAÇA (NPg)</span>
                             <p className="mt-1">NPg (g/dia) = EBG × [ 268 - (29.4 × (NEg / EBG)) ]</p>
                           </div>
                           <div className="border-t border-slate-900 pt-3">
-                            <span className="text-slate-500 block text-[10px]">PROTEÍNA METABOLIZÁVEL TOTAL & TRADUÇÃO PARA PROTEÍNA BRUTA (PB)</span>
+                            <span className="text-slate-500 block text-[10px] font-sans">PROTEÍNA METABOLIZÁVEL TOTAL & TRADUÇÃO PARA PROTEÍNA BRUTA (PB)</span>
                             <p className="mt-1">
                               MP_Total (g/dia) = MPm + (NPg / 0.492) <br />
                               PB_Mínima_Dieta (%) = Max[ 9 %, ( (MP_Total / 0.67) / 1000 / CMS ) × 100 ]
                             </p>
-                            <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                            <p className="text-[10px] text-slate-500 mt-1 leading-normal font-sans">
                               * NPg é convertido a MP correspondente usando a eficiência clássica de ganho (0.492). <br />
-                              * A conversão de Proteína Metabolizável para Proteína Bruta (PB) assume uma eficiência nominal de aproveitamento ruminal/intestinal média de 67%.
+                              * A conversion de Proteína Metabolizável para Proteína Bruta (PB) assume uma eficiência nominal de aproveitamento ruminal/intestinal média de 67%.
                             </p>
                           </div>
                         </div>
                       </div>
 
                       <div className="space-y-4">
-                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400 font-display">
                           E. Exigências Minerais (Cálcio e Fósforo)
                         </h4>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-400 font-sans">
                           Calculados somando perdas endógenas de manutenção física e deposição muscular por grama de proteína retida (NPg), divididas pelo coeficiente de absorção alimentar líquida:
                         </p>
                         <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-emerald-400">
                           <div>
-                            <span className="text-slate-500 block text-[10px]">CÁLCIO MÍNIMO</span>
+                            <span className="text-slate-500 block text-[10px] font-sans">CÁLCIO MÍNIMO</span>
                             <p className="mt-1">
                               Ca_Líquido (g/dia) = (0.0154 × SBW) + (0.071 × NPg) <br />
                               Ca_Mín_Dieta (%) = ( (Ca_Líquido / 0.50) / 1000 / CMS ) × 100
                             </p>
-                            <span className="text-[10px] text-slate-500 block mt-0.5">* Assume eficiência de absorção dietética de cálcio de 50%.</span>
+                            <span className="text-[10px] text-slate-500 block mt-0.5 font-sans">* Assume eficiência de absorção dietética de cálcio de 50%.</span>
                           </div>
                           <div className="border-t border-slate-900 pt-3">
-                            <span className="text-slate-500 block text-[10px]">FÓSFORO MÍNIMO</span>
+                            <span className="text-slate-500 block text-[10px] font-sans">FÓSFORO MÍNIMO</span>
                             <p className="mt-1">
                               P_Líquido (g/dia) = (0.016 × SBW) + (0.039 × NPg) <br />
                               P_Mín_Dieta (%) = ( (P_Líquido / 0.70) / 1000 / CMS ) × 100
                             </p>
-                            <span className="text-[10px] text-slate-500 block mt-0.5">* Assume eficiência de absorção dietética de fósforo de 70%.</span>
+                            <span className="text-[10px] text-slate-500 block mt-0.5 font-sans">* Assume eficiência de absorção dietética de fósforo de 70%.</span>
                           </div>
                         </div>
                       </div>
 
                       <div className="space-y-4">
-                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400 font-display">
                           F. Nutrientes Digestíveis Totais (NDT)
                         </h4>
-                        <p className="text-xs text-slate-400">
-                          O NDT mínimo é balizado convertendo as exigências de NEm e NEg em equivalentes de Energia Metabolizável (ME) e então mapeando no consumo de matéria seca (CMS):
+                        <p className="text-xs text-slate-450 font-sans">
+                          O NDT mínimo é balizado convertendo as exigências de NEm e NEg em equivalentes de Energia Metabolizável (ME) e então mapping no consumo de matéria seca (CMS):
                         </p>
                         <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 font-mono text-xs text-emerald-400 space-y-2">
                           <p>ME_m = NEm / 0.64</p>
@@ -12153,40 +12601,10 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           </span>
                         </div>
                       </div>
-
-                      <div className="space-y-4">
-                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-purple-400">
-                          G. Predição de Ganho Médio Diário (GMD) via Balanço Energético
-                        </h4>
-                        <p className="text-xs text-slate-400">
-                          Para estimar o ganho físico real a partir de uma dieta contendo x% de NDT, o software utiliza de forma reversa a clássica equação de Garrett e Lofgreen integrada no NRC para converter o alimento em energia real de retenção (RE):
-                        </p>
-                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 font-mono text-xs text-emerald-400 space-y-3">
-                          <div>
-                            <p>ME_Dieta (Mcal/kg DM) = 0.04409 × NDT_% × 0.82</p>
-                            <p className="text-slate-500 text-[10px] my-1 leading-tight">
-                              Seja ME_Capped = Max(1.5, Min(3.5, ME_Dieta)) para tolerância de contorno biológico. O valor energético do alimento é modelado por:
-                            </p>
-                            <p>NEm_alimento = 1.37 × ME_Capped - 0.138 × ME_Capped² + 0.0105 × ME_Capped³ - 1.12</p>
-                            <p>NEg_alimento = 1.42 × ME_Capped - 0.174 × ME_Capped² + 0.0122 × ME_Capped³ - 1.65</p>
-                          </div>
-                          <div className="border-t border-slate-900 pt-2">
-                            <span className="text-slate-500 block text-[10px] mb-1">PARTIÇÃO DE CONSUMO E ENERGIA DISPONÍVEL</span>
-                            <p>CMS_Manutenção = NEm_req / NEm_alimento</p>
-                            <p>CMS_Ganho = Max(0, CMS - CMS_Manutenção)</p>
-                            <p>NEg_Disponível = CMS_Ganho × NEg_alimento</p>
-                          </div>
-                          <div className="border-t border-slate-900 pt-2">
-                            <span className="text-slate-500 block text-[10px] mb-1">CONVERSÃO DE ENERGIA RETIDA PARA CRESCIMENTO DIÁRIO (GMD)</span>
-                            <p>EBG = [ NEg_Disponível / (0.0635 × EQSBW⁰.⁷⁵) ] ^ (1 / 1.097)</p>
-                            <p>GMD_Predito (kg/dia) = EBG / 0.951</p>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </section>
 
-                  <section className="bg-emerald-500/5 p-8 rounded-3xl border border-emerald-500/10">
+                  <section className="bg-emerald-500/5 p-8 rounded-3xl border border-emerald-500/10 font-sans">
                     <h3 className="text-xl font-bold text-emerald-400 mb-6 flex items-center gap-2 font-display">
                       <BookOpen className="w-6 h-6 text-emerald-400" />
                       Referências Bibliográficas
@@ -12194,82 +12612,92 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-8">
                       <div className="space-y-6">
                         <div>
-                          <h4 className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-3">Publicações sobre uso da metodologia em confinamento de bovinos</h4>
-                          <ul className="text-[10px] text-emerald-400 space-y-3 list-disc pl-5">
+                          <h4 className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-3 font-display">Publicações sobre uso da metodologia em confinamento de bovinos</h4>
+                          <ul className="text-[10px] text-emerald-400 space-y-3 list-disc pl-5 font-sans">
                             <li>
-                              <strong>PACHECO, P. S. et al. (2014)</strong>. Risk analysis of finishing young steers in feedlot. Revista Brasileira de Zootecnia, v.43, n.9, p.481-489. 
-                              <a href="https://doi.org/10.1590/S1516-35982014000900006" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982014000900006</a>
+                              <strong>MACHADO, G. I. O.; VAZ, F. N.; OLEGÁRIO, J. L.; PIZZUTI, L. Â. D.; PACHECO, P. S.; SILVA, R. M. da; SOUZA, R. L. de; DALLANORA, M. E. C. (2024)</strong>. Viabilidade econômica da terminação de categorias bovinas em pastagem cultivada de inverno ou confinamento por meio da simulação de Monte Carlo. Observatório de la Economía Latinoamericana, v.22, p.e7792, 2024.
+                              <a href="https://doi.org/10.55905/oelv22n7-279" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.55905/oelv22n7-279</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2014)</strong>. Probabilidade de risco econômico na terminação de novilhos em confinamento. Ciência Rural, v.44, n.10, p.1874-1880. 
-                              <a href="https://doi.org/10.1590/0103-8478cr20131422" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20131422</a>
+                              <strong>OLEGÁRIO, J. L.; VAZ, F. N.; PASCOAL, L. L.; VAZ, R. Z.; PIZZUTI, L. Â. D.; PACHECO, P. S.; MAYSONNAVE, G. S.; SILVA, R. M. da (2023)</strong>. Análise econômica probabilística do confinamento de novilhos com diferentes pesos iniciais. Observatório de la Economía Latinoamericana, v.21, p.20512 - 20527, 2023.
+                              <a href="https://doi.org/10.55905/oelv21n11-204" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.55905/oelv21n11-204</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2006)</strong>. Simulação de risco econômico da terminação de novilhos em confinamento. Revista Brasileira de Zootecnia, v.35, n.2, p.493-502. 
-                              <a href="https://doi.org/10.1590/S1516-35982006000200026" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982006000200026</a>
+                              <strong>SILVA, R. M.; TAVEIRA, R. Z.; RESTLE, J.; FABRICIO, E. A.; CAMERA, A.; MAYSONNAVE, G. S.; BILEGO, U. O.; PACHECO, P. S.; VAZ, F. N. (2020)</strong>. Economic analysis of the risk of replacing corn grains (Zea mays) with pearl millet grains (Pennisetum glaucum) in the diet of feedlot cattle. Ciência Rural, v.50, p.01 - 12, 2020.
+                              <a href="https://doi.org/10.1590/0103-8478cr20190124" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20190124</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2006)</strong>. Análise econômica da terminação de novilhos em confinamento com diferentes níveis de concentrado na dieta. Revista Brasileira de Zootecnia, v.35, n.5, p.2121-2131. 
-                              <a href="https://doi.org/10.1590/S1516-35982006000700032" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982006000700032</a>
+                              <strong>VAZ, M. A. B.; PACHECO, P. S.; SEIDEL, E. J.; ANSUJ, A. P. (2017)</strong>. Classification of the coefficient of variation to variables in beef cattle experiments. Ciência Rural, v.47, p.1 - 4, 2017.
+                              <a href="https://doi.org/10.1590/0103-8478cr20160233" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20160233</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2005)</strong>. Análise econômica da terminação de novilhos em confinamento. Revista Brasileira de Zootecnia, v.34, n.1, p.282-291. 
-                              <a href="https://doi.org/10.1590/S1516-35982005000100031" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982005000100031</a>
+                              <strong>ÁVILA, M. M. de; PACHECO, P. S.; PASCOAL, L. L. (2017)</strong>. Economic deterministic analysis of two years old steers production systems. Ciência Animal Brasileira, v.18, p.1 - 14, 2017.
+                              <a href="https://doi.org/10.1590/1089-6891v18e-36056" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/1089-6891v18e-36056</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2002)</strong>. Avaliação econômica da terminação em confinamento de novilhos jovens e superjovens de diferentes grupos genéticos. Revista Brasileira de Zootecnia, v.31, n.3, p.1191-1199. 
-                              <a href="https://doi.org/10.1590/S1516-35982002000500015" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982002000500015</a>
+                              <strong>FABRICIO, E. A.; PACHECO, P. S.; VAZ, F. N.; LEMES, D. B.; CAMERA, A.; MACHADO, G. I. O. (2017)</strong>. Financial indicators to evaluate the economic performance of feedlot steers with different slaughter weights. Ciência Rural, v.47, p.e20160516, 2017.
+                              <a href="https://doi.org/10.1590/0103-8478cr20160516" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20160516</a>
                             </li>
                             <li>
-                              <strong>RESTLE, J.; PACHECO, P. S. et al. (2007)</strong>. Desempenho em confinamento de novilhos de diferentes grupos genéticos alimentados com diferentes níveis de concentrado. Revista Brasileira de Zootecnia, v.36, n.3, p.667-676.
-                              <a href="https://doi.org/10.1590/S1516-35982007000300022" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982007000300022</a>
+                              <strong>LEAL, W. S.; PACHECO, P. S.; PASCOAL, L. L.; VAZ, R. Z.; MENDONÇA, F. S.; SEVERO, M. M. (2017)</strong>. Indicadores financeiros determinísticos e custos de produção do confinamento de bovinos no Rio Grande do Sul–Brasil. Custos e Agronegócio On Line, v.13, p.201, 2017.
+                              <a href="http://www.custoseagronegocioonline.com.br/numero3v13/OK%2010%20confinamento.pdf" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">Acesso</a>
                             </li>
                             <li>
-                              <strong>VAZ, F. N.; PACHECO, P. S. et al. (2005)</strong>. Características de carcaça de novilhos Braford e Charolês terminados em confinamento com diferentes níveis de concentrado. Revista Brasileira de Zootecnia, v.34, n.6, p.2045-2056.
-                              <a href="https://doi.org/10.1590/S1516-35982005000600025" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982005000600025</a>
+                              <strong>ROSA, J. R. P.; PACHECO, P. S.; FABRICIO, E. A.; CAMERA, A.; LEMES, D. B. (2017)</strong>. Risk analysis of economic viability of feedlot aberdeen angus steers fed with different proportions of concentrate. Bioscience Journal, v.33, p.660 - 669, 2017.
+                              <a href="https://doi.org/10.14393/BJ-v33n3a2017-34752" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.14393/BJ-v33n3a2017-34752</a>
                             </li>
                             <li>
-                              <strong>ALVES FILHO, D. C.; PACHECO, P. S. et al. (2016)</strong>. Economic analysis of finishing steers in feedlot with different concentrate levels. Semina: Ciências Agrárias, v.37, n.4, p.2443-2454.
-                              <a href="https://doi.org/10.5433/1679-0359.2016v37n4p2443" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.5433/1679-0359.2016v37n4p2443</a>
+                              <strong>PACHECO, P. S.; VAZ, F. N.; VALENÇA, K. G.; FABRICIO, E. A.; OLEGÁRIO, J. L.; CAMPARA, J. M.; CAMERA, A. (2017)</strong>. Stochastic simulation of the economic viability of feedlot finishing steers slaughtered at different weights in southern brazil. Bioscience Journal, v.33, p.652 - 659, 2017.
+                              <a href="https://doi.org/10.14393/BJ-v33n3a2017-34751" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.14393/BJ-v33n3a2017-34751</a>
                             </li>
                             <li>
-                              <strong>MISSIO, R. L.; PACHECO, P. S. et al. (2009)</strong>. Desempenho e características da carcaça de novilhos terminados em confinamento recebendo diferentes níveis de concentrado na dieta. Revista Brasileira de Zootecnia, v.38, n.8, p.1596-1604.
-                              <a href="https://doi.org/10.1590/S1516-35982009000800020" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982009000800020</a>
+                              <strong>SILVA, R. M. da; TAVEIRA, R. Z.; VAZ, F. N.; FABRICIO, E. A.; MIOLLO, J. R.; CAMERA, A.; PACHECO, P. S. (2017)</strong>. Stochastic simulation of the economic viability of feedlot steers fed with different proportions of concentrate. Bioscience Journal (Online), v.33, p.125 - 134, 2017.
+                              <a href="https://doi.org/10.14393/BJ-v33n1a2017-33124" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.14393/BJ-v33n1a2017-33124</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2014)</strong>. Economic analysis of finishing young steers in feedlot with different concentrate levels. Bioscience Journal, v.30, n.1, p.241-250.
-                              <a href="https://doi.org/10.14393/BJ-v30n1a2014-17792" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.14393/BJ-v30n1a2014-17792</a>
+                              <strong>PACHECO, P. S.; FABRICIO, E. A.; CAMERA, A. (2016)</strong>. Análise Conjunta de Indicadores Financeiros na Viabilidade Econômica do Confinamento de Bovinos no Rio Grande do Sul em Diferentes Épocas do Ano. Agropampa, v.1, p.86-99, 2016.
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2014)</strong>. Bioeconomic efficiency of finishing young steers in feedlot. Anais da Academia Brasileira de Ciências, v.86, n.1, p.415-427.
+                              <strong>PACHECO, P. S.; PASCOAL, L. L.; RESTLE, J.; VAZ, F. N.; ARBOITTE, M. Z.; VAZ, R. Z.; SANTOS, J. P. A.; OLIVEIRA, T. M. L. de (2014)</strong>. Risk assessment of finishing beef cattle in feedlot: slaughter weights and correlation amongst input variables. Revista Brasileira de Zootecnia (Online), v.43, p.92-99, 2014.
+                              <a href="https://doi.org/10.1590/S1516-35982014000200008" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982014000200008</a>
+                            </li>
+                            <li>
+                              <strong>PACHECO, P. S.; SILVA, R. M. da; PÁDUA, J. T.; RESTLE, J.; TAVEIRA, R. Z.; VAZ, F. N.; PASCOAL, L. L.; OLEGÁRIO, J. L.; MENEZES, F. R. (2014)</strong>. Análise econômica da terminação de novilhos em confinamento recebendo diferentes proporções de cana-de-açúcar e concentrado. Semina: Ciências Agrárias (Online), v.35, p.1-12, 2014.
+                              <a href="https://doi.org/10.5433/1679-0359.2014v35n4supl1p2627" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.5433/1679-0359.2014v35n4supl1p2627</a>
+                            </li>
+                            <li>
+                              <strong>PACHECO, P. S.; RESTLE, J.; PASCOAL, L. L.; VAZ, F. N.; VAZ, R. Z.; VALENÇA, K. G.; OLEGÁRIO, J. L. (2014)</strong>. Use of correlation between input variables in estimating the risk of feedlot finishing of steers and young steers. Anais da Academia Brasileira de Ciências (Online), v.86, p.353-362, 2014.
                               <a href="https://doi.org/10.1590/0001-3765201420130001" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0001-3765201420130001</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2014)</strong>. Análise de risco econômico da terminação de novilhos em confinamento. Custos e agronegócio online, v.10, n.1, p.241-256.
-                              <a href="http://www.custoseagronegocioonline.com.br/numero1v10/OK%2013%20confinamento.pdf" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">Acesso</a>
+                              <strong>PACHECO, P. S.; VAZ, F. N.; RESTLE, J.; ÁVILA, M. M. de; OLEGÁRIO, J. L.; MENEZES, F. R. de; VALENÇA, K. G.; LEMES, D. B.; VARGAS, F. V. de (2014)</strong>. Deterministic economic analysis of feedlot Red Angus young steers: slaughter weights and bonus. Ciência Rural (UFSM), v.44, n.10, p.1874-1880, 2014.
+                              <a href="https://doi.org/10.1590/0103-8478cr20131422" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20131422</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2011)</strong>. Simulação de risco na terminação de novilhos em confinamento. Agropampa, v.1, n.1, p.1-10.
+                              <strong>PACHECO, P. S.; RESTLE, J.; OLEGÁRIO, J. L.; MENEZES, F. R.; VAZ, F. N.; PASCOAL, L. L.; LEMES, D. B.; VALENÇA, K. G.; MACHADO, G. I. O.; RODRIGUES, A. C. T. (2014)</strong>. Correlation and Slaughter Weight on Sensitivity Analysis of Charolais Steers Feedlot Finished. American International Journal of Contemporary Research (Print), v.4, p.28-34, 2014.
+                              <a href="http://www.aijcrnet.com/journals/Vol_4_No_5_May_2014/4.pdf" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">Acesso</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2012)</strong>. Classificação do coeficiente de variação para variáveis de experimentos com gado de corte. Ciência Rural, v.42, n.12, p.2249-2255.
-                              <a href="https://doi.org/10.1590/S0103-84782012005000109" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S0103-84782012005000109</a>
+                              <strong>PACHECO, P. S.; RESTLE, J.; VALENÇA, K. G.; LEMES, D. B.; MENEZES, F. R.; MACHADO, G. K. G. (2014)</strong>. ANÁLISE ECONÔMICA DETERMINÍSTICA DA TERMINAÇÃO EM CONFINAMENTO DE NOVILHOS ABATIDOS COM DISTINTOS PESOS. Ciência Animal Brasileira (Online), v.15, p.420-428, 2014.
+                              <a href="https://doi.org/10.1590/1809-6891v15i420228" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/1809-6891v15i420228</a>
                             </li>
                             <li>
-                              <strong>VAZ, R. Z. et al. (2017)</strong>. Classificação do coeficiente de variação para variáveis de experimentos com gado de corte. Ciência Rural, v.47, n.11.
-                              <a href="https://doi.org/10.1590/0103-8478cr20160946" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20160946</a>
+                              <strong>PACHECO, P. S.; RESTLE, J.; VAZ, F. N.; PASCOAL, L. L.; ARBOITTE, M. Z.; VAZ, R. Z. (2012)</strong>. Viabilidade econômica da terminação em confinamento de novilhos abatidos com diferentes pesos. Pesquisa Agropecuária Gaúcha, v.18, p.135-145, 2012.
+                              <a href="https://revistapag.agricultura.rs.gov.br/pag/article/view/100" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">Acesso</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2011)</strong>. Características da carcaça de novilhos terminados em confinamento recebendo diferentes níveis de concentrado na dieta. Ciência Rural, v.41, n.1, p.144-150.
-                              <a href="https://doi.org/10.1590/S0103-84782011000100024" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S0103-84782011000100024</a>
+                              <strong>RESTLE, J.; PACHECO, P. S.; COSTA, E. C. da; FREITAS, A. K. de; VAZ, F. N.; BRONDANI, I. L.; FERNANDES, J. J. de R. (2007)</strong>. Apreciação econômica da terminação em confinamento de novilhos Red Angus superjovens abatidos com diferentes pesos. Revista Brasileira de Zootecnia (Online), v.36, p.978-986, 2007.
+                              <a href="https://doi.org/10.1590/S1516-35982007000400029" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982007000400029</a>
                             </li>
                             <li>
-                              <strong>PACHECO, P. S. et al. (2014)</strong>. Economic analysis of finishing young steers in feedlot with different concentrate levels. Semina: Ciências Agrárias, v.35, n.4, p.2193-2204.
-                              <a href="https://doi.org/10.5433/1679-0359.2014v35n4p2193" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.5433/1679-0359.2014v35n4p2193</a>
+                              <strong>PACHECO, P. S.; RESTLE, J.; VAZ, F. N.; FREITAS, A. K. de; PÁDUA, J. T.; NEUMANN, M.; ARBOITTE, M. Z. (2006)</strong>. Avaliação econômica da terminação em confinamento de novilhos jovens e superjovens de diferentes grupos genéticos. Revista Brasileira de Zootecnia, v.35, n.1, p.147-158, 2006.
+                              <a href="https://doi.org/10.1590/S1516-35982006000100019" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982006000100019</a>
                             </li>
                           </ul>
                         </div>
-                        
+                      </div>
+
+                      <div className="space-y-6">
                         <div>
                           <h4 className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-3">Análise de Sensibilidade e Risco</h4>
                           <ul className="text-[10px] text-slate-300 space-y-3 list-disc pl-5">
