@@ -63,7 +63,8 @@ import {
   Key,
   Pencil,
   Copy,
-  Check
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -313,17 +314,24 @@ const PROFESSIONAL_LABOR_REFERENCE = {
 };
 
 const TeamInput = ({ label, value, onChange }: { label: string, value: number, onChange: (val: string) => void }) => (
-  <div className="flex items-center justify-between px-3 py-2 bg-gray-50/50 rounded-xl border border-gray-100 hover:border-emerald-200 transition-colors group">
-    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight group-hover:text-emerald-400 transition-colors">{label}</span>
-    <div className="flex items-center gap-1.5">
-      <input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-10 text-right bg-transparent border-none focus:ring-0 text-xs font-black text-slate-800 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        min="0"
-      />
-      <span className="text-[9px] font-bold text-gray-300">un</span>
+  <div className="flex flex-col justify-between p-3 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition-all duration-200 group min-h-[92px]">
+    <div className="min-h-[30px] flex items-start">
+      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-tight group-hover:text-emerald-400 transition-colors break-words whitespace-normal block w-full">
+        {label}
+      </span>
+    </div>
+    <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/60">
+      <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Qtd</span>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-12 text-center bg-slate-900/60 border border-slate-800 rounded-lg px-1.5 py-0.5 focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 text-xs font-black text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none font-mono"
+          min="0"
+        />
+        <span className="text-[8px] font-bold text-slate-500 uppercase">un</span>
+      </div>
     </div>
   </div>
 );
@@ -469,8 +477,8 @@ export default function App() {
     caPRatioMin: 1.5,
     caPRatioMax: 2.5,
     cms: 10,
-    forageMin: 10,
-    forageMax: 100,
+    forageMin: 15,
+    forageMax: 45,
     optimizationGoal: 'cost'
   });
   const [dietAnimalProfile, setDietAnimalProfile] = useState<DietAnimalProfile>({
@@ -597,25 +605,50 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let racaMapped: 'zebuino' | 'europeu' | 'cruzado' = 'zebuino';
+    if (inputs.raca === 'cruzamento') {
+      racaMapped = 'cruzado';
+    } else if (inputs.raca === 'holandes') {
+      racaMapped = 'europeu';
+    } else if (inputs.raca === 'nelore') {
+      racaMapped = 'zebuino';
+    }
+
     setDietAnimalProfile(prev => ({
       ...prev,
-      weight: inputs.pesoVivoInicial,
-      finalWeight: inputs.pesoVivoFinal,
-      gmd: inputs.gmd,
-      precoBoiGordo: inputs.precoBoiGordo,
-      rendimentoCarcaca: inputs.rendimentoCarcaca
+      weight: Number(inputs.pesoVivoInicial),
+      finalWeight: Number(inputs.pesoVivoFinal),
+      gmd: Number(inputs.gmd),
+      sex: inputs.sexo as any,
+      raca: racaMapped,
+      frameSize: inputs.frameSize as any,
+      precoBoiGordo: Number(inputs.precoBoiGordo),
+      rendimentoCarcaca: Number(inputs.rendimentoCarcaca)
     }));
-  }, [inputs.pesoVivoInicial, inputs.pesoVivoFinal, inputs.gmd, inputs.precoBoiGordo, inputs.rendimentoCarcaca]);
+  }, [
+    inputs.pesoVivoInicial,
+    inputs.pesoVivoFinal,
+    inputs.gmd,
+    inputs.sexo,
+    inputs.raca,
+    inputs.frameSize,
+    inputs.precoBoiGordo,
+    inputs.rendimentoCarcaca
+  ]);
 
   useEffect(() => {
-    if (dietMode === 'auto') {
-      const reqs = calculateRequirements(dietAnimalProfile);
-      setDietRequirements(prev => ({
-        ...prev,
-        ...reqs
-      }));
-    }
-  }, [dietAnimalProfile, dietMode]);
+    const reqs = calculateRequirements(dietAnimalProfile);
+    setDietRequirements(prev => {
+      const currentForageMin = prev.forageMin !== undefined ? prev.forageMin : 15;
+      const currentForageMax = prev.forageMax !== undefined ? prev.forageMax : 45;
+      return {
+        ...reqs,
+        forageMin: currentForageMin,
+        forageMax: currentForageMax,
+        optimizationGoal: prev.optimizationGoal ?? 'cost'
+      };
+    });
+  }, [dietAnimalProfile]);
 
   useEffect(() => {
     if (dietMode === 'auto' && dietIngredients.length > 0) {
@@ -2291,7 +2324,17 @@ export default function App() {
           return;
         }
 
-        const result = optimizeDiet(ingredientsToUse, dietRequirements, dietAnimalProfile);
+        // Garante que as exigências calculadas (CMS, PB, etc.) estão sincronizadas ao formular manualmente
+        const reqs = calculateRequirements(dietAnimalProfile);
+        const finalReqs = {
+          ...reqs,
+          forageMin: dietRequirements.forageMin,
+          forageMax: dietRequirements.forageMax,
+          optimizationGoal: dietRequirements.optimizationGoal
+        };
+        setDietRequirements(finalReqs);
+
+        const result = optimizeDiet(ingredientsToUse, finalReqs, dietAnimalProfile);
         setDietResult(result);
         if (!result.feasible) {
           showToast("Não foi possível encontrar uma solução para os requisitos informados. Tente relaxar algumas restrições.", "error");
@@ -2450,6 +2493,31 @@ export default function App() {
           `Consumo Concentrado: ${dietResult.concentrateIntakeMN.toFixed(2)} kg de Matéria Natural (MN)\n` +
           `Preço Volumoso: R$ ${dietResult.forageCostPerKgMN.toFixed(2)}/kg MN\n` +
           `Preço Concentrado: R$ ${dietResult.concentrateCostPerKgMN.toFixed(2)}/kg MN`, 'success');
+  };
+
+  const handleSyncProfileWithParameters = () => {
+    // Map dietAnimalProfile.raca back to inputs.raca
+    let racaMappedBack: 'nelore' | 'cruzamento' | 'holandes' = 'nelore';
+    if (dietAnimalProfile.raca === 'cruzado') {
+      racaMappedBack = 'cruzamento';
+    } else if (dietAnimalProfile.raca === 'europeu') {
+      racaMappedBack = 'holandes';
+    } else if (dietAnimalProfile.raca === 'zebuino') {
+      racaMappedBack = 'nelore';
+    }
+
+    setInputs(prev => ({
+      ...prev,
+      pesoVivoInicial: Number(dietAnimalProfile.weight),
+      pesoVivoFinal: Number(dietAnimalProfile.finalWeight),
+      gmd: Number(dietAnimalProfile.gmd),
+      sexo: dietAnimalProfile.sex as any,
+      raca: racaMappedBack,
+      frameSize: dietAnimalProfile.frameSize as any,
+      precoBoiGordo: Number(dietAnimalProfile.precoBoiGordo),
+      rendimentoCarcaca: Number(dietAnimalProfile.rendimentoCarcaca)
+    }));
+    showToast("Parâmetros de simulação atualizados com as informações do perfil do animal!", "success");
   };
 
   const handleDownloadCSV = () => {
@@ -3668,42 +3736,33 @@ export default function App() {
                         <Scale className="text-emerald-400 w-5 h-5 animate-pulse" />
                       </div>
                       <div>
-                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Animal & Desempenho</h2>
-                        <p className="text-xs text-slate-400">Parâmetros produtivos e biológicos do rebanho.</p>
+                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Animal, Desempenho & Genética</h2>
+                        <p className="text-xs text-slate-400">Parâmetros produtivos, biológicos e genéticos do rebanho.</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-                      <InputGroup icon={Scale} label="Peso Inicial" name="pesoVivoInicial" value={inputs.pesoVivoInicial} unit="kg" onChange={handleInputChange} tooltip={`Peso médio dos animais na entrada do confinamento. Define o capital empatado inicial (estoque) e é a base para o cálculo do ganho de peso total. Na simulação de risco, assume-se um desvio padrão de ${DEFAULT_INPUTS.desviosPadrao.pesoVivoInicial} kg.`} error={errors.pesoVivoInicial} />
-                      <InputGroup icon={Scale} label="Peso Final" name="pesoVivoFinal" value={inputs.pesoVivoFinal} unit="kg" onChange={handleInputChange} tooltip={`Peso médio projetado para a venda. Determina a receita bruta total e o volume de carne produzido (arrobas). Na simulação de risco, assume-se um desvio padrão de ${DEFAULT_INPUTS.desviosPadrao.pesoVivoFinal} kg.`} error={errors.pesoVivoFinal} />
+                      <InputGroup icon={Scale} label="Peso Inicial" name="pesoVivoInicial" value={inputs.pesoVivoInicial} unit="kg" onChange={handleInputChange} isInteger tooltip={`Peso médio dos animais na entrada do confinamento. Define o capital empatado inicial (estoque) e é a base para o cálculo do ganho de peso total. Na simulação de risco, assume-se um desvio padrão de ${DEFAULT_INPUTS.desviosPadrao.pesoVivoInicial} kg.`} error={errors.pesoVivoInicial} />
+                      <InputGroup icon={Scale} label="Peso Final" name="pesoVivoFinal" value={inputs.pesoVivoFinal} unit="kg" onChange={handleInputChange} isInteger tooltip={`Peso médio projetado para a venda. Determina a receita bruta total e o volume de carne produzido (arrobas). Na simulação de risco, assume-se um desvio padrão de ${DEFAULT_INPUTS.desviosPadrao.pesoVivoFinal} kg.`} error={errors.pesoVivoFinal} />
                       <InputGroup icon={Activity} label="Ganho Médio Diário (GMD)" name="gmd" value={inputs.gmd} unit="kg/dia" onChange={handleInputChange} step={0.1} tooltip={`Ganho Médio Diário esperado. É o principal indicador de eficiência biológica.`} error={errors.gmd} />
                       <InputGroup icon={TrendingUp} label="Rendimento Inicial" name="rendimentoCarcacaInicial" value={inputs.rendimentoCarcacaInicial} unit="%" onChange={handleInputChange} step={0.1} tooltip="Rendimento de carcaça estimado na entrada (boi magro). Geralmente 50%." error={errors.rendimentoCarcacaInicial} />
                       <InputGroup icon={TrendingUp} label="Rendimento Final" name="rendimentoCarcaca" value={inputs.rendimentoCarcaca} unit="%" onChange={handleInputChange} step={0.1} tooltip="Rendimento de carcaça projetado na venda (boi gordo). Geralmente 54%." error={errors.rendimentoCarcaca} />
-                      <InputGroup icon={Clock} label="Tempo" name="tempoAlimentacao" value={inputs.tempoAlimentacao} unit="dias" onChange={handleInputChange} disabled tooltip="Período total de confinamento necessário para atingir o peso final. Quanto maior o tempo, maior o custo operacional total e menor a rotatividade do capital (Giro de Estoque)." error={errors.tempoAlimentacao} />
+                      <InputGroup icon={Clock} label="Tempo" name="tempoAlimentacao" value={inputs.tempoAlimentacao} unit="dias" onChange={handleInputChange} disabled isInteger tooltip="Período total de confinamento necessário para atingir o peso final. Quanto maior o tempo, maior o custo operacional total e menor a rotatividade do capital (Giro de Estoque)." error={errors.tempoAlimentacao} />
                       <InputGroup icon={ArrowRightLeft} label="Quebra de Transporte" name="quebraPesoTransportePerc" value={inputs.quebraPesoTransportePerc} unit="%" onChange={handleInputChange} step={0.1} tooltip="Percentual de perda de peso (shrinkage) durante o transporte para o frigorífico." error={errors.quebraPesoTransportePerc} />
                       <InputGroup icon={AlertCircle} label="Mortalidade" name="taxaMortalidade" value={inputs.taxaMortalidade} unit="%" onChange={handleInputChange} step={0.1} tooltip="Taxa de perda de animais durante o ciclo." error={errors.taxaMortalidade} />
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {/* Section: Genética & Frame */}
-                    <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                          <Users className="text-indigo-400 w-5 h-5" />
-                        </div>
-                        <div>
-                          <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Genética & Frame</h2>
-                          <p className="text-xs text-slate-400">Configurações biológicas do lote.</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4">
+                    <div className="h-px bg-slate-800/60 my-6" />
+
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Genética & Frame</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
                         <div>
                           <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Raça / Genética</label>
                           <select 
                             name="raca"
                             value={inputs.raca}
                             onChange={handleInputChange}
-                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer"
+                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer font-sans"
                           >
                             <option value="nelore" className="bg-[#0f172a]">Nelore (Zebuíno)</option>
                             <option value="cruzamento" className="bg-[#0f172a]">Cruzamento Industrial (Taurino x Zebu)</option>
@@ -3716,7 +3775,7 @@ export default function App() {
                             name="sexo"
                             value={inputs.sexo}
                             onChange={handleInputChange}
-                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer"
+                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer font-sans"
                           >
                             <option value="macho" className="bg-[#0f172a]">Boi Castrado / Macho</option>
                             <option value="inteiro" className="bg-[#0f172a]">Boi Inteiro</option>
@@ -3729,7 +3788,7 @@ export default function App() {
                             name="frameSize"
                             value={inputs.frameSize}
                             onChange={handleInputChange}
-                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer"
+                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer font-sans"
                           >
                             <option value="pequeno" className="bg-[#0f172a]">Pequeno (Terminação Precoce)</option>
                             <option value="medio" className="bg-[#0f172a]">Médio (Padrão)</option>
@@ -3738,21 +3797,22 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl">
-                          <Map className="text-purple-400 w-5 h-5" />
-                        </div>
-                        <div>
-                          <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Área e terra</h2>
-                          <p className="text-xs text-slate-400">Área e valor da terra.</p>
-                        </div>
+                  {/* Section: Área e terra */}
+                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+                        <Map className="text-purple-400 w-5 h-5" />
                       </div>
-                      <div className="grid grid-cols-1 gap-4">
-                        <InputGroup label="Lotação" name="animaisHa" value={inputs.animaisHa} unit="ani/ha" onChange={handleInputChange} tooltip="Quantidade de animais por hectare de área de confinamento." error={errors.animaisHa} />
-                        <InputGroup label="Valor Terra" name="valorTerraHa" value={inputs.valorTerraHa} unit="R$/ha" onChange={handleInputChange} isCurrency tooltip="Preço de mercado da terra utilizada." error={errors.valorTerraHa} />
+                      <div>
+                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Área e terra</h2>
+                        <p className="text-xs text-slate-400">Área e valor da terra.</p>
                       </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <InputGroup label="Lotação" name="animaisHa" value={inputs.animaisHa} unit="ani/ha" onChange={handleInputChange} isInteger tooltip="Quantidade de animais por hectare de área de confinamento." error={errors.animaisHa} />
+                      <InputGroup label="Valor Terra" name="valorTerraHa" value={inputs.valorTerraHa} unit="R$/ha" onChange={handleInputChange} isCurrency tooltip="Preço de mercado da terra utilizada." error={errors.valorTerraHa} />
                     </div>
                   </div>
  
@@ -3780,17 +3840,17 @@ export default function App() {
                         </div>
                         <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                           {inputs.pesagens.map((p, idx) => (
-                            <div key={idx} className="grid grid-cols-2 gap-2 relative group/item border border-slate-800/50 p-2 rounded-xl bg-[#121826]/40">
+                            <div key={p.id || idx} className="grid grid-cols-2 gap-2 relative group/item border border-slate-800/50 p-2 rounded-xl bg-[#121826]/40">
                               <InputGroup label="Dia" name={`pesagem_dia_${idx}`} value={p.dia} unit="d" onChange={(e: any) => {
                                 const newPesagens = [...inputs.pesagens];
                                 newPesagens[idx].dia = Number(e.target.value);
                                 setInputs(prev => ({ ...prev, pesagens: newPesagens }));
-                              }} />
+                              }} isInteger />
                               <InputGroup label="Peso" name={`pesagem_peso_${idx}`} value={p.pesoReal} unit="kg" onChange={(e: any) => {
                                 const newPesagens = [...inputs.pesagens];
                                 newPesagens[idx].pesoReal = Number(e.target.value);
                                 setInputs(prev => ({ ...prev, pesagens: newPesagens }));
-                              }} />
+                              }} isInteger />
                               <button 
                                 onClick={() => setInputs(prev => ({ ...prev, pesagens: prev.pesagens.filter((_, i) => i !== idx) }))}
                                 className="absolute -top-1 -right-1 p-1 bg-slate-800 text-rose-400 rounded-full shadow-sm opacity-0 group-hover/item:opacity-100 transition-opacity z-10 hover:text-rose-300"
@@ -3819,7 +3879,7 @@ export default function App() {
                                 const newUltrassom = [...inputs.ultrassom];
                                 newUltrassom[idx].dia = Number(e.target.value);
                                 setInputs(prev => ({ ...prev, ultrassom: newUltrassom }));
-                              }} />
+                              }} isInteger />
                               <InputGroup label="EGS" name={`ultrassom_egs_${idx}`} value={u.espessuraGorduraReal} unit="mm" onChange={(e: any) => {
                                 const newUltrassom = [...inputs.ultrassom];
                                 newUltrassom[idx].espessuraGorduraReal = Number(e.target.value);
@@ -3860,6 +3920,7 @@ export default function App() {
                             unit="ani"
                             onChange={handleInputChange} 
                             step={1} 
+                            isInteger
                             error={errors.capacidadeEstatica} 
                           />
                         </div>
@@ -3936,7 +3997,7 @@ export default function App() {
                           <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Composição da Equipe (Editável):</p>
                           <span className="text-[9px] text-slate-500 italic">Ajuste as quantidades abaixo</span>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                           <TeamInput label="Gerente" value={inputs.equipe.gerente} onChange={(v) => handleTeamChange('gerente', v)} />
                           <TeamInput label="Encarregado" value={inputs.equipe.encarregado} onChange={(v) => handleTeamChange('encarregado', v)} />
                           <TeamInput label="Administrativo/Apontador" value={inputs.equipe.administrativo} onChange={(v) => handleTeamChange('administrativo', v)} />
@@ -3954,14 +4015,14 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6">
                     <div className="space-y-4">
                       <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Mão de Obra (CLT)</h3>
-                      <InputGroup label="Bois/Homem" name="boisMaoDeObra" value={inputs.boisMaoDeObra} unit="ani/hom" onChange={handleInputChange} tooltip="Quantidade de animais que um funcionário consegue manejar com eficiência. Define a produtividade do trabalho e o custo de mão de obra por animal produzido." error={errors.boisMaoDeObra} />
+                      <InputGroup label="Bois/Homem" name="boisMaoDeObra" value={inputs.boisMaoDeObra} unit="ani/hom" onChange={handleInputChange} isInteger tooltip="Quantidade de animais que um funcionário consegue manejar com eficiência. Define a produtividade do trabalho e o custo de mão de obra por animal produzido." error={errors.boisMaoDeObra} />
                       <InputGroup label="Encargos" name="encargosTrabalhistas" value={inputs.encargosTrabalhistas} unit="%" onChange={handleInputChange} tooltip="Percentual de custos extras sobre o salário nominal (FGTS, INSS, férias, etc). Valor de referência Conab (2010): 45,59% para empregado rural por tempo indeterminado." error={errors.encargosTrabalhistas} />
                       <InputGroup label="Salário Base" name="salarioMinimo" value={inputs.salarioMinimo} unit="R$" onChange={handleInputChange} isCurrency tooltip="Base salarial média para os funcionários do confinamento. Impacta o custo fixo operacional and o ponto de equilíbrio do negócio." extraInfo={`Total CLT: ${formatCurrency(inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / (inputs.boisMaoDeObra || 1)))}/mês`} error={errors.salarioMinimo} />
                     </div>
                     
                     <div className="space-y-4">
                       <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Custos Fixos de Gestão</h3>
-                      <InputGroup label="Assistência" name="assistenciaTecnicaMes" value={inputs.assistenciaTecnicaMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Honorários mensais de consultoria (veterinários, nutricionistas). O dimensionamento profissional sugere valores escalonados de R$ 4.000 a R$ 75.000 conforme a capacidade estática." error={errors.assistenciaTecnicaMes} />
+                      <InputGroup label="Assistência" name="assistenciaTecnicaMes" value={inputs.assistenciaTecnicaMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Honorários mensais de consultoria (veterinários, zootecnistas). O dimensionamento profissional sugere valores escalonados de R$ 4.000 a R$ 75.000 conforme a capacidade estática." error={errors.assistenciaTecnicaMes} />
                       <InputGroup label="Pró-labore" name="proLaboreMes" value={inputs.proLaboreMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Remuneração mensal dos gestores. O dimensionamento profissional sugere valores de R$ 8.000 a R$ 35.000 conforme o porte da operação." error={errors.proLaboreMes} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <InputGroup label="Energia Elétrica" name="energiaEletricaMes" value={inputs.energiaEletricaMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Gastos fixos com energia, água e internet." error={errors.energiaEletricaMes} />
@@ -7119,75 +7180,6 @@ export default function App() {
                       <p className="text-xs text-slate-400">Formulação balanceada com os mais modernos padrões globais de nutrição (NRC/NASEM 2016).</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex bg-gray-100 p-1 rounded-xl">
-                      <button
-                        onClick={() => setDietRequirements(prev => ({ ...prev, optimizationGoal: 'cost' }))}
-                        className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${dietRequirements.optimizationGoal === 'cost' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400 hover:text-gray-700'}`}
-                      >
-                        CUSTO MÍNIMO
-                      </button>
-                      <button
-                        onClick={() => setDietRequirements(prev => ({ ...prev, optimizationGoal: 'gmd' }))}
-                        className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${dietRequirements.optimizationGoal === 'gmd' ? 'bg-white text-indigo-400 shadow-sm' : 'text-slate-400 hover:text-gray-700'}`}
-                      >
-                        META GMD
-                      </button>
-                    </div>
-                    <div className="h-8 w-px bg-gray-200 mx-2" />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleSyncMarketPrices}
-                        className="px-3 py-1.5 bg-emerald-50 text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-1"
-                        title="Sincronizar preços dos insumos com o módulo de Mercado"
-                      >
-                        <TrendingUp className="w-3 h-3" />
-                        Sincronizar Mercado
-                      </button>
-                      <button
-                        onClick={() => setDietIngredients(DEFAULT_INGREDIENTS)}
-                        className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-gray-700 transition-colors flex items-center gap-1"
-                        title="Resetar todos os insumos para os valores padrão"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        Resetar Insumos
-                      </button>
-                      <button
-                        onClick={handleAddIngredient}
-                        className="px-3 py-1.5 bg-purple-50 text-purple-600 rounded-lg text-xs font-bold hover:bg-purple-100 transition-all flex items-center gap-1"
-                      >
-                        <Plus className="w-3 h-3" />
-                        Novo Insumo
-                      </button>
-                      <div className="relative">
-                        <button
-                          onClick={() => setIsAddingFromDb(!isAddingFromDb)}
-                          className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 transition-all flex items-center gap-1"
-                        >
-                          <Database className="w-3 h-3" />
-                          Banco de Dados
-                        </button>
-                        {isAddingFromDb && (
-                          <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 z-50 max-h-96 overflow-y-auto p-2 font-sans text-left">
-                            <div className="text-[10px] font-bold text-slate-400 uppercase p-2 border-b border-gray-50 mb-2">Selecione para adicionar:</div>
-                            {DEFAULT_INGREDIENTS.filter(di => !dietIngredients.some(oi => oi.name === di.name)).map(di => (
-                              <button
-                                key={di.id}
-                                onClick={() => handleAddFromDb(di)}
-                                className="w-full text-left p-2 hover:bg-purple-50 rounded-lg transition-colors flex flex-col"
-                              >
-                                <span className="text-xs font-bold text-gray-700">{di.name}</span>
-                                <span className="text-[9px] text-slate-400">{di.type} • PB: {di.pb}% • NDT: {di.ndt}%</span>
-                              </button>
-                            ))}
-                            {DEFAULT_INGREDIENTS.filter(di => !dietIngredients.some(oi => oi.name === di.name)).length === 0 && (
-                              <div className="p-4 text-center text-xs text-slate-400">Todos os insumos já estão na lista.</div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -7195,11 +7187,19 @@ export default function App() {
                   <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Perfil do Animal Card */}
                     <div className="bg-[#121826] p-6 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
-                      <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center justify-between mb-6 gap-3">
                         <div className="flex items-center gap-2">
                           <Settings className="w-4 h-4 text-purple-400" />
                           <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest font-sans">Perfil do Animal</h4>
                         </div>
+                        <button
+                          onClick={handleSyncProfileWithParameters}
+                          className="px-2.5 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-xl font-bold text-[9px] tracking-wider uppercase transition-all flex items-center justify-center gap-1 cursor-pointer border border-purple-500/15 active:scale-[0.98]"
+                          title="Sincronizar este perfil com os parâmetros globais da simulação"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Sincronizar com parâmetros
+                        </button>
                       </div>
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-3">
@@ -7399,7 +7399,7 @@ export default function App() {
                           <button
                             onClick={() => {
                               if (!editingDietId) {
-                                setNewDietName('');
+                                  setNewDietName('');
                               }
                               setIsSavingDiet(true);
                             }}
@@ -7418,17 +7418,75 @@ export default function App() {
                             <Download className="w-3.5 h-3.5 text-emerald-400" />
                             Exportar XLSX
                           </button>
-                          <button
-                            onClick={handlePrintDiet}
-                            disabled={!dietResult}
-                            className="px-3 py-1.5 bg-slate-900 text-slate-300 border border-slate-800 rounded-xl font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-50 cursor-pointer"
-                            title="Imprimir relatório completo da dieta"
-                          >
-                            <Printer className="w-3.5 h-3.5 text-blue-400" />
-                            Imprimir Dieta
-                          </button>
+
                         </div>
                       </div>
+
+                      {/* Barra secundária de gerenciamento de insumos (Realocada para o Card Tabela de Insumos) */}
+                      <div className="px-4 py-3 bg-[#0d1322] border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+                          Gerenciamento de Insumos
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={handleSyncMarketPrices}
+                            className="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-[10px] font-bold hover:bg-emerald-500/20 hover:text-emerald-300 transition-all flex items-center gap-1 cursor-pointer"
+                            title="Sincronizar preços dos insumos com o módulo de Mercado"
+                          >
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            Sincronizar Mercado
+                          </button>
+                          <button
+                            onClick={() => setDietIngredients(DEFAULT_INGREDIENTS)}
+                            className="px-2.5 py-1.5 bg-slate-900 text-slate-400 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-800 hover:text-slate-200 transition-all flex items-center gap-1 cursor-pointer"
+                            title="Resetar todos os insumos para os valores padrão"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Resetar Insumos
+                          </button>
+                          <button
+                            onClick={handleAddIngredient}
+                            className="px-2.5 py-1.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-xl text-[10px] font-bold hover:bg-purple-500/20 hover:text-purple-300 transition-all flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Novo Insumo
+                          </button>
+                          <div className="relative">
+                            <button
+                              onClick={() => setIsAddingFromDb(!isAddingFromDb)}
+                              className="px-2.5 py-1.5 bg-[#8b5cf6] text-white rounded-xl text-[10px] font-bold hover:bg-purple-600 transition-all flex items-center gap-1 cursor-pointer border border-purple-500/15"
+                            >
+                              <Database className="w-3.5 h-3.5" />
+                              Banco de Dados
+                            </button>
+                            {isAddingFromDb && (
+                              <div className="absolute right-0 mt-2 w-72 bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-800 z-50 max-h-96 overflow-y-auto p-3 font-sans text-left">
+                                <div className="text-[9px] font-bold text-slate-400 uppercase pb-2 border-b border-slate-800 mb-2 tracking-wider">Selecione para adicionar:</div>
+                                <div className="space-y-1.5">
+                                  {DEFAULT_INGREDIENTS.filter(di => !dietIngredients.some(oi => oi.name === di.name)).map(di => (
+                                    <button
+                                      key={di.id}
+                                      onClick={() => {
+                                        handleAddFromDb(di);
+                                        setIsAddingFromDb(false);
+                                      }}
+                                      className="w-full text-left px-3 py-2 bg-[#121826]/60 hover:bg-[#161e30] border border-slate-800/40 hover:border-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors flex flex-col gap-0.5"
+                                    >
+                                      <span className="text-xs font-bold">{di.name}</span>
+                                      <span className="text-[9px] text-slate-500">{di.type} • PB: {di.pb}% • NDT: {di.ndt}%</span>
+                                    </button>
+                                  ))}
+                                  {DEFAULT_INGREDIENTS.filter(di => !dietIngredients.some(oi => oi.name === di.name)).length === 0 && (
+                                    <div className="text-center py-4 text-[10px] text-slate-500">Todos os insumos do banco já estão na tabela.</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs text-left">
                           <thead className="bg-[#0f1524] text-slate-300 uppercase font-black font-sans tracking-wider border-b border-slate-800">
@@ -7449,7 +7507,7 @@ export default function App() {
                                 <InfoTooltip text="Nome (MS = Matéria Seca | MN = Matéria Natural)" />
                               </th>
                               <th className="px-3 py-3 text-right text-slate-200 font-sans">
-                                Preço (R$/kg de Matéria Natural - MN)
+                                Preço (R$/kg MN)
                                 <InfoTooltip text="Preço por kg na Matéria Natural (como alimentado)" />
                               </th>
                               <th className="px-3 py-3 text-right text-slate-200">
@@ -7659,7 +7717,7 @@ export default function App() {
                                               newIngs[idx].minIncl = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-12 bg-slate-900/80 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-sky-400 font-semibold rounded"
                                           />
                                         </td>
                                         <td className="px-2 py-1.5 text-right font-mono">
@@ -7671,7 +7729,7 @@ export default function App() {
                                               newIngs[idx].maxIncl = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-12 bg-slate-900/80 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-purple-400 font-semibold rounded"
                                           />
                                         </td>
                                         <td className="px-3 py-2 text-center">
@@ -7715,54 +7773,93 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">Meta de Otimização</label>
-                        <select 
-                          value={dietRequirements.optimizationGoal}
-                          onChange={(e) => setDietRequirements(prev => ({ ...prev, optimizationGoal: e.target.value as any }))}
-                          className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors"
-                        >
-                          <option value="cost" className="bg-[#121826]">Custo Mínimo (R$/kg MS)</option>
-                          <option value="gmd" className="bg-[#121826]">Meta de GMD ({dietAnimalProfile.gmd} kg/d)</option>
-                        </select>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDietRequirements(prev => ({ ...prev, optimizationGoal: 'cost' }))}
+                            className={`py-2.5 px-3 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all border flex items-center justify-center gap-1 cursor-pointer ${
+                              dietRequirements.optimizationGoal === 'cost'
+                                ? "bg-purple-600/20 text-purple-300 border-purple-500/50 shadow-md shadow-purple-950/20"
+                                : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                            }`}
+                          >
+                            <TrendingDown className="w-3.5 h-3.5" />
+                            Custo Mínimo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDietRequirements(prev => ({ ...prev, optimizationGoal: 'gmd' }))}
+                            className={`py-2.5 px-3 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all border flex items-center justify-center gap-1 cursor-pointer ${
+                              dietRequirements.optimizationGoal === 'gmd'
+                                ? "bg-purple-600/20 text-purple-300 border-purple-500/50 shadow-md shadow-purple-950/20"
+                                : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                            }`}
+                          >
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            Meta GMD
+                          </button>
+                        </div>
                       </div>
 
-                      <div>
+                      <div className="md:col-span-2">
                         <div className="flex justify-between mb-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Mínimo de Volumoso (%)</label>
-                          <span className="text-xs font-black text-emerald-400 font-mono">{dietRequirements.forageMin}%</span>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Teor de Volumoso (%)</label>
+                          <span className="text-xs font-black text-emerald-400 font-mono">
+                            {dietRequirements.forageMin}% a {dietRequirements.forageMax}%
+                          </span>
                         </div>
-                        <input 
-                          type="range" min="0" max="100" step="1"
-                          value={dietRequirements.forageMin}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            setDietRequirements(prev => ({ 
-                              ...prev, 
-                              forageMin: val,
-                              forageMax: Math.max(val, prev.forageMax)
-                            }));
-                          }}
-                          className="w-full accent-emerald-500 cursor-pointer text-slate-100"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between mb-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Máximo de Volumoso (%)</label>
-                          <span className="text-xs font-black text-emerald-400 font-mono">{dietRequirements.forageMax}%</span>
+                        <div className="relative w-full h-6 flex items-center">
+                          {/* Background Track */}
+                          <div className="absolute left-0 right-0 h-1.5 bg-slate-800 rounded-full pointer-events-none" />
+                          
+                          {/* Active Interval Fill */}
+                          <div 
+                            className="absolute h-1.5 bg-emerald-500 rounded-full pointer-events-none"
+                            style={{
+                              left: `${dietRequirements.forageMin}%`,
+                              right: `${100 - dietRequirements.forageMax}%`
+                            }}
+                          />
+                          
+                          {/* Range input for Min */}
+                          <input 
+                            type="range" 
+                            min="0" 
+                            max="100" 
+                            step="1"
+                            value={dietRequirements.forageMin}
+                            onChange={(e) => {
+                              const val = Math.min(parseFloat(e.target.value), dietRequirements.forageMax);
+                              setDietRequirements(prev => ({ 
+                                ...prev, 
+                                forageMin: val
+                              }));
+                            }}
+                            className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-20 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-900 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-400 [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-slate-900 [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer"
+                          />
+                          
+                          {/* Range input for Max */}
+                          <input 
+                            type="range" 
+                            min="0" 
+                            max="100" 
+                            step="1"
+                            value={dietRequirements.forageMax}
+                            onChange={(e) => {
+                              const val = Math.max(parseFloat(e.target.value), dietRequirements.forageMin);
+                              setDietRequirements(prev => ({ 
+                                ...prev, 
+                                forageMax: val
+                              }));
+                            }}
+                            className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-20 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-900 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-400 [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-slate-900 [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer"
+                          />
                         </div>
-                        <input 
-                          type="range" min="0" max="100" step="1"
-                          value={dietRequirements.forageMax}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            setDietRequirements(prev => ({ 
-                              ...prev, 
-                              forageMax: val,
-                              forageMin: Math.min(val, prev.forageMin)
-                            }));
-                          }}
-                          className="w-full accent-emerald-500 cursor-pointer text-slate-100"
-                        />
+                        <div className="flex justify-between text-[8px] text-slate-500 font-black uppercase tracking-wider mt-1.5 font-sans">
+                          <span>Apenas Concentrado (0%)</span>
+                          <span>Dieta Mista</span>
+                          <span>Apenas Volumoso (100%)</span>
+                        </div>
                       </div>
                     </div>
 
@@ -7814,65 +7911,76 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-wrap gap-4 justify-between items-center">
-                          <div className="flex flex-wrap gap-4 items-center justify-center flex-1">
-                            <div className="flex flex-col items-center px-4">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Volumoso</span>
-                              <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.forageCostPerKgMN)}/kg MN</span>
-                              <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.forageCostPerKgMS)}/kg MS</span>
-                            </div>
-                            <div className="h-8 w-px bg-slate-800" />
-                            <div className="flex flex-col items-center px-4">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Concentrado</span>
-                              <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.concentrateCostPerKgMN)}/kg MN</span>
-                              <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.concentrateCostPerKgMS)}/kg MS</span>
-                            </div>
-                            <div className="h-8 w-px bg-slate-800" />
-                            <div className="flex flex-col items-center px-4">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase font-sans">Custo Médio Dieta</span>
-                              <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN)}/kg MN</span>
-                              <span className="text-[9px] text-slate-450 font-bold font-mono">{formatCurrency(dietResult.totalCost)}/kg MS</span>
-                            </div>
+                        <div className="bg-[#0f172a] p-5 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-col xl:flex-row gap-6 justify-between items-stretch">
+                          <div className="flex-1 overflow-x-auto">
+                            <table className="w-full text-left min-w-[500px] border-collapse">
+                              <thead>
+                                <tr className="border-b border-slate-800/80">
+                                  <th className="pb-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest font-sans w-1/4">Componente</th>
+                                  <th className="pb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest font-sans w-3/8">Custo da Dieta</th>
+                                  <th className="pb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest font-sans w-3/8">Consumo por Animal</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/40">
+                                <tr className="hover:bg-slate-900/10 transition-colors">
+                                  <td className="py-3 text-[10px] font-bold text-slate-300 uppercase tracking-wider font-sans">Volumoso</td>
+                                  <td className="py-3">
+                                    <div className="flex flex-col text-left">
+                                      <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.forageCostPerKgMN)}/kg MN</span>
+                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{formatCurrency(dietResult.forageCostPerKgMS)}/kg MS</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3">
+                                    <div className="flex flex-col text-left">
+                                      <span className="text-sm font-black text-emerald-400 font-mono">{dietResult.forageIntakeMN.toFixed(2)} kg MN</span>
+                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{((dietResult.cms || 0) * (dietResult.foragePercentage / 100)).toFixed(2)} kg MS</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                                <tr className="hover:bg-slate-900/10 transition-colors">
+                                  <td className="py-3 text-[10px] font-bold text-slate-300 uppercase tracking-wider font-sans">Concentrado</td>
+                                  <td className="py-3">
+                                    <div className="flex flex-col text-left">
+                                      <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.concentrateCostPerKgMN)}/kg MN</span>
+                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{formatCurrency(dietResult.concentrateCostPerKgMS)}/kg MS</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3">
+                                    <div className="flex flex-col text-left">
+                                      <span className="text-sm font-black text-emerald-400 font-mono">{dietResult.concentrateIntakeMN.toFixed(2)} kg MN</span>
+                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{((dietResult.cms || 0) * (dietResult.concentratePercentage / 100)).toFixed(2)} kg MS</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                                <tr className="hover:bg-slate-900/10 transition-colors bg-slate-800/10">
+                                  <td className="py-3 text-[10px] font-bold text-slate-300 uppercase tracking-wider font-sans">Média ou Total</td>
+                                  <td className="py-3">
+                                    <div className="flex flex-col text-left">
+                                      <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN)}/kg MN</span>
+                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{formatCurrency(dietResult.totalCost)}/kg MS</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3">
+                                    <div className="flex flex-col text-left">
+                                      <span className="text-sm font-black text-emerald-400 font-mono">{(dietResult.forageIntakeMN + dietResult.concentrateIntakeMN).toFixed(2)} kg MN</span>
+                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{(dietResult.cms || 0).toFixed(2)} kg MS</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
                           </div>
-                          
-                          <button
-                            onClick={handleApplyOptimizedDiet}
-                            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold text-[10px] tracking-wide uppercase shadow-lg shadow-emerald-950/25 transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-500/20 shrink-0"
-                          >
-                            <RefreshCw className="w-3.5 h-3.5 animate-pulse" />
-                            Sincronizar com Parâmetros
-                          </button>
-                        </div>
 
-                        {/* NOVO: Consumo de Volumosos e Concentrado (MN e MS) + Sincronização */}
-                        <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-wrap gap-6 justify-between items-center">
-                          <div className="flex flex-wrap gap-6 items-center">
-                            <div className="flex flex-col text-left px-2">
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-sans mb-1">Consumo de Volumoso</span>
-                              <span className="text-xs font-black text-[#10b981] font-mono">{dietResult.forageIntakeMN.toFixed(2)} kg <span className="text-[9px] font-semibold text-slate-400">MN/dia</span></span>
-                              <span className="text-[10px] text-slate-300 font-mono">{((dietResult.cms || 0) * (dietResult.foragePercentage / 100)).toFixed(2)} kg <span className="text-[8px] font-semibold text-slate-400">MS/dia</span></span>
-                            </div>
-                            <div className="h-10 w-px bg-slate-800 hidden md:block" />
-                            <div className="flex flex-col text-left px-2">
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-sans mb-1">Consumo de Concentrado</span>
-                              <span className="text-xs font-black text-[#10b981] font-mono">{dietResult.concentrateIntakeMN.toFixed(2)} kg <span className="text-[9px] font-semibold text-slate-400">MN/dia</span></span>
-                              <span className="text-[10px] text-slate-300 font-mono">{((dietResult.cms || 0) * (dietResult.concentratePercentage / 100)).toFixed(2)} kg <span className="text-[8px] font-semibold text-slate-400">MS/dia</span></span>
-                            </div>
-                            <div className="h-10 w-px bg-slate-800 hidden md:block" />
-                            <div className="flex flex-col text-left px-2">
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-sans mb-1">Consumo Total (CMS)</span>
-                              <span className="text-xs font-black text-purple-400 font-mono">{(dietResult.forageIntakeMN + dietResult.concentrateIntakeMN).toFixed(2)} kg <span className="text-[9px] font-semibold text-slate-400">MN/dia</span></span>
-                              <span className="text-[10px] text-purple-300 font-mono">{(dietResult.cms || 0).toFixed(2)} kg <span className="text-[8px] font-semibold text-slate-400">MS/dia</span></span>
-                            </div>
+                          <div className="w-full xl:w-auto flex flex-col items-center justify-center pt-4 xl:pt-0 xl:pl-6 border-t xl:border-t-0 xl:border-l border-slate-800 shrink-0">
+                            <button
+                              onClick={handleApplyOptimizedDiet}
+                              className="w-full xl:w-auto px-5 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-purple-600 hover:from-emerald-500 hover:via-teal-500 hover:to-purple-500 text-white rounded-xl font-bold text-[10px] tracking-wide uppercase shadow-lg shadow-emerald-950/25 hover:shadow-purple-950/30 transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-500/20 active:scale-[0.98]"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 animate-pulse" />
+                              Sincronizar com Parâmetros
+                            </button>
+                            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider mt-2 block text-center">Aplica valores formulados na simulação</span>
                           </div>
-                          
-                          <button
-                            onClick={handleApplyOptimizedDiet}
-                            className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold text-[11px] tracking-wide uppercase shadow-lg shadow-purple-950/25 transition-all flex items-center justify-center gap-2 cursor-pointer border border-purple-500/20"
-                          >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            Sincronizar com Parâmetros
-                          </button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -8143,7 +8251,7 @@ export default function App() {
                                 </div>
                               </div>
                               <p className="text-[10px] text-indigo-200/60 italic leading-relaxed">
-                                * Protocolo sugerido. Consulte seu nutricionista para ajustes baseados na saúde ruminal e escore de fezes.
+                                * Protocolo sugerido. Consulte seu zootecnista para ajustes baseados na saúde ruminal e escore de fezes.
                               </p>
                             </div>
                           </div>
@@ -8253,15 +8361,7 @@ export default function App() {
                       <Download className="w-3.5 h-3.5 text-emerald-400" />
                       Exportar XLSX
                     </button>
-                    <button
-                      onClick={handlePrintDiet}
-                      disabled={!dietResult}
-                      className="px-4 py-2 bg-slate-900 text-slate-300 border border-slate-800 rounded-xl font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-50 cursor-pointer shadow-sm"
-                      title="Imprimir relatório completo da dieta"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-blue-400" />
-                      Imprimir Dieta
-                    </button>
+
                   </div>
                 </div>
               </div>
@@ -8326,75 +8426,115 @@ export default function App() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85">
-                        <div className="flex justify-between items-start mb-4">
-                          <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
-                            Pegada de Carbono
-                            <InfoTooltip text="Total de emissões de gases de efeito estufa expressas em equivalente de CO2 para todo o lote." />
+                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
+                              Pegada de Carbono
+                              <InfoTooltip text="Total de emissões de gases de efeito estufa expressas em equivalente de CO2 para todo o lote." />
+                            </p>
+                            <Cloud className="w-4 h-4 text-blue-400" />
+                          </div>
+                          <p className="text-2xl font-black text-slate-100 font-mono">
+                            {results ? results.pegadaCarbonoTotal.toFixed(2) : '---'}
+                            <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">t CO2e/lote</span>
                           </p>
-                          <Cloud className="w-4 h-4 text-blue-400" />
                         </div>
-                        <p className="text-2xl font-black text-slate-100 font-mono">
-                          {results ? results.pegadaCarbonoTotal.toFixed(2) : '---'}
-                          <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">t CO2e/lote</span>
-                        </p>
-                        <div className="mt-3 pt-3 border-t border-slate-800/60 flex justify-between items-center">
-                          <span className="text-[10px] text-slate-400">Emissões Entéricas</span>
-                          <span className="text-[10px] font-bold text-indigo-450">IPCC Tier 1</span>
+                        <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1.5 text-[10px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Emissões Entéricas</span>
+                            <span className="font-bold text-indigo-400">IPCC Tier 1</span>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-slate-800/30 pt-1.5">
+                            <span className="text-slate-400">Intensidade por Ganho</span>
+                            <span className="font-semibold text-blue-400 font-mono">
+                              {results && results.ganhoPesoTotal > 0 ? ((results.pegadaCarbonoTotal * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} kg CO2e/kg ganho
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85">
-                        <div className="flex justify-between items-start mb-4">
-                          <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
-                            Pegada Hídrica
-                            <InfoTooltip text="Volume total de água doce utilizado por animal, incluindo consumo direto e limpeza." />
+                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
+                              Pegada Hídrica
+                              <InfoTooltip text="Volume total de água doce utilizado por animal, incluindo consumo direto e limpeza." />
+                            </p>
+                            <Droplets className="w-4 h-4 text-cyan-400" />
+                          </div>
+                          <p className="text-2xl font-black text-slate-100 font-mono">
+                            {results ? results.pegadaHidricaTotal.toFixed(2) : '---'}
+                            <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">m³/animal</span>
                           </p>
-                          <Droplets className="w-4 h-4 text-cyan-400" />
                         </div>
-                        <p className="text-2xl font-black text-slate-100 font-mono">
-                          {results ? results.pegadaHidricaTotal.toFixed(2) : '---'}
-                          <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">m³/animal</span>
-                        </p>
-                        <div className="mt-3 pt-3 border-t border-slate-800/60 flex justify-between items-center">
-                          <span className="text-[10px] text-slate-400">Consumo Direto</span>
-                          <span className="text-[10px] font-bold text-cyan-400">{inputs.usoAguaRecicladaPerc}% Reciclada</span>
+                        <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1.5 text-[10px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Consumo Direto</span>
+                            <span className="font-bold text-cyan-400">{inputs.usoAguaRecicladaPerc}% Reciclada</span>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-slate-800/30 pt-1.5">
+                            <span className="text-slate-400">Intensidade por Ganho</span>
+                            <span className="font-semibold text-cyan-400 font-mono">
+                              {results && results.ganhoPesoTotal > 0 ? ((results.pegadaHidricaTotal * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} L/kg ganho
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85">
-                        <div className="flex justify-between items-start mb-4">
-                          <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
-                            Eficiência de Terra
-                            <InfoTooltip text="Área necessária para produzir 1kg de carne. Quanto menor, maior a intensificação sustentável." />
+                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
+                              Eficiência de Terra
+                              <InfoTooltip text="Área necessária para produzir 1kg de carne. Quanto menor, maior a intensificação sustentável." />
+                            </p>
+                            <Map className="w-4 h-4 text-purple-400" />
+                          </div>
+                          <p className="text-2xl font-black text-slate-100 font-mono">
+                            {results ? results.eficienciaUsoTerra.toFixed(2) : '---'}
+                            <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">m²/kg produzido</span>
                           </p>
-                          <Map className="w-4 h-4 text-purple-400" />
                         </div>
-                        <p className="text-2xl font-black text-slate-100 font-mono">
-                          {results ? results.eficienciaUsoTerra.toFixed(2) : '---'}
-                          <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">m²/kg produzido</span>
-                        </p>
-                        <div className="mt-3 pt-3 border-t border-slate-800/60 flex justify-between items-center">
-                          <span className="text-[10px] text-slate-400">Intensificação</span>
-                          <span className="text-[10px] font-bold text-purple-400">Alta Eficiência</span>
+                        <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1.5 text-[10px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Intensificação</span>
+                            <span className="font-bold text-purple-400">Alta Eficiência</span>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-slate-800/30 pt-1.5">
+                            <span className="text-slate-400">Uso por Ganho</span>
+                            <span className="font-semibold text-purple-400 font-mono">
+                              {results ? results.eficienciaUsoTerra.toFixed(2) : '---'} m²/kg ganho
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85">
-                        <div className="flex justify-between items-start mb-4">
-                          <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
-                            Emissão de Metano
-                            <InfoTooltip text="Estimativa de metano entérico produzido pelos animais durante o ciclo de confinamento." />
+                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
+                              Emissão de Metano
+                              <InfoTooltip text="Estimativa de metano entérico produzido pelos animais durante o ciclo de confinamento." />
+                            </p>
+                            <Wind className="w-4 h-4 text-emerald-400" />
+                          </div>
+                          <p className="text-2xl font-black text-slate-100 font-mono">
+                            {results ? results.emissaoMetanoKg.toFixed(2) : '---'}
+                            <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">kg CH4/ciclo</span>
                           </p>
-                          <Wind className="w-4 h-4 text-emerald-400" />
                         </div>
-                        <p className="text-2xl font-black text-slate-100 font-mono">
-                          {results ? results.emissaoMetanoKg.toFixed(2) : '---'}
-                          <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">kg CH4/ciclo</span>
-                        </p>
-                        <div className="mt-3 pt-3 border-t border-slate-800/60 flex justify-between items-center">
-                          <span className="text-[10px] text-slate-400">Impacto Atmosférico</span>
-                          <span className="text-[10px] font-bold text-emerald-400 font-sans">GWP 25</span>
+                        <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1.5 text-[10px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Impacto Atmosférico</span>
+                            <span className="font-bold text-emerald-400 font-sans">GWP 25</span>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-slate-800/30 pt-1.5">
+                            <span className="text-slate-400">Intensidade de Metano</span>
+                            <span className="font-semibold text-emerald-400 font-mono">
+                              {results && results.ganhoPesoTotal > 0 ? (results.emissaoMetanoKg / results.ganhoPesoTotal).toFixed(3) : '---'} kg CH4/kg ganho
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -8404,26 +8544,36 @@ export default function App() {
                         <h4 className="text-xs font-bold text-emerald-400 uppercase mb-4 tracking-wider">Balanço de Nutrientes</h4>
                         <div className="space-y-4">
                           <div>
-                            <div className="flex justify-between text-[10px] mb-1.5">
+                            <div className="flex justify-between text-[10px] mb-1.5 flex-wrap gap-x-2">
                               <span className="text-slate-300 flex items-center">
                                 Nitrogênio (N) Excretado
                                 <InfoTooltip text="Quantidade de nitrogênio eliminada via urina e fezes. Importante para gestão de efluentes." />
                               </span>
-                              <span className="font-bold text-emerald-400 font-mono text-xs">{results ? results.balancoNitrogenio.toFixed(2) : '---'} kg/ani</span>
+                              <div className="text-right flex flex-col items-end">
+                                <span className="font-bold text-emerald-400 font-mono text-xs">{results ? results.balancoNitrogenio.toFixed(2) : '---'} kg/ani</span>
+                                <span className="text-[8px] text-slate-400 font-mono">
+                                  {results && results.ganhoPesoTotal > 0 ? ((results.balancoNitrogenio * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} g N/kg ganho
+                                </span>
+                              </div>
                             </div>
-                            <div className="w-full h-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-full overflow-hidden">
+                            <div className="w-full h-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-full overflow-hidden mt-1">
                               <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full" style={{ width: '65%' }} />
                             </div>
                           </div>
                           <div>
-                            <div className="flex justify-between text-[10px] mb-1.5">
+                            <div className="flex justify-between text-[10px] mb-1.5 flex-wrap gap-x-2">
                               <span className="text-slate-300 flex items-center">
                                 Fósforo (P) Excretado
                                 <InfoTooltip text="Quantidade de fósforo eliminada. O excesso pode causar eutrofização de corpos d'água." />
                               </span>
-                              <span className="font-bold text-emerald-400 font-mono text-xs">{results ? results.balancoFosforo.toFixed(2) : '---'} kg/ani</span>
+                              <div className="text-right flex flex-col items-end">
+                                <span className="font-bold text-emerald-400 font-mono text-xs">{results ? results.balancoFosforo.toFixed(2) : '---'} kg/ani</span>
+                                <span className="text-[8px] text-slate-400 font-mono">
+                                  {results && results.ganhoPesoTotal > 0 ? ((results.balancoFosforo * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} g P/kg ganho
+                                </span>
+                              </div>
                             </div>
-                            <div className="w-full h-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-full overflow-hidden">
+                            <div className="w-full h-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-full overflow-hidden mt-1">
                               <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400" style={{ width: '40%' }} />
                             </div>
                           </div>
@@ -8870,7 +9020,7 @@ export default function App() {
                                       )}
 
                                       <div className="pt-3 mt-3 border-t border-slate-800/80 flex justify-between items-center">
-                                        <span className="text-[9px] text-slate-500 font-mono">Ref: {price.date}</span>
+                                        <span className="text-[9px] text-slate-500 font-mono">Ref: {price.date.split('T')[0].split('-').reverse().join('-')}</span>
                                         <button 
                                           onClick={() => {
                                             setInputs(prev => ({
@@ -8929,14 +9079,6 @@ export default function App() {
                             <Zap className="w-4 h-4 text-emerald-400 animate-pulse" />
                             DICA DE MERCADO
                           </h4>
-                          
-                          <button
-                            onClick={() => setShowAgioExplanation(!showAgioExplanation)}
-                            className="text-[10px] text-emerald-400 font-semibold hover:text-emerald-300 transition-colors flex items-center gap-1"
-                            title="Entenda como o ágio é calculado"
-                          >
-                            <Info className="w-3.5 h-3.5" /> Como é calculado?
-                          </button>
                         </div>
 
                         {/* State Selection */}
@@ -8947,12 +9089,12 @@ export default function App() {
                             onChange={(e) => setAgioSelectedState(e.target.value)}
                             className="w-full bg-slate-900/90 border border-slate-700 text-xs text-slate-100 rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-sans"
                           >
-                            <option value="Médio" className="bg-slate-900">Média de Todos os Estados</option>
-                            <option value="Regiao-Sudeste" className="bg-slate-900">Média Região Sudeste (SP, MG)</option>
-                            <option value="Regiao-Sul" className="bg-slate-900">Média Região Sul (RS, PR, SC)</option>
-                            <option value="Regiao-Centro-Oeste" className="bg-slate-900">Média Região Centro-Oeste (MS, MT, GO)</option>
-                            <option value="Regiao-Norte" className="bg-slate-900">Média Região Norte (PA, RO, TO)</option>
-                            <option value="Regiao-Nordeste" className="bg-slate-900">Média Região Nordeste (BA, MA)</option>
+                            <option value="Médio" className="bg-slate-900 font-sans">Média de Todos os Estados</option>
+                            <option value="Regiao-Sudeste" className="bg-slate-900 font-sans">Média Região Sudeste (SP, MG)</option>
+                            <option value="Regiao-Sul" className="bg-slate-900 font-sans">Média Região Sul (RS, PR, SC)</option>
+                            <option value="Regiao-Centro-Oeste" className="bg-slate-900 font-sans">Média Região Centro-Oeste (MS, MT, GO)</option>
+                            <option value="Regiao-Norte" className="bg-slate-900 font-sans">Média Região Norte (PA, RO, TO)</option>
+                            <option value="Regiao-Nordeste" className="bg-slate-900 font-sans">Média Região Nordeste (BA, MA)</option>
                           </select>
                         </div>
 
@@ -8968,9 +9110,9 @@ export default function App() {
                               {marketStats.agioMedio >= 0 ? 'Ágio de Reposição' : 'Deságio de Reposição'} ({marketStats.label})
                             </p>
                             <p className={`text-xl font-black font-mono flex items-center gap-1.5 ${
-                              marketStats.agioMedio >= 0 ? 'text-[#fb7185]' : 'text-emerald-400'
+                                marketStats.agioMedio >= 0 ? 'text-[#fb7185]' : 'text-emerald-400'
                             }`}>
-                              {marketStats.agioMedio > 0 ? '+' : ''}{marketStats.agioMedio.toFixed(1)}%
+                              {marketStats.agioMedio > 0 ? '+' : ''}{marketStats.agioMedio.toFixed(2)}%
                               <span className={`text-[9px] font-black font-sans uppercase tracking-widest px-1.5 py-0.5 rounded-lg border ${
                                 marketStats.agioMedio >= 0
                                   ? 'bg-rose-500/10 border-rose-500/20 text-[#fb7185]'
@@ -8998,82 +9140,84 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Smooth Transition Collapsible Explanation */}
-                        {showAgioExplanation && (
-                          <div className="mt-4 p-4 bg-[#090d16] border border-slate-800 rounded-xl text-[11px] text-slate-300 space-y-3 leading-relaxed animate-in fade-in duration-300 text-left">
-                            <h5 className="font-bold text-xs text-emerald-400 border-b border-slate-800/80 pb-1.5 flex items-center gap-1">
-                              Metodologia de Cálculo do Ágio
-                            </h5>
-                            
-                            <div>
-                              <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">1. Conversão do Boi Magro para Arroba (@):</span>
-                              <p className="text-slate-400 leading-normal">
-                                O boi magro é negociado por cabeça (valor unitário). Para calcular o ágio em relação ao boi gordo (negociado em @), convertemos o valor do gado magro para o correspondente por arroba (@):
-                              </p>
-                              <div className="mt-1.5 p-2 bg-slate-900 rounded-lg text-center font-mono font-bold text-emerald-400 text-[10px] border border-slate-800">
-                                Preço Arroba Magro = (Valor Boi Magro × 30) / Peso Vivo Inicial
-                              </div>
-                              <p className="mt-1 text-[9px] text-slate-500 italic">
-                                * Nota técnica: Adota-se o padrão comercial de equivalência biológica onde 1 arroba live correspondente a 30kg de peso vivo (rendimento padrão de carcaça).
-                              </p>
+                        {/* Fixed Explanation of Agio Calculation */}
+                        <div className="mt-4 p-4 bg-[#090d16] border border-slate-800 rounded-xl text-[11px] text-slate-300 space-y-3 leading-relaxed text-left">
+                          <h5 className="font-bold text-xs text-emerald-400 border-b border-slate-800/80 pb-1.5 flex items-center gap-1">
+                            Metodologia de Cálculo do Ágio
+                          </h5>
+                          
+                          <div>
+                            <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">1. Conversão do Boi Magro para Arroba (@):</span>
+                            <p className="text-slate-400 leading-normal">
+                              O boi magro é negociado por cabeça (valor unitário). Para calcular o ágio em relação ao boi gordo (negociado em @), convertemos o valor do gado magro para o correspondente por arroba (@):
+                            </p>
+                            <div className="mt-1.5 p-2 bg-slate-900 rounded-lg text-center font-mono font-bold text-emerald-400 text-[10px] border border-slate-800">
+                              Preço Arroba Magro = (Valor Boi Magro × 30) / Peso Vivo Inicial
                             </div>
+                            <p className="mt-1 text-[9px] text-slate-500 italic">
+                              * Nota técnica: Adota-se o padrão comercial de equivalência biológica onde 1 arroba live correspondente a 30kg de peso vivo (rendimento padrão de carcaça).
+                            </p>
+                          </div>
 
-                            <div>
-                              <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">2. Cálculo de Diferencial (Ágio %):</span>
-                              <p className="text-slate-400 leading-normal">
-                                O ágio representa a diferença percentual paga na arroba do animal de reposição (boi magro) sobre o preço obtido na venda do animal acabado (boi gordo):
-                              </p>
-                              <div className="mt-1.5 p-2 bg-slate-900 rounded-lg text-center font-mono font-bold text-emerald-400 text-[10px] border border-slate-800">
-                                Ágio (%) = [ (Preço Arroba Magro / Preço Arroba Gordo) - 1 ] × 100
-                              </div>
+                          <div>
+                            <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">2. Cálculo de Diferencial (Ágio %):</span>
+                            <p className="text-slate-400 leading-normal">
+                              O ágio representa a diferença percentual paga na arroba do animal de reposição (boi magro) sobre o preço obtido na venda do animal acabado (boi gordo):
+                            </p>
+                            <div className="mt-1.5 p-2 bg-slate-900 rounded-lg text-center font-mono font-bold text-emerald-400 text-[10px] border border-slate-800">
+                              Ágio (%) = [ (Preço Arroba Magro / Preço Arroba Gordo) - 1 ] × 100
                             </div>
+                          </div>
 
-                            <div>
-                              <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">3. Entendendo os Valores (Positivo vs Negativo):</span>
-                              <ul className="space-y-1 mt-1 text-[10px] text-slate-400">
-                                <li className="leading-snug">
-                                  <span className="font-bold text-rose-400">● Ágio Positivo (+)</span>: Ocorre quando a arroba paga na reposição é mais cara que a de venda do boi gordo. Isso aumenta a pressão de custos e exige máxima eficiência de GMD e conversão.
-                                </li>
-                                <li className="leading-snug">
-                                  <span className="font-bold text-emerald-400">● Ágio Negativo (-) [Deságio]</span>: Ocorre no cenário de mercado favorável em que a reposição é comprada por valor de arroba inferior à venda final. Ajuda a expandir as margens.
-                                </li>
-                              </ul>
-                            </div>
+                          <div>
+                            <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">3. Entendendo os Valores (Positivo vs Negativo):</span>
+                            <ul className="space-y-1 mt-1 text-[10px] text-slate-400">
+                              <li className="leading-snug">
+                                <span className="font-bold text-rose-400">● Ágio Positivo (+)</span>: Ocorre quando a arroba paga na reposição é mais cara que a de venda do boi gordo. Isso aumenta a pressão de custos e exige máxima eficiência de GMD e conversão.
+                              </li>
+                              <li className="leading-snug">
+                                <span className="font-bold text-emerald-400">● Ágio Negativo (-) [Deságio]</span>: Ocorre no cenário de mercado favorável em que a reposição é comprada por valor de arroba inferior à venda final. Ajuda a expandir as margens.
+                              </li>
+                            </ul>
+                          </div>
 
-                            <div className="pt-2 border-t border-slate-800 font-mono text-[10px] text-slate-300 space-y-1">
-                              <span className="font-bold text-slate-200 block mb-1">Demonstração de Valores (Cálculo Ativo):</span>
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 bg-slate-900/50 p-2.5 rounded-lg border border-slate-800/40">
-                                <div>• Preço Boi Magro:</div>
-                                <div className="text-right text-emerald-400 font-bold">R$ {marketStats.boiMagro.toLocaleString('pt-BR')}</div>
-                                
-                                <div>• Peso Vivo Inicial:</div>
-                                <div className="text-right text-emerald-400 font-bold">{Math.round(marketStats.weight)} kg</div>
-                                
-                                <div className="border-t border-slate-800/60 pt-0.5">• @ Reposição Eq.:</div>
-                                <div className="text-right text-emerald-400 font-bold border-t border-slate-800/60 pt-0.5">R$ {marketStats.pArrobaMagro.toFixed(2)}</div>
-                                
-                                <div>• @ Boi Gordo Ref.:</div>
-                                <div className="text-right text-emerald-400 font-bold">R$ {marketStats.pArrobaGordo.toFixed(2)}</div>
-                                
-                                <div className="border-t border-slate-700/60 pt-1 font-semibold text-white">• Ágio Resultante:</div>
-                                <div className="text-right text-emerald-400 font-black border-t border-slate-700/60 pt-1">
-                                  {marketStats.agioMedio > 0 ? '+' : ''}{marketStats.agioMedio.toFixed(2)}%
-                                </div>
+                          <div className="pt-2 border-t border-slate-800 font-mono text-[10px] text-slate-300 space-y-1">
+                            <span className="font-bold text-slate-200 block mb-1">Demonstração de Valores (Cálculo Ativo):</span>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 bg-slate-900/50 p-2.5 rounded-lg border border-slate-800/40">
+                              <div>• Preço Boi Magro:</div>
+                              <div className="text-right text-emerald-400 font-bold">R$ {marketStats.boiMagro.toLocaleString('pt-BR')}</div>
+                              
+                              <div>• Peso Vivo Inicial:</div>
+                              <div className="text-right text-emerald-400 font-bold">{Math.round(marketStats.weight)} kg</div>
+                              
+                              <div className="border-t border-slate-800/60 pt-0.5">• @ Reposição Eq.:</div>
+                              <div className="text-right text-emerald-400 font-bold border-t border-slate-800/60 pt-0.5">R$ {marketStats.pArrobaMagro.toFixed(2)}</div>
+                              
+                              <div>• @ Boi Gordo Ref.:</div>
+                              <div className="text-right text-emerald-400 font-bold">R$ {marketStats.pArrobaGordo.toFixed(2)}</div>
+                              
+                              <div className="border-t border-slate-700/60 pt-1 font-semibold text-white">• Ágio Resultante:</div>
+                              <div className="text-right text-emerald-400 font-black border-t border-slate-700/60 pt-1">
+                                {marketStats.agioMedio > 0 ? '+' : ''}{marketStats.agioMedio.toFixed(2)}%
                               </div>
                             </div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
 
                     <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
                       <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Links Úteis</h4>
                       <div className="space-y-2">
+                        <a href="https://www.noticiasagricolas.com.br/cotacoes/boi-gordo/macho-nelore-boi-magro" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                          Notícias Agrícolas
+                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                        </a>
                         <a href="https://www.cepea.esalq.usp.br/br/indicador/boi-gordo.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
                           Indicador CEPEA
                           <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://www.scotconsultoria.com.br/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://www.scotconsultoria.com.br/cotacoes/boi-gordo/?ref=smnb" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
                           Scot Consultoria
                           <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                         </a>
@@ -9081,12 +9225,16 @@ export default function App() {
                           LAE - FMVZ/USP
                           <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/cotacoes/commodities.htm?codigo=BGI" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://br.tradingview.com/symbols/BMFBOVESPA-BGI1!/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
                           Cotações B3
                           <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                         </a>
                         <a href="https://www.ufrgs.br/nespro/cotacoes/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
                           Cotações NESPRO (RS)
+                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                        </a>
+                        <a href="https://portaldeinformacoes.conab.gov.br/precos-agropecuarios.html" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                          CONAB - Preços Agropecuários
                           <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                         </a>
                         <a href="https://www.agrolink.com.br/cotacoes/carnes/bovinos" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
@@ -11177,6 +11325,7 @@ function InputGroup({
   tooltip,
   icon: Icon,
   isCurrency = false,
+  isInteger = false,
   unit,
   error
 }: { 
@@ -11190,12 +11339,13 @@ function InputGroup({
   tooltip?: string,
   icon?: any,
   isCurrency?: boolean,
+  isInteger?: boolean,
   unit?: string,
   error?: string
 }) {
-  const handleCurrencyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/\D/g, '');
-    const numericValue = rawValue ? parseFloat(rawValue) / 100 : 0;
+    const numericValue = rawValue ? (isInteger ? parseInt(rawValue, 10) : parseFloat(rawValue) / 100) : 0;
     
     const fakeEvent = {
       ...e,
@@ -11209,9 +11359,10 @@ function InputGroup({
     onChange(fakeEvent);
   };
 
-  const displayValue = isCurrency 
-    ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
-    : value;
+  const displayValue = new Intl.NumberFormat('pt-BR', { 
+    minimumFractionDigits: isInteger ? 0 : 2, 
+    maximumFractionDigits: isInteger ? 0 : 2 
+  }).format(Number(value) || 0);
 
   return (
     <motion.div 
@@ -11240,11 +11391,11 @@ function InputGroup({
       </div>
       <div className="relative">
         <input
-          type={isCurrency ? "text" : "number"}
-          inputMode={isCurrency ? "numeric" : undefined}
+          type="text"
+          inputMode="numeric"
           name={name}
           value={displayValue}
-          onChange={isCurrency ? handleCurrencyChange : onChange}
+          onChange={handleNumericChange}
           step={step}
           disabled={disabled}
           className={`w-full bg-[#121826] border ${error ? 'border-red-500/80 ring-4 ring-red-500/10' : 'border-slate-800'} rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-100 placeholder-slate-500 hover:bg-[#161e30] hover:border-slate-700 focus:bg-[#0c1220] focus:outline-none focus:ring-4 ${error ? 'focus:ring-red-500/10 focus:border-red-500' : 'focus:ring-emerald-500/10 focus:border-emerald-500/80'} transition-all shadow-md ${disabled ? 'opacity-40 cursor-not-allowed bg-slate-900/60 text-slate-500' : ''} ${unit ? 'pr-12' : ''}`}
@@ -11397,7 +11548,7 @@ function ResultRow({ label, value, bold = false, tooltip, extra, dotColor }: { l
 }
 
 function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
-  const [activeHelpTab, setActiveHelpTab] = useState<'about' | 'concepts' | 'quiz' | 'manual'>('about');
+  const [activeHelpTab, setActiveHelpTab] = useState<'about' | 'concepts' | 'references' | 'citation' | 'quiz' | 'manual'>('about');
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
   
   const handleCopy = (text: string, format: string) => {
@@ -11562,19 +11713,12 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex flex-col bg-[#0f172a]">
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-          />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-4xl bg-[#0f172a] border border-slate-800/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 15 }}
+            className="relative w-full h-full bg-[#0f172a] overflow-hidden flex flex-col"
           >
             <div className="p-6 border-b border-slate-800/60 flex items-center justify-between bg-[#070a13] text-white">
               <div className="flex items-center gap-3">
@@ -11621,6 +11765,24 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
               >
                 <BookOpen className="w-4 h-4" />
                 Fundamentação Teórica
+              </button>
+              <button
+                onClick={() => setActiveHelpTab('references')}
+                className={`flex-1 min-w-[140px] py-4 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  activeHelpTab === 'references' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/10' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-emerald-500" />
+                Referências Bibliográficas
+              </button>
+              <button
+                onClick={() => setActiveHelpTab('citation')}
+                className={`flex-1 min-w-[140px] py-4 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  activeHelpTab === 'citation' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/10' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <GraduationCap className="w-4 h-4 text-emerald-500" />
+                Como Citar
               </button>
               <button
                 onClick={() => setActiveHelpTab('quiz')}
@@ -12601,159 +12763,521 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           </span>
                         </div>
                       </div>
+
+                      {/* ESG METRICS */}
+                      <div className="space-y-4 pt-6 border-t border-slate-850">
+                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-teal-400 font-display">
+                          G. Indicadores e Equações de Sustentabilidade (ESG)
+                        </h4>
+                        <p className="text-xs text-slate-400 font-sans">
+                          Quantificação científica dos impactos ambientais e sociais baseada em balanço de massa, ecoeficiência e conformidade:
+                        </p>
+                        
+                        <div className="space-y-6">
+                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-teal-400">
+                            <span className="text-slate-500 block text-[10px] font-sans">1. BALANÇO DE NITROGÊNIO (N) EXCRETADO</span>
+                            <p>PB_média = (CMS_Volumo × 0.08 + CMS_Concentrado × 0.18) / CMS_Total</p>
+                            <p>Ingestão_N (kg) = (CMS_Total × PB_média) / 6.25</p>
+                            <p>Retenção_N (kg) = (Ganho_Peso_Total × 0.15) / 6.25</p>
+                            <p>Balanço_N (kg) = Max[ 0, Ingestão_N - Retenção_N ]</p>
+                            <span className="text-[10px] text-slate-500 block mt-1 font-sans">* Representa o nitrogênio lixiviado ou volatilizado derivado da excreção urinária e fecal.</span>
+                          </div>
+
+                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-teal-400">
+                            <span className="text-slate-500 block text-[10px] font-sans">2. BALANÇO DE FÓSFORO (P) EXCRETADO</span>
+                            <p>P_dieta_média = (CMS_Volumo × 0.002 + CMS_Concentrado × 0.005) / CMS_Total</p>
+                            <p>Ingestão_P (kg) = CMS_Total × P_dieta_média</p>
+                            <p>Retenção_P (kg) = Ganho_Peso_Total × 0.007</p>
+                            <p>Balanço_P (kg) = Max[ 0, Ingestão_P - Retenção_P ]</p>
+                            <span className="text-[10px] text-slate-500 block mt-1 font-sans">* Mede o excedente residual eutofizante do fósforo excretado no meio.</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </section>
 
-                  <section className="bg-emerald-500/5 p-8 rounded-3xl border border-emerald-500/10 font-sans">
-                    <h3 className="text-xl font-bold text-emerald-400 mb-6 flex items-center gap-2 font-display">
+                  {/* NOVO: 9. Indicadores e Equações de Sustentabilidade (ESG) */}
+                  <section className="bg-[#070a13] p-8 rounded-3xl border border-slate-800 text-left">
+                    <h3 className="text-base font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
+                      <div className="w-1.5 h-6 bg-teal-500 rounded-full" />
+                      9. Indicadores e Equações de Sustentabilidade (ESG)
+                    </h3>
+                    <div className="prose prose-sm max-w-none text-slate-300 space-y-6 text-xs sm:text-sm leading-relaxed font-sans text-left font-sans">
+                      <p>
+                        Quantificação científica dos impactos ambientais e sociais baseada em balanço de massa, ecoeficiência e conformidade:
+                      </p>
+                      
+                      <div className="space-y-6">
+                        <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-teal-500/30 transition-all text-left">
+                          <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-teal-500/20 text-teal-400 bg-teal-500/5">
+                            1. BALANÇO DE NITROGÊNIO (N) EXCRETADO
+                          </span>
+                          <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                            Representa o nitrogênio lixiviado ou volatilizado derivado da excreção urinária e fecal, obtido pelo balanço de massas proteicas:
+                          </p>
+                          <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-teal-400 select-all my-3 text-center overflow-x-auto">
+                            PB_média = (CMS_Volumo × 0.08 + CMS_Concentrado × 0.18) / CMS_Total <br />
+                            Ingestão_N (kg) = (CMS_Total × PB_média) / 6.25 <br />
+                            Retenção_N (kg) = (Ganho_Peso_Total × 0.15) / 6.25 <br />
+                            Balanço_N (kg) = Max[ 0, Ingestão_N - Retenção_N ]
+                          </div>
+                          <span className="text-[10px] text-slate-500 block mt-1 font-sans">* Representa o nitrogênio lixiviado ou volatilizado derivado da excreção urinária e fecal.</span>
+                        </div>
+
+                        <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-teal-500/30 transition-all text-left">
+                          <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-teal-500/20 text-teal-400 bg-teal-500/5">
+                            2. BALANÇO DE FÓSFORO (P) EXCRETADO
+                          </span>
+                          <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                            Mede o excedente residual eutofizante do fósforo excretado no meio pelo balanço de ingestão versus deposição muscular:
+                          </p>
+                          <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-teal-400 select-all my-3 text-center overflow-x-auto">
+                            P_dieta_média = (CMS_Volumo × 0.002 + CMS_Concentrado × 0.005) / CMS_Total <br />
+                            Ingestão_P (kg) = CMS_Total × P_dieta_média <br />
+                            Retenção_P (kg) = Ganho_Peso_Total × 0.007 <br />
+                            Balanço_P (kg) = Max[ 0, Ingestão_P - Retenção_P ]
+                          </div>
+                          <span className="text-[10px] text-slate-500 block mt-1 font-sans">* Mede o excedente residual eutofizante do fósforo excretado no meio.</span>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              ) : activeHelpTab === 'references' ? (
+                <div className="space-y-12">
+                  <section className="bg-emerald-500/5 p-8 rounded-3xl border border-emerald-500/10 font-sans mt-8">
+                    <h3 className="text-xl font-bold text-slate-100 mb-8 flex items-center gap-2 font-display">
                       <BookOpen className="w-6 h-6 text-emerald-400" />
                       Referências Bibliográficas
                     </h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-10">
+                      {/* COLUNA 1: Publicações sobre uso da metodologia em confinamento */}
                       <div className="space-y-6">
                         <div>
-                          <h4 className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-3 font-display">Publicações sobre uso da metodologia em confinamento de bovinos</h4>
-                          <ul className="text-[10px] text-emerald-400 space-y-3 list-disc pl-5 font-sans">
-                            <li>
-                              <strong>MACHADO, G. I. O.; VAZ, F. N.; OLEGÁRIO, J. L.; PIZZUTI, L. Â. D.; PACHECO, P. S.; SILVA, R. M. da; SOUZA, R. L. de; DALLANORA, M. E. C. (2024)</strong>. Viabilidade econômica da terminação de categorias bovinas em pastagem cultivada de inverno ou confinamento por meio da simulação de Monte Carlo. Observatório de la Economía Latinoamericana, v.22, p.e7792, 2024.
-                              <a href="https://doi.org/10.55905/oelv22n7-279" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.55905/oelv22n7-279</a>
+                          <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4 font-display flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                            <span>Uso de Metodologia de Confinamento & Modelagem</span>
+                            <span className="text-[9px] text-slate-500 font-normal lowercase font-sans">20 títulos</span>
+                          </h4>
+                          <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">MACHADO, G. I. O.; VAZ, F. N.; OLEGÁRIO, J. L.; PIZZUTI, L. Â. D.; PACHECO, P. S.; SILVA, R. M. da; SOUZA, R. L. de; DALLANORA, M. E. C. (2024)</strong>. Viabilidade econômica da terminação de categorias bovinas em pastagem cultivada de inverno ou confinamento por meio da simulação de Monte Carlo. <em>Observatório de la Economía Latinoamericana</em>, v.22, p.e7792, 2024.
+                              <a
+                                href="https://doi.org/10.55905/oelv22n7-279"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>OLEGÁRIO, J. L.; VAZ, F. N.; PASCOAL, L. L.; VAZ, R. Z.; PIZZUTI, L. Â. D.; PACHECO, P. S.; MAYSONNAVE, G. S.; SILVA, R. M. da (2023)</strong>. Análise econômica probabilística do confinamento de novilhos com diferentes pesos iniciais. Observatório de la Economía Latinoamericana, v.21, p.20512 - 20527, 2023.
-                              <a href="https://doi.org/10.55905/oelv21n11-204" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.55905/oelv21n11-204</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">OLEGÁRIO, J. L.; VAZ, F. N.; PASCOAL, L. L.; VAZ, R. Z.; PIZZUTI, L. Â. D.; PACHECO, P. S.; MAYSONNAVE, G. S.; SILVA, R. M. da (2023)</strong>. Análise econômica probabilística do confinamento de novilhos com diferentes pesos iniciais. <em>Observatório de la Economía Latinoamericana</em>, v.21, p.20512 - 20527, 2023.
+                              <a
+                                href="https://doi.org/10.55905/oelv21n11-204"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>SILVA, R. M.; TAVEIRA, R. Z.; RESTLE, J.; FABRICIO, E. A.; CAMERA, A.; MAYSONNAVE, G. S.; BILEGO, U. O.; PACHECO, P. S.; VAZ, F. N. (2020)</strong>. Economic analysis of the risk of replacing corn grains (Zea mays) with pearl millet grains (Pennisetum glaucum) in the diet of feedlot cattle. Ciência Rural, v.50, p.01 - 12, 2020.
-                              <a href="https://doi.org/10.1590/0103-8478cr20190124" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20190124</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SILVA, R. M.; TAVEIRA, R. Z.; RESTLE, J.; FABRICIO, E. A.; CAMERA, A.; MAYSONNAVE, G. S.; BILEGO, U. O.; PACHECO, P. S.; VAZ, F. N. (2020)</strong>. Economic analysis of the risk of replacing corn grains (Zea mays) with pearl millet grains (Pennisetum glaucum) in the diet of feedlot cattle. <em>Ciência Rural</em>, v.50, p.01 - 12, 2020.
+                              <a
+                                href="https://doi.org/10.1590/0103-8478cr20190124"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>VAZ, M. A. B.; PACHECO, P. S.; SEIDEL, E. J.; ANSUJ, A. P. (2017)</strong>. Classification of the coefficient of variation to variables in beef cattle experiments. Ciência Rural, v.47, p.1 - 4, 2017.
-                              <a href="https://doi.org/10.1590/0103-8478cr20160233" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20160233</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">VAZ, M. A. B.; PACHECO, P. S.; SEIDEL, E. J.; ANSUJ, A. P. (2017)</strong>. Classification of the coefficient of variation to variables in beef cattle experiments. <em>Ciência Rural</em>, v.47, p.1 - 4, 2017.
+                              <a
+                                href="https://doi.org/10.1590/0103-8478cr20160233"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>ÁVILA, M. M. de; PACHECO, P. S.; PASCOAL, L. L. (2017)</strong>. Economic deterministic analysis of two years old steers production systems. Ciência Animal Brasileira, v.18, p.1 - 14, 2017.
-                              <a href="https://doi.org/10.1590/1089-6891v18e-36056" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/1089-6891v18e-36056</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">ÁVILA, M. M. de; PACHECO, P. S.; PASCOAL, L. L. (2017)</strong>. Economic deterministic analysis of two years old steers production systems. <em>Ciência Animal Brasileira</em>, v.18, p.1 - 14, 2017.
+                              <a
+                                href="https://doi.org/10.1590/1089-6891v18e-36056"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>FABRICIO, E. A.; PACHECO, P. S.; VAZ, F. N.; LEMES, D. B.; CAMERA, A.; MACHADO, G. I. O. (2017)</strong>. Financial indicators to evaluate the economic performance of feedlot steers with different slaughter weights. Ciência Rural, v.47, p.e20160516, 2017.
-                              <a href="https://doi.org/10.1590/0103-8478cr20160516" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20160516</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">FABRICIO, E. A.; PACHECO, P. S.; VAZ, F. N.; LEMES, D. B.; CAMERA, A.; MACHADO, G. I. O. (2017)</strong>. Financial indicators to evaluate the economic performance of feedlot steers with different slaughter weights. <em>Ciência Rural</em>, v.47, p.e20160516, 2017.
+                              <a
+                                href="https://doi.org/10.1590/0103-8478cr20160516"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>LEAL, W. S.; PACHECO, P. S.; PASCOAL, L. L.; VAZ, R. Z.; MENDONÇA, F. S.; SEVERO, M. M. (2017)</strong>. Indicadores financeiros determinísticos e custos de produção do confinamento de bovinos no Rio Grande do Sul–Brasil. Custos e Agronegócio On Line, v.13, p.201, 2017.
-                              <a href="http://www.custoseagronegocioonline.com.br/numero3v13/OK%2010%20confinamento.pdf" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">Acesso</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">LEAL, W. S.; PACHECO, P. S.; PASCOAL, L. L.; VAZ, R. Z.; MENDONÇA, F. S.; SEVERO, M. M. (2017)</strong>. Indicadores financeiros determinísticos e custos de produção do confinamento de bovinos no Rio Grande do Sul–Brasil. <em>Custos e Agronegócio On Line</em>, v.13, p.201, 2017.
+                              <a
+                                href="http://www.custoseagronegocioonline.com.br/numero3v13/OK%2010%20confinamento.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>ROSA, J. R. P.; PACHECO, P. S.; FABRICIO, E. A.; CAMERA, A.; LEMES, D. B. (2017)</strong>. Risk analysis of economic viability of feedlot aberdeen angus steers fed with different proportions of concentrate. Bioscience Journal, v.33, p.660 - 669, 2017.
-                              <a href="https://doi.org/10.14393/BJ-v33n3a2017-34752" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.14393/BJ-v33n3a2017-34752</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">ROSA, J. R. P.; PACHECO, P. S.; FABRICIO, E. A.; CAMERA, A.; LEMES, D. B. (2017)</strong>. Risk analysis of economic viability of feedlot aberdeen angus steers fed with different proportions of concentrate. <em>Bioscience Journal</em>, v.33, p.660 - 669, 2017.
+                              <a
+                                href="https://doi.org/10.14393/BJ-v33n3a2017-34752"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; VAZ, F. N.; VALENÇA, K. G.; FABRICIO, E. A.; OLEGÁRIO, J. L.; CAMPARA, J. M.; CAMERA, A. (2017)</strong>. Stochastic simulation of the economic viability of feedlot finishing steers slaughtered at different weights in southern brazil. Bioscience Journal, v.33, p.652 - 659, 2017.
-                              <a href="https://doi.org/10.14393/BJ-v33n3a2017-34751" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.14393/BJ-v33n3a2017-34751</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; VAZ, F. N.; VALENÇA, K. G.; FABRICIO, E. A.; OLEGÁRIO, J. L.; CAMPARA, J. M.; CAMERA, A. (2017)</strong>. Stochastic simulation of the economic viability of feedlot finishing steers slaughtered at different weights in southern brazil. <em>Bioscience Journal</em>, v.33, p.652 - 659, 2017.
+                              <a
+                                href="https://doi.org/10.14393/BJ-v33n3a2017-34751"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>SILVA, R. M. da; TAVEIRA, R. Z.; VAZ, F. N.; FABRICIO, E. A.; MIOLLO, J. R.; CAMERA, A.; PACHECO, P. S. (2017)</strong>. Stochastic simulation of the economic viability of feedlot steers fed with different proportions of concentrate. Bioscience Journal (Online), v.33, p.125 - 134, 2017.
-                              <a href="https://doi.org/10.14393/BJ-v33n1a2017-33124" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.14393/BJ-v33n1a2017-33124</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SILVA, R. M. da; TAVEIRA, R. Z.; VAZ, F. N.; FABRICIO, E. A.; MIOLLO, J. R.; CAMERA, A.; PACHECO, P. S. (2017)</strong>. Stochastic simulation of the economic viability of feedlot steers fed with different proportions of concentrate. <em>Bioscience Journal (Online)</em>, v.33, p.125 - 134, 2017.
+                              <a
+                                href="https://doi.org/10.14393/BJ-v33n1a2017-33124"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; FABRICIO, E. A.; CAMERA, A. (2016)</strong>. Análise Conjunta de Indicadores Financeiros na Viabilidade Econômica do Confinamento de Bovinos no Rio Grande do Sul em Diferentes Épocas do Ano. Agropampa, v.1, p.86-99, 2016.
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; FABRICIO, E. A.; CAMERA, A. (2016)</strong>. Análise Conjunta de Indicadores Financeiros na Viabilidade Econômica do Confinamento de Bovinos no Rio Grande do Sul em Diferentes Épocas do Ano. <em>Agropampa</em>, v.1, p.86-99, 2016.
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; PASCOAL, L. L.; RESTLE, J.; VAZ, F. N.; ARBOITTE, M. Z.; VAZ, R. Z.; SANTOS, J. P. A.; OLIVEIRA, T. M. L. de (2014)</strong>. Risk assessment of finishing beef cattle in feedlot: slaughter weights and correlation amongst input variables. Revista Brasileira de Zootecnia (Online), v.43, p.92-99, 2014.
-                              <a href="https://doi.org/10.1590/S1516-35982014000200008" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982014000200008</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; PASCOAL, L. L.; RESTLE, J.; VAZ, F. N.; ARBOITTE, M. Z.; VAZ, R. Z.; SANTOS, J. P. A.; OLIVEIRA, T. M. L. de (2014)</strong>. Risk assessment of finishing beef cattle in feedlot: slaughter weights and correlation amongst input variables. <em>Revista Brasileira de Zootecnia (Online)</em>, v.43, p.92-99, 2014.
+                              <a
+                                href="https://doi.org/10.1590/S1516-35982014000200008"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; SILVA, R. M. da; PÁDUA, J. T.; RESTLE, J.; TAVEIRA, R. Z.; VAZ, F. N.; PASCOAL, L. L.; OLEGÁRIO, J. L.; MENEZES, F. R. (2014)</strong>. Análise econômica da terminação de novilhos em confinamento recebendo diferentes proporções de cana-de-açúcar e concentrado. Semina: Ciências Agrárias (Online), v.35, p.1-12, 2014.
-                              <a href="https://doi.org/10.5433/1679-0359.2014v35n4supl1p2627" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.5433/1679-0359.2014v35n4supl1p2627</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; SILVA, R. M. da; PÁDUA, J. T.; RESTLE, J.; TAVEIRA, R. Z.; VAZ, F. N.; PASCOAL, L. L.; OLEGÁRIO, J. L.; MENEZES, F. R. (2014)</strong>. Análise econômica da terminação de novilhos em confinamento recebendo diferentes proporções de cana-de-açúcar e concentrado. <em>Semina: Ciências Agrárias (Online)</em>, v.35, p.1-12, 2014.
+                              <a
+                                href="https://doi.org/10.5433/1679-0359.2014v35n4supl1p2627"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; RESTLE, J.; PASCOAL, L. L.; VAZ, F. N.; VAZ, R. Z.; VALENÇA, K. G.; OLEGÁRIO, J. L. (2014)</strong>. Use of correlation between input variables in estimating the risk of feedlot finishing of steers and young steers. Anais da Academia Brasileira de Ciências (Online), v.86, p.353-362, 2014.
-                              <a href="https://doi.org/10.1590/0001-3765201420130001" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0001-3765201420130001</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; PASCOAL, L. L.; VAZ, F. N.; VAZ, R. Z.; VALENÇA, K. G.; OLEGÁRIO, J. L. (2014)</strong>. Use of correlation between input variables in estimating the risk of feedlot finishing of steers and young steers. <em>Anais da Academia Brasileira de Ciências (Online)</em>, v.86, p.353-362, 2014.
+                              <a
+                                href="https://doi.org/10.1590/0001-3765201420130001"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; VAZ, F. N.; RESTLE, J.; ÁVILA, M. M. de; OLEGÁRIO, J. L.; MENEZES, F. R. de; VALENÇA, K. G.; LEMES, D. B.; VARGAS, F. V. de (2014)</strong>. Deterministic economic analysis of feedlot Red Angus young steers: slaughter weights and bonus. Ciência Rural (UFSM), v.44, n.10, p.1874-1880, 2014.
-                              <a href="https://doi.org/10.1590/0103-8478cr20131422" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/0103-8478cr20131422</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; VAZ, F. N.; RESTLE, J.; ÁVILA, M. M. de; OLEGÁRIO, J. L.; MENEZES, F. R. de; VALENÇA, K. G.; LEMES, D. B.; VARGAS, F. V. de (2014)</strong>. Deterministic economic analysis of feedlot Red Angus young steers: slaughter weights and bonus. <em>Ciência Rural (UFSM)</em>, v.44, n.10, p.1874-1880, 2014.
+                              <a
+                                href="https://doi.org/10.1590/0103-8478cr20131422"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; RESTLE, J.; OLEGÁRIO, J. L.; MENEZES, F. R.; VAZ, F. N.; PASCOAL, L. L.; LEMES, D. B.; VALENÇA, K. G.; MACHADO, G. I. O.; RODRIGUES, A. C. T. (2014)</strong>. Correlation and Slaughter Weight on Sensitivity Analysis of Charolais Steers Feedlot Finished. American International Journal of Contemporary Research (Print), v.4, p.28-34, 2014.
-                              <a href="http://www.aijcrnet.com/journals/Vol_4_No_5_May_2014/4.pdf" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">Acesso</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; OLEGÁRIO, J. L.; MENEZES, F. R.; VAZ, F. N.; PASCOAL, L. L.; LEMES, D. B.; VALENÇA, K. G.; MACHADO, G. I. O.; RODRIGUES, A. C. T. (2014)</strong>. Correlation and Slaughter Weight on Sensitivity Analysis of Charolais Steers Feedlot Finished. <em>American International Journal of Contemporary Research (Print)</em>, v.4, p.28-34, 2014.
+                              <a
+                                href="http://www.aijcrnet.com/journals/Vol_4_No_5_May_2014/4.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; RESTLE, J.; VALENÇA, K. G.; LEMES, D. B.; MENEZES, F. R.; MACHADO, G. K. G. (2014)</strong>. ANÁLISE ECONÔMICA DETERMINÍSTICA DA TERMINAÇÃO EM CONFINAMENTO DE NOVILHOS ABATIDOS COM DISTINTOS PESOS. Ciência Animal Brasileira (Online), v.15, p.420-428, 2014.
-                              <a href="https://doi.org/10.1590/1809-6891v15i420228" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/1809-6891v15i420228</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; VALENÇA, K. G.; LEMES, D. B.; MENEZES, F. R.; MACHADO, G. K. G. (2014)</strong>. ANÁLISE ECONÔMICA DETERMINÍSTICA DA TERMINAÇÃO EM CONFINAMENTO DE NOVILHOS ABATIDOS COM DISTINTOS PESOS. <em>Ciência Animal Brasileira (Online)</em>, v.15, p.420-428, 2014.
+                              <a
+                                href="https://doi.org/10.1590/1809-6891v15i420228"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; RESTLE, J.; VAZ, F. N.; PASCOAL, L. L.; ARBOITTE, M. Z.; VAZ, R. Z. (2012)</strong>. Viabilidade econômica da terminação em confinamento de novilhos abatidos com diferentes pesos. Pesquisa Agropecuária Gaúcha, v.18, p.135-145, 2012.
-                              <a href="https://revistapag.agricultura.rs.gov.br/pag/article/view/100" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">Acesso</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; VAZ, F. N.; PASCOAL, L. L.; ARBOITTE, M. Z.; VAZ, R. Z. (2012)</strong>. Viabilidade econômica da terminação em confinamento de novilhos abatidos com diferentes pesos. <em>Pesquisa Agropecuária Gaúcha</em>, v.18, p.135-145, 2012.
+                              <a
+                                href="https://revistapag.agricultura.rs.gov.br/pag/article/view/100"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>RESTLE, J.; PACHECO, P. S.; COSTA, E. C. da; FREITAS, A. K. de; VAZ, F. N.; BRONDANI, I. L.; FERNANDES, J. J. de R. (2007)</strong>. Apreciação econômica da terminação em confinamento de novilhos Red Angus superjovens abatidos com diferentes pesos. Revista Brasileira de Zootecnia (Online), v.36, p.978-986, 2007.
-                              <a href="https://doi.org/10.1590/S1516-35982007000400029" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982007000400029</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">RESTLE, J.; PACHECO, P. S.; COSTA, E. C. da; FREITAS, A. K. de; VAZ, F. N.; BRONDANI, I. L.; FERNANDES, J. J. de R. (2007)</strong>. Apreciação econômica da terminação em confinamento de novilhos Red Angus superjovens abatidos com diferentes pesos. <em>Revista Brasileira de Zootecnia (Online)</em>, v.36, p.978-986, 2007.
+                              <a
+                                href="https://doi.org/10.1590/S1516-35982007000400029"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>PACHECO, P. S.; RESTLE, J.; VAZ, F. N.; FREITAS, A. K. de; PÁDUA, J. T.; NEUMANN, M.; ARBOITTE, M. Z. (2006)</strong>. Avaliação econômica da terminação em confinamento de novilhos jovens e superjovens de diferentes grupos genéticos. Revista Brasileira de Zootecnia, v.35, n.1, p.147-158, 2006.
-                              <a href="https://doi.org/10.1590/S1516-35982006000100019" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.1590/S1516-35982006000100019</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; VAZ, F. N.; FREITAS, A. K. de; PÁDUA, J. T.; NEUMANN, M.; ARBOITTE, M. Z. (2006)</strong>. Avaliação econômica da terminação em confinamento de novilhos jovens e superjovens de diferentes grupos genéticos. <em>Revista Brasileira de Zootecnia</em>, v.35, n.1, p.147-158, 2006.
+                              <a
+                                href="https://doi.org/10.1590/S1516-35982006000100019"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
                           </ul>
                         </div>
                       </div>
 
-                      <div className="space-y-6">
+                      {/* COLUNA 2: Outros Temas Metodológicos */}
+                      <div className="space-y-10">
+                        {/* 1. Análise de Sensibilidade e Risco */}
                         <div>
-                          <h4 className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-3">Análise de Sensibilidade e Risco</h4>
-                          <ul className="text-[10px] text-slate-300 space-y-3 list-disc pl-5">
-                            <li>
-                              <strong>MORRIS, M. D. (1991)</strong>. Factorial sampling plans for preliminary computational experiments. Technometrics, v.33, n.2, p.161-174. 
-                              <a href="https://doi.org/10.1080/00401706.1991.10484804" target="_blank" rel="noopener noreferrer" className="ml-1 text-rose-400 hover:underline">DOI: 10.1080/00401706.1991.10484804</a>
+                          <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4 font-display flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                            <span>Análise de Sensibilidade e Risco Estocástico</span>
+                          </h4>
+                          <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">MORRIS, M. D. (1991)</strong>. Factorial sampling plans for preliminary computational experiments. <em>Technometrics</em>, v.33, n.2, p.161-174.
+                              <a
+                                href="https://doi.org/10.1080/00401706.1991.10484804"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>SOBOL, I. M. (2001)</strong>. Global sensitivity indices for nonlinear mathematical models and their Monte Carlo estimates. Mathematics and Computers in Simulation, v.55, n.1-3, p.271-280. 
-                              <a href="https://doi.org/10.1016/S0378-4754(00)00270-6" target="_blank" rel="noopener noreferrer" className="ml-1 text-rose-400 hover:underline">DOI: 10.1016/S0378-4754(00)00270-6</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SOBOL, I. M. (2001)</strong>. Global sensitivity indices for nonlinear mathematical models and their Monte Carlo estimates. <em>Mathematics and Computers in Simulation</em>, v.55, n.1-3, p.271-280.
+                              <a
+                                href="https://doi.org/10.1016/S0378-4754(00)00270-6"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>IMAN, R. L.; CONOVER, W. J. (1982)</strong>. A distribution-free approach to inducing rank correlation among input variables. Communications in Statistics - Simulation and Computation, v.11, n.3, p.311-334. 
-                              <a href="https://doi.org/10.1080/03610918208812265" target="_blank" rel="noopener noreferrer" className="ml-1 text-rose-400 hover:underline">DOI: 10.1080/03610918208812265</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">IMAN, R. L.; CONOVER, W. J. (1982)</strong>. A distribution-free approach to inducing rank correlation among input variables. <em>Communications in Statistics - Simulation and Computation</em>, v.11, n.3, p.311-334.
+                              <a
+                                href="https://doi.org/10.1080/03610918208812265"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
                           </ul>
                         </div>
-                      </div>
- 
-                      <div className="space-y-6">
+
+                        {/* 2. Indicadores e Equações de Sustentabilidade (ESG) */}
                         <div>
-                          <h4 className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-3">Indicadores e Dominância Estocástica</h4>
-                          <ul className="text-[10px] text-emerald-400 space-y-3 list-disc pl-5">
-                            <li>
-                              <strong>HANOCH, G.; LEVY, H. (1969)</strong>. The efficiency analysis of choices involving risk. The Review of Economic Studies, v.36, n.3, p.335-346. 
-                              <a href="https://doi.org/10.2307/2296431" target="_blank" rel="noopener noreferrer" className="ml-1 text-emerald-400 hover:underline">DOI: 10.2307/2296431</a>
+                          <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4 font-display flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                            <span>Sustentabilidade & Impacto Ambiental (ESG)</span>
+                          </h4>
+                          <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PALHARES, J. C. P. (2020)</strong>. Pegada hídrica de bovinos de corte em sistemas de confinamento brasileiros. Brasília: Embrapa Pecuária Sudeste. (Pegada hídrica e eficiência de uso de água).
+                              <a
+                                href="https://www.embrapa.br/busca-de-publicacoes/-/publicacao/1125211/pegada-hidrica-de-bovinos-de-corte-em-sistemas-de-confinamento"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>ASSAF NETO, A. (2021)</strong>. Engenharia Econômica e Análise de Investimentos. São Paulo: Atlas. (Livro)
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">IPCC (2019)</strong>. Refinement to the 2006 IPCC Guidelines for National Greenhouse Gas Inventories: Volume 4: Agriculture, Forestry and Other Land Use. Geneva: IPCC. (Cenários de emissões entéricas de CH₄ e pegada de CO₂e).
+                              <a
+                                href="https://www.ipcc-nggip.iges.or.jp/public/2019rf/index.html"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>KASSAI, J. R. et al. (1999)</strong>. Retorno de investimento: abordagem multicritério. São Paulo: Atlas. (Livro)
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">NASEM (2016)</strong>. Nutrient Requirements of Beef Cattle. 8th revised edition. Washington, DC: National Academies Press. (Modelagem de consumo e estimativa de excreção de Nitrogênio e Fósforo via balanço de massas).
+                              <a
+                                href="https://doi.org/10.17226/19014"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">RUPP, O. D.; PALHARES, J. C. P. (2021)</strong>. Balanço de N e P e emissões estimadas de gases de efeito estufa na produção de bovinos de corte. <em>Pesquisa Agropecuária Brasileira</em>, v.56, p.e02511.
+                              <a
+                                href="https://doi.org/10.1590/s1678-3921.pab2021.v56.02511"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">RITCHIE, H. (2023)</strong>. The carbon footprint of foods: are differences explained by the impacts of methane?. <em>Our World in Data</em>. (Análise dinâmica sobre a meia-vida do metano versus CO₂ acumulado e seu impacto relativo no perfil de emissões dos alimentos proteicos).
+                              <a
+                                href="https://ourworldindata.org/carbon-footprint-food-methane"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
                           </ul>
                         </div>
- 
+
+                        {/* 3. Indicadores e Dominância Estocástica */}
                         <div>
-                          <h4 className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-3">Cenários e Testes de Estresse</h4>
-                          <ul className="text-[10px] text-slate-350 space-y-3 list-disc pl-5">
-                            <li>
-                              <strong>SCHOEMAKER, P. J. (1995)</strong>. Scenario planning: a tool for strategic thinking. MIT Sloan Management Review, v.36, n.2, p.25-40. 
-                              <a href="https://sloanreview.mit.edu/article/scenario-planning-a-tool-for-strategic-thinking/" target="_blank" rel="noopener noreferrer" className="ml-1 text-rose-400 hover:underline">Acesso</a>
+                          <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4 font-display flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                            <span>Dominância Estocástica & Decisão</span>
+                          </h4>
+                          <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">HANOCH, G.; LEVY, H. (1969)</strong>. The efficiency analysis of choices involving risk. <em>The Review of Economic Studies</em>, v.36, n.3, p.335-346.
+                              <a
+                                href="https://doi.org/10.2307/2296431"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
-                            <li>
-                              <strong>HULL, J. C. (2018)</strong>. Risk Management and Financial Institutions. Wiley. (Livro)
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">ASSAF NETO, A. (2021)</strong>. Engenharia Econômica e Análise de Investimentos. São Paulo: Atlas. (Livro)
                             </li>
-                            <li>
-                              <strong>GUIDUCCI, R. C. N. et al. (2012)</strong>. Metodologia para cálculo de custos de produção de bovinos de corte. Brasília: Embrapa. 
-                              <a href="https://www.embrapa.br/busca-de-publicacoes/-/publicacao/938065/metodologia-para-calculo-de-custos-de-producao-de-bovinos-de-corte" target="_blank" rel="noopener noreferrer" className="ml-1 text-rose-400 hover:underline">Acesso</a>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">KASSAI, J. R. et al. (1999)</strong>. Retorno de investimento: abordagem multicritério. São Paulo: Atlas. (Livro)
+                            </li>
+                          </ul>
+                        </div>
+
+                        {/* 4. Cenários e Testes de Estresse */}
+                        <div>
+                          <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4 font-display flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                            <span>Cenários, Riscos & Testes de Estresse</span>
+                          </h4>
+                          <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SCHOEMAKER, P. J. (1995)</strong>. Scenario planning: a tool for strategic thinking. <em>MIT Sloan Management Review</em>, v.36, n.2, p.25-40.
+                              <a
+                                href="https://sloanreview.mit.edu/article/scenario-planning-a-tool-for-strategic-thinking/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">HULL, J. C. (2018)</strong>. Risk Management and Financial Institutions. Wiley. (Livro)
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">GUIDUCCI, R. C. N. et al. (2012)</strong>. Metodologia para cálculo de custos de produção de bovinos de corte. Brasília: Embrapa.
+                              <a
+                                href="https://www.embrapa.br/busca-de-publicacoes/-/publicacao/938065/metodologia-para-calculo-de-custos-de-producao-de-bovinos-de-corte"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
                             </li>
                           </ul>
                         </div>
                       </div>
                     </div>
                   </section>
- 
+                </div>
+              ) : activeHelpTab === 'citation' ? (
+                <div className="space-y-12">
                   {/* NOVO: Como Citar este Aplicativo */}
                   <section className="bg-[#070a13] p-8 rounded-3xl border border-slate-800">
                     <h3 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2 font-display">
