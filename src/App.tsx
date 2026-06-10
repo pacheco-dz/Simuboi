@@ -12763,36 +12763,6 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           </span>
                         </div>
                       </div>
-
-                      {/* ESG METRICS */}
-                      <div className="space-y-4 pt-6 border-t border-slate-850">
-                        <h4 className="font-bold text-slate-100 text-xs sm:text-sm uppercase tracking-wider text-teal-400 font-display">
-                          G. Indicadores e Equações de Sustentabilidade (ESG)
-                        </h4>
-                        <p className="text-xs text-slate-400 font-sans">
-                          Quantificação científica dos impactos ambientais e sociais baseada em balanço de massa, ecoeficiência e conformidade:
-                        </p>
-                        
-                        <div className="space-y-6">
-                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-teal-400">
-                            <span className="text-slate-500 block text-[10px] font-sans">1. BALANÇO DE NITROGÊNIO (N) EXCRETADO</span>
-                            <p>PB_média = (CMS_Volumo × 0.08 + CMS_Concentrado × 0.18) / CMS_Total</p>
-                            <p>Ingestão_N (kg) = (CMS_Total × PB_média) / 6.25</p>
-                            <p>Retenção_N (kg) = (Ganho_Peso_Total × 0.15) / 6.25</p>
-                            <p>Balanço_N (kg) = Max[ 0, Ingestão_N - Retenção_N ]</p>
-                            <span className="text-[10px] text-slate-500 block mt-1 font-sans">* Representa o nitrogênio lixiviado ou volatilizado derivado da excreção urinária e fecal.</span>
-                          </div>
-
-                          <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3 font-mono text-xs text-teal-400">
-                            <span className="text-slate-500 block text-[10px] font-sans">2. BALANÇO DE FÓSFORO (P) EXCRETADO</span>
-                            <p>P_dieta_média = (CMS_Volumo × 0.002 + CMS_Concentrado × 0.005) / CMS_Total</p>
-                            <p>Ingestão_P (kg) = CMS_Total × P_dieta_média</p>
-                            <p>Retenção_P (kg) = Ganho_Peso_Total × 0.007</p>
-                            <p>Balanço_P (kg) = Max[ 0, Ingestão_P - Retenção_P ]</p>
-                            <span className="text-[10px] text-slate-500 block mt-1 font-sans">* Mede o excedente residual eutofizante do fósforo excretado no meio.</span>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </section>
 
@@ -12862,7 +12832,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">MACHADO, G. I. O.; VAZ, F. N.; OLEGÁRIO, J. L.; PIZZUTI, L. Â. D.; PACHECO, P. S.; SILVA, R. M. da; SOUZA, R. L. de; DALLANORA, M. E. C. (2024)</strong>. Viabilidade econômica da terminação de categorias bovinas em pastagem cultivada de inverno ou confinamento por meio da simulação de Monte Carlo. <em>Observatório de la Economía Latinoamericana</em>, v.22, p.e7792, 2024.
                               <a
-                                href="https://doi.org/10.55905/oelv22n7-279"
+                                href="https://doi.org/10.55905/oelv22n11-134"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12874,7 +12844,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">OLEGÁRIO, J. L.; VAZ, F. N.; PASCOAL, L. L.; VAZ, R. Z.; PIZZUTI, L. Â. D.; PACHECO, P. S.; MAYSONNAVE, G. S.; SILVA, R. M. da (2023)</strong>. Análise econômica probabilística do confinamento de novilhos com diferentes pesos iniciais. <em>Observatório de la Economía Latinoamericana</em>, v.21, p.20512 - 20527, 2023.
                               <a
-                                href="https://doi.org/10.55905/oelv21n11-204"
+                                href="https://doi.org/10.55905/oelv21n11-105"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12886,7 +12856,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">SILVA, R. M.; TAVEIRA, R. Z.; RESTLE, J.; FABRICIO, E. A.; CAMERA, A.; MAYSONNAVE, G. S.; BILEGO, U. O.; PACHECO, P. S.; VAZ, F. N. (2020)</strong>. Economic analysis of the risk of replacing corn grains (Zea mays) with pearl millet grains (Pennisetum glaucum) in the diet of feedlot cattle. <em>Ciência Rural</em>, v.50, p.01 - 12, 2020.
                               <a
-                                href="https://doi.org/10.1590/0103-8478cr20190124"
+                                href="https://doi.org/10.1590/0103-8478cr20190443"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12898,7 +12868,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">VAZ, M. A. B.; PACHECO, P. S.; SEIDEL, E. J.; ANSUJ, A. P. (2017)</strong>. Classification of the coefficient of variation to variables in beef cattle experiments. <em>Ciência Rural</em>, v.47, p.1 - 4, 2017.
                               <a
-                                href="https://doi.org/10.1590/0103-8478cr20160233"
+                                href="https://doi.org/10.1590/0103-8478cr20160946"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12910,7 +12880,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">ÁVILA, M. M. de; PACHECO, P. S.; PASCOAL, L. L. (2017)</strong>. Economic deterministic analysis of two years old steers production systems. <em>Ciência Animal Brasileira</em>, v.18, p.1 - 14, 2017.
                               <a
-                                href="https://doi.org/10.1590/1089-6891v18e-36056"
+                                href="https://doi.org/10.1590/1089-6891v18e-34090"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12934,7 +12904,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">LEAL, W. S.; PACHECO, P. S.; PASCOAL, L. L.; VAZ, R. Z.; MENDONÇA, F. S.; SEVERO, M. M. (2017)</strong>. Indicadores financeiros determinísticos e custos de produção do confinamento de bovinos no Rio Grande do Sul–Brasil. <em>Custos e Agronegócio On Line</em>, v.13, p.201, 2017.
                               <a
-                                href="http://www.custoseagronegocioonline.com.br/numero3v13/OK%2010%20confinamento.pdf"
+                                href="https://www.custoseagronegocioonline.com.br/numero2v13/OK%2011%20deterministicos.pdf"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12946,7 +12916,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">ROSA, J. R. P.; PACHECO, P. S.; FABRICIO, E. A.; CAMERA, A.; LEMES, D. B. (2017)</strong>. Risk analysis of economic viability of feedlot aberdeen angus steers fed with different proportions of concentrate. <em>Bioscience Journal</em>, v.33, p.660 - 669, 2017.
                               <a
-                                href="https://doi.org/10.14393/BJ-v33n3a2017-34752"
+                                href="https://doi.org/10.14393/BJ-v33n3-34547"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12958,7 +12928,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; VAZ, F. N.; VALENÇA, K. G.; FABRICIO, E. A.; OLEGÁRIO, J. L.; CAMPARA, J. M.; CAMERA, A. (2017)</strong>. Stochastic simulation of the economic viability of feedlot finishing steers slaughtered at different weights in southern brazil. <em>Bioscience Journal</em>, v.33, p.652 - 659, 2017.
                               <a
-                                href="https://doi.org/10.14393/BJ-v33n3a2017-34751"
+                                href="https://doi.org/10.14393/BJ-v33n3-34110"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12970,7 +12940,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">SILVA, R. M. da; TAVEIRA, R. Z.; VAZ, F. N.; FABRICIO, E. A.; MIOLLO, J. R.; CAMERA, A.; PACHECO, P. S. (2017)</strong>. Stochastic simulation of the economic viability of feedlot steers fed with different proportions of concentrate. <em>Bioscience Journal (Online)</em>, v.33, p.125 - 134, 2017.
                               <a
-                                href="https://doi.org/10.14393/BJ-v33n1a2017-33124"
+                                href="https://doi.org/10.14393/BJ-v33n1a2017-33608"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -12981,23 +12951,32 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             </li>
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; FABRICIO, E. A.; CAMERA, A. (2016)</strong>. Análise Conjunta de Indicadores Financeiros na Viabilidade Econômica do Confinamento de Bovinos no Rio Grande do Sul em Diferentes Épocas do Ano. <em>Agropampa</em>, v.1, p.86-99, 2016.
-                            </li>
-                            <li className="pl-1">
-                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; PASCOAL, L. L.; RESTLE, J.; VAZ, F. N.; ARBOITTE, M. Z.; VAZ, R. Z.; SANTOS, J. P. A.; OLIVEIRA, T. M. L. de (2014)</strong>. Risk assessment of finishing beef cattle in feedlot: slaughter weights and correlation amongst input variables. <em>Revista Brasileira de Zootecnia (Online)</em>, v.43, p.92-99, 2014.
                               <a
-                                href="https://doi.org/10.1590/S1516-35982014000200008"
+                                href="https://periodicos.unipampa.edu.br/index.php/Agropampa/article/view/131"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
                               >
-                                DOI
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; PASCOAL, L. L.; RESTLE, J.; VAZ, F. N.; ARBOITTE, M. Z.; VAZ, R. Z.; SANTOS, J. P. A.; OLIVEIRA, T. M. L. de (2014)</strong>. Risk assessment of finishing beef cattle in feedlot: slaughter weights and correlation amongst input variables. <em>Revista Brasileira de Zootecnia (Online)</em>, v.43, p.92-99, 2014.
+                              <a
+                                href="https://rbz.org.br/article/risk-assessment-of-finishing-beef-cattle-in-feedlot-slaughter-weights-and-correlation-amongst-input-variables/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
                                 <ExternalLink className="w-2 h-2" />
                               </a>
                             </li>
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; SILVA, R. M. da; PÁDUA, J. T.; RESTLE, J.; TAVEIRA, R. Z.; VAZ, F. N.; PASCOAL, L. L.; OLEGÁRIO, J. L.; MENEZES, F. R. (2014)</strong>. Análise econômica da terminação de novilhos em confinamento recebendo diferentes proporções de cana-de-açúcar e concentrado. <em>Semina: Ciências Agrárias (Online)</em>, v.35, p.1-12, 2014.
                               <a
-                                href="https://doi.org/10.5433/1679-0359.2014v35n4supl1p2627"
+                                href="https://doi.org/10.5433/1679-0359.2014v35n2p999"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -13009,7 +12988,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; PASCOAL, L. L.; VAZ, F. N.; VAZ, R. Z.; VALENÇA, K. G.; OLEGÁRIO, J. L. (2014)</strong>. Use of correlation between input variables in estimating the risk of feedlot finishing of steers and young steers. <em>Anais da Academia Brasileira de Ciências (Online)</em>, v.86, p.353-362, 2014.
                               <a
-                                href="https://doi.org/10.1590/0001-3765201420130001"
+                                href="https://doi.org/10.1590/0001-37652014110012"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -13021,7 +13000,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; VAZ, F. N.; RESTLE, J.; ÁVILA, M. M. de; OLEGÁRIO, J. L.; MENEZES, F. R. de; VALENÇA, K. G.; LEMES, D. B.; VARGAS, F. V. de (2014)</strong>. Deterministic economic analysis of feedlot Red Angus young steers: slaughter weights and bonus. <em>Ciência Rural (UFSM)</em>, v.44, n.10, p.1874-1880, 2014.
                               <a
-                                href="https://doi.org/10.1590/0103-8478cr20131422"
+                                href="https://doi.org/10.1590/0103-8478cr20140631"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -13033,7 +13012,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; OLEGÁRIO, J. L.; MENEZES, F. R.; VAZ, F. N.; PASCOAL, L. L.; LEMES, D. B.; VALENÇA, K. G.; MACHADO, G. I. O.; RODRIGUES, A. C. T. (2014)</strong>. Correlation and Slaughter Weight on Sensitivity Analysis of Charolais Steers Feedlot Finished. <em>American International Journal of Contemporary Research (Print)</em>, v.4, p.28-34, 2014.
                               <a
-                                href="http://www.aijcrnet.com/journals/Vol_4_No_5_May_2014/4.pdf"
+                                href="https://aijcr.thebrpi.org/journals/Vol_4_No_7_July_2014/4.pdf"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -13045,7 +13024,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; VALENÇA, K. G.; LEMES, D. B.; MENEZES, F. R.; MACHADO, G. K. G. (2014)</strong>. ANÁLISE ECONÔMICA DETERMINÍSTICA DA TERMINAÇÃO EM CONFINAMENTO DE NOVILHOS ABATIDOS COM DISTINTOS PESOS. <em>Ciência Animal Brasileira (Online)</em>, v.15, p.420-428, 2014.
                               <a
-                                href="https://doi.org/10.1590/1809-6891v15i420228"
+                                href="https://doi.org/10.1590/1089-6891v15i425747"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -13057,7 +13036,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; VAZ, F. N.; PASCOAL, L. L.; ARBOITTE, M. Z.; VAZ, R. Z. (2012)</strong>. Viabilidade econômica da terminação em confinamento de novilhos abatidos com diferentes pesos. <em>Pesquisa Agropecuária Gaúcha</em>, v.18, p.135-145, 2012.
                               <a
-                                href="https://revistapag.agricultura.rs.gov.br/pag/article/view/100"
+                                href="http://www.fepagro.rs.gov.br/upload/1398706080_artigo5.pdf"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -13069,10 +13048,10 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">RESTLE, J.; PACHECO, P. S.; COSTA, E. C. da; FREITAS, A. K. de; VAZ, F. N.; BRONDANI, I. L.; FERNANDES, J. J. de R. (2007)</strong>. Apreciação econômica da terminação em confinamento de novilhos Red Angus superjovens abatidos com diferentes pesos. <em>Revista Brasileira de Zootecnia (Online)</em>, v.36, p.978-986, 2007.
                               <a
-                                href="https://doi.org/10.1590/S1516-35982007000400029"
+                                href="https://doi.org/10.1590/S1516-35982007000400030"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-[#10b981]/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
                               >
                                 DOI
                                 <ExternalLink className="w-2 h-2" />
@@ -13081,10 +13060,10 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PACHECO, P. S.; RESTLE, J.; VAZ, F. N.; FREITAS, A. K. de; PÁDUA, J. T.; NEUMANN, M.; ARBOITTE, M. Z. (2006)</strong>. Avaliação econômica da terminação em confinamento de novilhos jovens e superjovens de diferentes grupos genéticos. <em>Revista Brasileira de Zootecnia</em>, v.35, n.1, p.147-158, 2006.
                               <a
-                                href="https://doi.org/10.1590/S1516-35982006000100019"
+                                href="https://doi.org/10.1590/S1516-35982006000100039"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-[#10b981]/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
                               >
                                 DOI
                                 <ExternalLink className="w-2 h-2" />
@@ -13148,9 +13127,9 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           </h4>
                           <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
                             <li className="pl-1">
-                              <strong className="text-slate-100 font-semibold font-sans">PALHARES, J. C. P. (2020)</strong>. Pegada hídrica de bovinos de corte em sistemas de confinamento brasileiros. Brasília: Embrapa Pecuária Sudeste. (Pegada hídrica e eficiência de uso de água).
+                              <strong className="text-slate-100 font-semibold font-sans">PALHARES, J.C.P. et al. (2023)</strong>. Produção de bovinos de corte e soluções tecnológicas para eficiência do uso da água. Embrapa Gado de Corte, 2023.
                               <a
-                                href="https://www.embrapa.br/busca-de-publicacoes/-/publicacao/1125211/pegada-hidrica-de-bovinos-de-corte-em-sistemas-de-confinamento"
+                                href="https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1154075/1/Producao-bovinos-corte-solucoes-2023.pdf"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
@@ -13184,14 +13163,14 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               </a>
                             </li>
                             <li className="pl-1">
-                              <strong className="text-slate-100 font-semibold font-sans">RUPP, O. D.; PALHARES, J. C. P. (2021)</strong>. Balanço de N e P e emissões estimadas de gases de efeito estufa na produção de bovinos de corte. <em>Pesquisa Agropecuária Brasileira</em>, v.56, p.e02511.
+                              <strong className="text-slate-100 font-semibold font-sans">BERNDT, A.; SOLÓRZANO, L.A.R.; SAKAMOTO, L.S. (2013)</strong>. Pecuária de corte frente à emissão de gases de efeito estufa e estratégias diretas e indiretas para mitigar a emissão de metano. VI Simpósio de Nutrição de Ruminantes – Nutrição de precisão para sistemas intensivos de produção de carne: Alto desempenho e baixo impacto ambiental/ Anais. EMBRAPA.
                               <a
-                                href="https://doi.org/10.1590/s1678-3921.pab2021.v56.02511"
+                                href="https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/976223/1/PROCI2013.00235.pdf"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
                               >
-                                DOI
+                                Acesso
                                 <ExternalLink className="w-2 h-2" />
                               </a>
                             </li>
@@ -13259,9 +13238,9 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               <strong className="text-slate-100 font-semibold font-sans">HULL, J. C. (2018)</strong>. Risk Management and Financial Institutions. Wiley. (Livro)
                             </li>
                             <li className="pl-1">
-                              <strong className="text-slate-100 font-semibold font-sans">GUIDUCCI, R. C. N. et al. (2012)</strong>. Metodologia para cálculo de custos de produção de bovinos de corte. Brasília: Embrapa.
+                              <strong className="text-slate-100 font-semibold font-sans">GUIDUCCI, R. do C. N.; LIMA FILHO, J. R. de; MOTA, M. M. (Ed.) (2012)</strong>. Viabilidade econômica de sistemas de produção agropecuários: metodologia e estudos de caso. Brasília, DF: Embrapa, 2012.
                               <a
-                                href="https://www.embrapa.br/busca-de-publicacoes/-/publicacao/938065/metodologia-para-calculo-de-custos-de-producao-de-bovinos-de-corte"
+                                href="http://www.alice.cnptia.embrapa.br/alice/handle/doc/959077"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
