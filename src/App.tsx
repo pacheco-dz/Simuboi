@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import bgImage from './assets/images/feedlot_tractor_bg_1781181926909.png';
 import { 
   TrendingUp, 
   TrendingDown,
@@ -27,6 +28,7 @@ import {
   Trash2,
   Plus,
   Database,
+  GitBranch,
   CreditCard,
   Download,
   FileText,
@@ -372,6 +374,9 @@ export default function App() {
     return localStorage.getItem('simuboi_demo_mode') === 'true';
   });
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'update_password'>('login');
+  const [isIntegrationModalOpen, setIsIntegrationModalOpen] = useState(false);
+  const [integrationTab, setIntegrationTab] = useState<'github' | 'vercel' | 'supabase'>('github');
+  const [copiedText, setCopiedText] = useState<string | null>(null);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authConfirmPassword, setAuthConfirmPassword] = useState('');
@@ -583,7 +588,7 @@ export default function App() {
     const saved = localStorage.getItem('simuboi_screen_width');
     return (saved as 'standard' | 'wide' | 'full') || 'standard';
   });
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(false);
 
   const morrisStats = useMemo(() => {
     if (!lhsResults?.morris || lhsResults.morris.length === 0) return null;
@@ -3074,9 +3079,16 @@ export default function App() {
     return acc;
   }, {} as Record<string, DepreciationItem[]>);
 
+  if (showSplash) {
+    return <SplashScreen />;
+  }
+
   if (!currentUser && !isDemoMode) {
     return (
-      <div className="min-h-screen bg-[#070a13] text-slate-100 font-sans flex items-center justify-center p-4 sm:p-6 selection:bg-emerald-500/20 selection:text-emerald-300 relative overflow-hidden">
+      <div 
+        className="min-h-screen text-slate-100 font-sans flex items-center justify-center p-4 sm:p-6 selection:bg-emerald-500/20 selection:text-emerald-300 relative overflow-hidden bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `linear-gradient(rgba(7, 10, 19, 0.75), rgba(7, 10, 19, 0.75)), url(${bgImage})` }}
+      >
         {/* Ambient subtle backdrops */}
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-10%] right-[-5%] w-[500px] h-[500px] bg-[#3b82f6]/5 rounded-full blur-[100px] pointer-events-none" />
@@ -3405,7 +3417,7 @@ export default function App() {
               className="w-full bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-slate-750 text-slate-200 py-3 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 cursor-pointer mt-1 hover:text-white"
             >
               <Monitor className="w-4 h-4 text-emerald-400 animate-pulse" />
-              Acessar Modo Demo (Privado)
+              Acessar Modo Demo
             </button>
           </div>
         </div>
@@ -3415,7 +3427,10 @@ export default function App() {
 
   return (
 
-    <div className="min-h-screen bg-[#070a13] text-[#f1f5f9] font-sans selection:bg-emerald-500/20 selection:text-emerald-300">
+    <div 
+      className="min-h-screen text-[#f1f5f9] font-sans selection:bg-emerald-500/20 selection:text-emerald-300 bg-cover bg-center bg-no-repeat bg-fixed"
+      style={{ backgroundImage: `linear-gradient(rgba(7, 10, 19, 0.75), rgba(7, 10, 19, 0.75)), url(${bgImage})` }}
+    >
       <AnimatePresence>
         {showSplash && <SplashScreen />}
       </AnimatePresence>
@@ -11233,7 +11248,7 @@ function SplashScreen() {
         transition={{ delay: 1, duration: 1 }}
         className="absolute bottom-6 text-[10px] text-slate-500 font-bold uppercase tracking-widest"
       >
-        Versão 2.5.0 • LHS Enabled
+        Versão 1.0 • LHS Enabled
       </motion.div>
     </motion.div>
   );
@@ -13208,10 +13223,10 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               </a>
                             </li>
                             <li className="pl-1">
-                              <strong className="text-slate-100 font-semibold font-sans">ASSAF NETO, A. (2021)</strong>. Engenharia Econômica e Análise de Investimentos. São Paulo: Atlas. (Livro)
+                              <strong className="text-slate-100 font-semibold font-sans">ASSAF NETO, A. (2022)</strong>. Matemática financeira e suas aplicações. São Paulo: Atlas. (Livro)
                             </li>
                             <li className="pl-1">
-                              <strong className="text-slate-100 font-semibold font-sans">KASSAI, J. R. et al. (1999)</strong>. Retorno de investimento: abordagem multicritério. São Paulo: Atlas. (Livro)
+                              <strong className="text-slate-100 font-semibold font-sans">KASSAI, J. R. et al. (2000)</strong>. Retorno de investimento: abordagem matemática e contábil do lucro empresarial. São Paulo: Atlas. (Livro)
                             </li>
                           </ul>
                         </div>
