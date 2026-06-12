@@ -144,6 +144,7 @@ export interface EvolucaoPonto {
   custoAcumulado: number;
   custoPorMmEGS?: number;
   custoPorKgGanho?: number;
+  lucroEstimado?: number;
 }
 
 export interface SimulationResults {

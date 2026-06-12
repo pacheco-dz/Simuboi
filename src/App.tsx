@@ -3106,7 +3106,7 @@ export default function App() {
               DZ - UFSM
             </p>
             <p className="text-xs text-slate-400 max-w-xs mt-2.5 leading-relaxed">
-              Modelagem Bioeconômica e Engenharia de Risco Probabilística Estocástica para Confinamento de Bovinos de Corte.
+              Modelagem Bioeconômica e Engenharia de Risco para Confinamento de Bovinos de Corte.
             </p>
           </div>
 
@@ -3654,10 +3654,11 @@ export default function App() {
                       localStorage.removeItem('simuboi_demo_mode');
                       setCurrentUser(null);
                     }}
-                    className="px-1.5 py-0.5 text-[9px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-md transition-all font-bold uppercase tracking-wider cursor-pointer"
-                    title="Realizar login ou registrar"
+                    className="px-1.5 py-0.5 text-[9px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-md transition-all font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                    title="Sair do Modo Demo e voltar para o Login"
                   >
-                    Entrar
+                    Sair
+                    <LogOut className="w-2.5 h-2.5" />
                   </button>
                 </div>
               ) : null}
@@ -3694,20 +3695,7 @@ export default function App() {
           </nav>
         </div>
 
-        {/* Subtle, highly premium context banner right below the menu/options */}
-        <div className="border-t border-slate-800/40 bg-[#080d19]/80 py-2.5 px-4 sm:px-6 lg:px-8 select-none">
-          <div className={`${screenWidth === 'standard' ? 'max-w-7xl' : screenWidth === 'wide' ? 'max-w-[1600px]' : 'max-w-full'} mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2`}>
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              <p className="text-[11px] text-slate-400 font-sans tracking-wide">
-                <strong className="text-slate-200 font-display">Viabilidade econômica avançada:</strong> Simulação estocástica de Monte Carlo, formulação precisa de dietas e indicadores ESG integrados.
-              </p>
-            </div>
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Simulador de Confinamento</span>
-            </div>
-          </div>
-        </div>
+
       </header>
 
       <main className={`${screenWidth === 'standard' ? 'max-w-7xl' : screenWidth === 'wide' ? 'max-w-[1600px]' : 'max-w-full'} mx-auto px-4 sm:px-6 lg:px-8 py-8`}>
@@ -3719,7 +3707,7 @@ export default function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="space-y-4"
+              className="space-y-4 pt-10"
             >
               {Object.keys(errors).length > 0 && (
                 <motion.div 
@@ -3756,14 +3744,14 @@ export default function App() {
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-                      <InputGroup icon={Scale} label="Peso Inicial" name="pesoVivoInicial" value={inputs.pesoVivoInicial} unit="kg" onChange={handleInputChange} isInteger tooltip={`Peso médio dos animais na entrada do confinamento. Define o capital empatado inicial (estoque) e é a base para o cálculo do ganho de peso total. Na simulação de risco, assume-se um desvio padrão de ${DEFAULT_INPUTS.desviosPadrao.pesoVivoInicial} kg.`} error={errors.pesoVivoInicial} />
-                      <InputGroup icon={Scale} label="Peso Final" name="pesoVivoFinal" value={inputs.pesoVivoFinal} unit="kg" onChange={handleInputChange} isInteger tooltip={`Peso médio projetado para a venda. Determina a receita bruta total e o volume de carne produzido (arrobas). Na simulação de risco, assume-se um desvio padrão de ${DEFAULT_INPUTS.desviosPadrao.pesoVivoFinal} kg.`} error={errors.pesoVivoFinal} />
-                      <InputGroup icon={Activity} label="Ganho Médio Diário (GMD)" name="gmd" value={inputs.gmd} unit="kg/dia" onChange={handleInputChange} step={0.1} tooltip={`Ganho Médio Diário esperado. É o principal indicador de eficiência biológica.`} error={errors.gmd} />
-                      <InputGroup icon={TrendingUp} label="Rendimento Inicial" name="rendimentoCarcacaInicial" value={inputs.rendimentoCarcacaInicial} unit="%" onChange={handleInputChange} step={0.1} tooltip="Rendimento de carcaça estimado na entrada (boi magro). Geralmente 50%." error={errors.rendimentoCarcacaInicial} />
-                      <InputGroup icon={TrendingUp} label="Rendimento Final" name="rendimentoCarcaca" value={inputs.rendimentoCarcaca} unit="%" onChange={handleInputChange} step={0.1} tooltip="Rendimento de carcaça projetado na venda (boi gordo). Geralmente 54%." error={errors.rendimentoCarcaca} />
-                      <InputGroup icon={Clock} label="Tempo" name="tempoAlimentacao" value={inputs.tempoAlimentacao} unit="dias" onChange={handleInputChange} disabled isInteger tooltip="Período total de confinamento necessário para atingir o peso final. Quanto maior o tempo, maior o custo operacional total e menor a rotatividade do capital (Giro de Estoque)." error={errors.tempoAlimentacao} />
-                      <InputGroup icon={ArrowRightLeft} label="Quebra de Transporte" name="quebraPesoTransportePerc" value={inputs.quebraPesoTransportePerc} unit="%" onChange={handleInputChange} step={0.1} tooltip="Percentual de perda de peso (shrinkage) durante o transporte para o frigorífico." error={errors.quebraPesoTransportePerc} />
-                      <InputGroup icon={AlertCircle} label="Mortalidade" name="taxaMortalidade" value={inputs.taxaMortalidade} unit="%" onChange={handleInputChange} step={0.1} tooltip="Taxa de perda de animais durante o ciclo." error={errors.taxaMortalidade} />
+                      <InputGroup icon={Scale} label="Peso Inicial" name="pesoVivoInicial" value={inputs.pesoVivoInicial} unit="kg" onChange={handleInputChange} isInteger tooltipPlacement="left" tooltip={`Peso de entrada dos bovinos no confinamento. Crucial para determinar os custos de aquisição do boi magro e as exigências de manutenção na aba de Dieta. Na análise de resultados, define o capital empatado inicial (Estoque de Animais) e o ganho de peso total necessário. Utilizado nas projeções de fluxo de caixa, análises de sensibilidade do VPL e nos relatórios de Mercado para cálculo do ágio regional.`} error={errors.pesoVivoInicial} />
+                      <InputGroup icon={Scale} label="Peso Final" name="pesoVivoFinal" value={inputs.pesoVivoFinal} unit="kg" onChange={handleInputChange} isInteger tooltipPlacement="center" tooltip={`Peso vivo médio projetado na saída do confinamento para abate. É utilizado nas projeções de receita bruta na aba de Mercado (faturamento de arrobas produzidas) e na análise de resultados para calcular o peso de carcaça limpa. Influencia a modelagem de resíduos e emissões de carbono na aba ESG, além de ser o parâmetro chave para determinação do tempo de confinamento.`} error={errors.pesoVivoFinal} />
+                      <InputGroup icon={Activity} label="Ganho Médio Diário (GMD)" name="gmd" value={inputs.gmd} unit="kg/dia" onChange={handleInputChange} step={0.1} tooltipPlacement="right" tooltip={`Ganho médio diário de peso vivo esperado (kg/dia). É utilizado na aba Dieta para simular o nível de energia e proteína do trato, na aba de Resultados para determinar o tempo total de cocho necessário para atingir o peso de abate planejado, e no Mercado para balizar o custo da arroba produzida. Tem altíssimo impacto na análise de sensibilidade do VPL.`} error={errors.gmd} />
+                      <InputGroup icon={TrendingUp} label="Rendimento Inicial" name="rendimentoCarcacaInicial" value={inputs.rendimentoCarcacaInicial} unit="%" onChange={handleInputChange} step={0.1} tooltipPlacement="left" tooltip="Rendimento corporal estimado na entrada do confinamento (relação peso de carcaça/peso vivo). Geralmente fixado em 50%. Utilizado na análise de resultados para apurar a eficiência biológica acumulada e o ganho líquido de carcaça do animal ao comparar o ponto inicial com o final, refinando a receita de ganho líquido." error={errors.rendimentoCarcacaInicial} />
+                      <InputGroup icon={TrendingUp} label="Rendimento Final" name="rendimentoCarcaca" value={inputs.rendimentoCarcaca} unit="%" onChange={handleInputChange} step={0.1} tooltipPlacement="center" tooltip="Rendimento de carcaça estimado na venda (boi gordo), representando a proporção utilizável de carne enviada ao frigorífico (comum entre 52% e 56%). É utilizado diretamente na aba de Mercado para converter o peso vivo final em arrobas (@) comerciais de faturamento, afetando diretamente a Receita Bruta Total e os indicadores econômicos (VPL, TIR e Payback) na aba de Análise de Resultados." error={errors.rendimentoCarcaca} />
+                      <InputGroup icon={Clock} label="Tempo" name="tempoAlimentacao" value={inputs.tempoAlimentacao} unit="dias" onChange={handleInputChange} disabled isInteger tooltipPlacement="right" tooltip="Duração total (em dias) do ciclo em confinamento. Utilizado na aba de Dieta para estimar a quantidade total de matéria seca (silagem e ração) a ser comprada, no módulo operacional (Resultados) para ratear a mão de obra CLT e os custos fixos mensais, e no módulo ESG para acumular o volume total de resíduos (esterco) e gases de efeito estufa (metano entérico) produzidos." error={errors.tempoAlimentacao} />
+                      <InputGroup icon={ArrowRightLeft} label="Quebra de Transporte" name="quebraPesoTransportePerc" value={inputs.quebraPesoTransportePerc} unit="%" onChange={handleInputChange} step={0.1} tooltipPlacement="left" tooltip="Perda percentual estipulada de peso vivo dos animais durante o trâmite logístico até o frigorífico (shrinkage). Utilizado na aba de Mercado para mitigar o peso fofado em relação à balança e na aba de Resultados para recalcular a receita líquida efetiva, impactando o preço final da arroba liquida vendida." error={errors.quebraPesoTransportePerc} />
+                      <InputGroup icon={AlertCircle} label="Mortalidade" name="taxaMortalidade" value={inputs.taxaMortalidade} unit="%" onChange={handleInputChange} step={0.1} tooltipPlacement="center" tooltip="Taxa percentual esperada de óbitos do rebanho ao longo do período de engorda. Utilizado na análise de resultados para redistribuir os custos operacionais, alimentares e de aquisição dos animais perdidos entre os sobreviventes, influenciando o fluxo de caixa, a taxa de sobrevivência real e reduzindo a receita bruta final e o VPL do projeto." error={errors.taxaMortalidade} />
                     </div>
 
                     <div className="h-px bg-slate-800/60 my-6" />
@@ -3826,8 +3814,8 @@ export default function App() {
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <InputGroup label="Lotação" name="animaisHa" value={inputs.animaisHa} unit="ani/ha" onChange={handleInputChange} isInteger tooltip="Quantidade de animais por hectare de área de confinamento." error={errors.animaisHa} />
-                      <InputGroup label="Valor Terra" name="valorTerraHa" value={inputs.valorTerraHa} unit="R$/ha" onChange={handleInputChange} isCurrency tooltip="Preço de mercado da terra utilizada." error={errors.valorTerraHa} />
+                      <InputGroup label="Lotação" name="animaisHa" value={inputs.animaisHa} unit="ani/ha" onChange={handleInputChange} isInteger tooltip="Densidade de cabeças por hectare (ha) na área física ocupada pelo confinamento. É utilizado na análise de resultados para dimensionar a área física necessária em hectares baseada na capacidade estática, e na aba ESG para estimar o impacto de pegada territorial e uso do solo por animal." error={errors.animaisHa} />
+                      <InputGroup label="Valor Terra" name="valorTerraHa" value={inputs.valorTerraHa} unit="R$/ha" onChange={handleInputChange} isCurrency tooltip="Valor médio de mercado de um hectare de terra na região do confinamento (R$/ha). É utilizado na análise de resultados para quantificar os custos de oportunidade do capital imobiliário (arrendamento teórico sobre a área do empreendimento), afetando as despesas fixas de gestão e impactando a atratividade econômica real (VPL)." error={errors.valorTerraHa} />
                     </div>
                   </div>
  
@@ -3936,6 +3924,7 @@ export default function App() {
                             onChange={handleInputChange} 
                             step={1} 
                             isInteger
+                            tooltip="Capacidade máxima de alojamento simultâneo do confinamento. É a variável estrutural prioritária: utilizada na análise de resultados para ratear todas as despesas administrativas, salários e custos fixos mensais por cabeça de boi alojada, bem como na determinação do volume de compra e venda física no Mercado."
                             error={errors.capacidadeEstatica} 
                           />
                         </div>
@@ -3948,106 +3937,108 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                  </div>
 
-                  {showLaborSummary && (
-                    <div className="mb-6 p-5 bg-[#131b2e] rounded-2xl border border-slate-800 animate-in fade-in slide-in-from-top-4 duration-300">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Resumo do Dimensionamento (Ref. 2026)</h3>
-                          <div className="group relative">
-                            <Info className="w-3.5 h-3.5 text-slate-500 cursor-help hover:text-slate-300" />
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-slate-200 text-[10px] rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-xl border border-slate-800">
-                              <p className="font-bold mb-1">Premissas do Modelo:</p>
-                              <ul className="space-y-1 list-disc list-inside opacity-90">
-                                <li>Encargos: 45,59% (Ref: Conab 2010)</li>
-                                <li>Operação rural mecanizada profissional</li>
-                                <li>Pró-labore e Assistência escalonados</li>
-                              </ul>
+                    <div className="h-px bg-slate-800/60 my-6" />
+
+                    {showLaborSummary && (
+                      <div className="mb-6 p-5 bg-[#131b2e] rounded-2xl border border-slate-800 animate-in fade-in slide-in-from-top-4 duration-300">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Resumo do Dimensionamento (Ref. 2026)</h3>
+                            <div className="group relative">
+                              <Info className="w-3.5 h-3.5 text-slate-500 cursor-help hover:text-slate-300" />
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-slate-200 text-[10px] rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-xl border border-slate-800">
+                                <p className="font-bold mb-1">Premissas do Modelo:</p>
+                                <ul className="space-y-1 list-disc list-inside opacity-90">
+                                  <li>Encargos: 45,59% (Ref: Conab 2010)</li>
+                                  <li>Operação rural mecanizada profissional</li>
+                                  <li>Pró-labore and Assistência escalonados</li>
+                                </ul>
+                              </div>
                             </div>
                           </div>
+                          <button onClick={() => setShowLaborSummary(false)} className="text-slate-500 hover:text-slate-300 p-1 hover:bg-slate-800 rounded-lg transition-all">
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
-                        <button onClick={() => setShowLaborSummary(false)} className="text-slate-500 hover:text-slate-300 p-1 hover:bg-slate-800 rounded-lg transition-all">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                        <div className="bg-[#101726]/60 p-3 rounded-xl border border-slate-800">
-                          <p className="text-[9px] text-emerald-400 uppercase font-bold mb-1">Equipe Total</p>
-                          <p className="text-base font-black text-slate-100">
-                            {Math.round(inputs.capacidadeEstatica / inputs.boisMaoDeObra)} <span className="text-[10px] font-normal text-slate-400">CLT</span>
-                          </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                          <div className="bg-[#101726]/60 p-3 rounded-xl border border-slate-800">
+                            <p className="text-[9px] text-emerald-400 uppercase font-bold mb-1">Equipe Total</p>
+                            <p className="text-base font-black text-slate-100">
+                              {Math.round(inputs.capacidadeEstatica / inputs.boisMaoDeObra)} <span className="text-[10px] font-normal text-slate-400">CLT</span>
+                            </p>
+                          </div>
+                          <div className="bg-[#101726]/60 p-3 rounded-xl border border-slate-800">
+                            <p className="text-[9px] text-emerald-400 uppercase font-bold mb-1">Custo CLT/mês</p>
+                            <p className="text-base font-black text-slate-100">
+                              {formatCurrency(inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / inputs.boisMaoDeObra))}
+                            </p>
+                          </div>
+                          <div className="bg-[#101726]/60 p-3 rounded-xl border border-slate-800">
+                            <p className="text-[9px] text-emerald-400 uppercase font-bold mb-1">Custo Total/mês</p>
+                            <p className="text-base font-black text-slate-100">
+                              {formatCurrency(
+                                (inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / inputs.boisMaoDeObra)) + 
+                                inputs.proLaboreMes + 
+                                inputs.assistenciaTecnicaMes
+                              )}
+                            </p>
+                          </div>
+                          <div className="bg-[#101726]/80 p-3 rounded-xl border border-emerald-500/30">
+                            <p className="text-[9px] text-emerald-400 uppercase font-bold mb-1">Custo/Cab/Mês</p>
+                            <p className="text-base font-black text-emerald-400">
+                              {formatCurrency(
+                                ((inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / inputs.boisMaoDeObra)) + 
+                                inputs.proLaboreMes + 
+                                inputs.assistenciaTecnicaMes) / inputs.capacidadeEstatica
+                              )}
+                            </p>
+                          </div>
                         </div>
-                        <div className="bg-[#101726]/60 p-3 rounded-xl border border-slate-800">
-                          <p className="text-[9px] text-emerald-400 uppercase font-bold mb-1">Custo CLT/mês</p>
-                          <p className="text-base font-black text-slate-100">
-                            {formatCurrency(inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / inputs.boisMaoDeObra))}
-                          </p>
-                        </div>
-                        <div className="bg-[#101726]/60 p-3 rounded-xl border border-slate-800">
-                          <p className="text-[9px] text-emerald-400 uppercase font-bold mb-1">Custo Total/mês</p>
-                          <p className="text-base font-black text-slate-100">
-                            {formatCurrency(
-                              (inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / inputs.boisMaoDeObra)) + 
-                              inputs.proLaboreMes + 
-                              inputs.assistenciaTecnicaMes
-                            )}
-                          </p>
-                        </div>
-                        <div className="bg-[#101726]/80 p-3 rounded-xl border border-emerald-500/30">
-                          <p className="text-[9px] text-emerald-400 uppercase font-bold mb-1">Custo/Cab/Mês</p>
-                          <p className="text-base font-black text-emerald-400">
-                            {formatCurrency(
-                              ((inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / inputs.boisMaoDeObra)) + 
-                              inputs.proLaboreMes + 
-                              inputs.assistenciaTecnicaMes) / inputs.capacidadeEstatica
-                            )}
-                          </p>
-                        </div>
-                      </div>
 
-                      <div className="bg-[#0b0f19]/80 p-4 rounded-xl border border-slate-800">
-                        <div className="flex items-center justify-between mb-3 px-1">
-                          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Composição da Equipe (Editável):</p>
-                          <span className="text-[9px] text-slate-500 italic">Ajuste as quantidades abaixo</span>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                          <TeamInput label="Gerente" value={inputs.equipe.gerente} onChange={(v) => handleTeamChange('gerente', v)} />
-                          <TeamInput label="Encarregado" value={inputs.equipe.encarregado} onChange={(v) => handleTeamChange('encarregado', v)} />
-                          <TeamInput label="Administrativo/Apontador" value={inputs.equipe.administrativo} onChange={(v) => handleTeamChange('administrativo', v)} />
-                          <TeamInput label="Tratorista" value={inputs.equipe.tratorista} onChange={(v) => handleTeamChange('tratorista', v)} />
-                          <TeamInput label="Mistura/Fábrica" value={inputs.equipe.mistura} onChange={(v) => handleTeamChange('mistura', v)} />
-                          <TeamInput label="Curral/Manejo" value={inputs.equipe.curral} onChange={(v) => handleTeamChange('curral', v)} />
-                          <TeamInput label="Sanidade" value={inputs.equipe.sanidade} onChange={(v) => handleTeamChange('sanidade', v)} />
-                          <TeamInput label="Mecânico" value={inputs.equipe.manutencao} onChange={(v) => handleTeamChange('manutencao', v)} />
-                          <TeamInput label="Serviços Gerais" value={inputs.equipe.servicosGerais} onChange={(v) => handleTeamChange('servicosGerais', v)} />
+                        <div className="bg-[#0b0f19]/80 p-4 rounded-xl border border-slate-800">
+                          <div className="flex items-center justify-between mb-3 px-1">
+                            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Composição da Equipe (Editável):</p>
+                            <span className="text-[9px] text-slate-500 italic">Ajuste as quantidades abaixo</span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                            <TeamInput label="Gerente" value={inputs.equipe.gerente} onChange={(v) => handleTeamChange('gerente', v)} />
+                            <TeamInput label="Encarregado" value={inputs.equipe.encarregado} onChange={(v) => handleTeamChange('encarregado', v)} />
+                            <TeamInput label="Administrativo/Apontador" value={inputs.equipe.administrativo} onChange={(v) => handleTeamChange('administrativo', v)} />
+                            <TeamInput label="Tratorista" value={inputs.equipe.tratorista} onChange={(v) => handleTeamChange('tratorista', v)} />
+                            <TeamInput label="Mistura/Fábrica" value={inputs.equipe.mistura} onChange={(v) => handleTeamChange('mistura', v)} />
+                            <TeamInput label="Curral/Manejo" value={inputs.equipe.curral} onChange={(v) => handleTeamChange('curral', v)} />
+                            <TeamInput label="Sanidade" value={inputs.equipe.sanidade} onChange={(v) => handleTeamChange('sanidade', v)} />
+                            <TeamInput label="Mecânico" value={inputs.equipe.manutencao} onChange={(v) => handleTeamChange('manutencao', v)} />
+                            <TeamInput label="Serviços Gerais" value={inputs.equipe.servicosGerais} onChange={(v) => handleTeamChange('servicosGerais', v)} />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6">
-                    <div className="space-y-4">
-                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Mão de Obra (CLT)</h3>
-                      <InputGroup label="Bois/Homem" name="boisMaoDeObra" value={inputs.boisMaoDeObra} unit="ani/hom" onChange={handleInputChange} isInteger tooltip="Quantidade de animais que um funcionário consegue manejar com eficiência. Define a produtividade do trabalho e o custo de mão de obra por animal produzido." error={errors.boisMaoDeObra} />
-                      <InputGroup label="Encargos" name="encargosTrabalhistas" value={inputs.encargosTrabalhistas} unit="%" onChange={handleInputChange} tooltip="Percentual de custos extras sobre o salário nominal (FGTS, INSS, férias, etc). Valor de referência Conab (2010): 45,59% para empregado rural por tempo indeterminado." error={errors.encargosTrabalhistas} />
-                      <InputGroup label="Salário Base" name="salarioMinimo" value={inputs.salarioMinimo} unit="R$" onChange={handleInputChange} isCurrency tooltip="Base salarial média para os funcionários do confinamento. Impacta o custo fixo operacional and o ponto de equilíbrio do negócio." extraInfo={`Total CLT: ${formatCurrency(inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / (inputs.boisMaoDeObra || 1)))}/mês`} error={errors.salarioMinimo} />
-                    </div>
-                    
-                    <div className="space-y-4">
-                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Custos Fixos de Gestão</h3>
-                      <InputGroup label="Assistência" name="assistenciaTecnicaMes" value={inputs.assistenciaTecnicaMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Honorários mensais de consultoria (veterinários, zootecnistas). O dimensionamento profissional sugere valores escalonados de R$ 4.000 a R$ 75.000 conforme a capacidade estática." error={errors.assistenciaTecnicaMes} />
-                      <InputGroup label="Pró-labore" name="proLaboreMes" value={inputs.proLaboreMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Remuneração mensal dos gestores. O dimensionamento profissional sugere valores de R$ 8.000 a R$ 35.000 conforme o porte da operação." error={errors.proLaboreMes} />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <InputGroup label="Energia Elétrica" name="energiaEletricaMes" value={inputs.energiaEletricaMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Gastos fixos com energia, água e internet." error={errors.energiaEletricaMes} />
-                        <InputGroup label="Reparos & Manutenção" name="reparosManutencaoMes" value={inputs.reparosManutencaoMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Provisão mensal para reparos e manutenção de benfeitorias e máquinas." error={errors.reparosManutencaoMes} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-2">
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Mão de Obra (CLT)</h3>
+                        <InputGroup label="Bois/Homem" name="boisMaoDeObra" value={inputs.boisMaoDeObra} unit="ani/hom" onChange={handleInputChange} isInteger tooltip="Número de cabeças sob a responsabilidade de cada trabalhador operacional. Utilizado na análise de resultados para projetar o total de colaboradores de campo CLT exigidos pela operação, calculando as despesas mensais de equipe e a eficiência operacional por cabeça alojada." error={errors.boisMaoDeObra} />
+                        <InputGroup label="Encargos" name="encargosTrabalhistas" value={inputs.encargosTrabalhistas} unit="%" onChange={handleInputChange} tooltip="Incidência percentual de contribuições sociais, trabalhistas e previdenciárias sobre a folha bruta. Utilizado na análise de resultados no cálculo do custo real de contratação da equipe de campo CLT que irá compor o Custo Operacional Efetivo (COE) mensal." error={errors.encargosTrabalhistas} />
+                        <InputGroup label="Salário Base" name="salarioMinimo" value={inputs.salarioMinimo} unit="R$" onChange={handleInputChange} isCurrency tooltip="Remuneração média nominal mensal adotada para a equipe de trato e curral. Utilizado na análise de resultados para dimensionar o custo financeiro da folha de pagamento, incidindo diretamente no Custo Operacional Total (COT) e definindo a escala necessária para diluição dos custos de recursos humanos." extraInfo={`Total CLT: ${formatCurrency(inputs.salarioMinimo * (1 + inputs.encargosTrabalhistas / 100) * (inputs.capacidadeEstatica / (inputs.boisMaoDeObra || 1)))}/mês`} error={errors.salarioMinimo} />
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <InputGroup label="Seguros" name="segurosMes" value={inputs.segurosMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Custo mensal com seguros patrimoniais." error={errors.segurosMes} />
-                        <InputGroup label="Imposto Territorial Rural (ITR)" name="itrMes" value={inputs.itrMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Imposto Territorial Rural rateado mensalmente." error={errors.itrMes} />
+                      
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Custos Fixos de Gestão</h3>
+                        <InputGroup label="Assistência" name="assistenciaTecnicaMes" value={inputs.assistenciaTecnicaMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Despesa mensal fixa com assessoria veterinária, nutricional e de auditoria de manejo. Utilizado na análise de resultados para o cálculo das despesas administrativas e de suporte zootécnico, sendo rateado entre o total de cabeças confinadas para apurar o custo fixo por boi comercializado." error={errors.assistenciaTecnicaMes} />
+                        <InputGroup label="Pró-labore" name="proLaboreMes" value={inputs.proLaboreMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Retirada fixa mensal atribuída aos proprietários ou diretores pelo gerenciamento administrativo do confinamento. Utilizado na análise de resultados como custo operacional imobilizado, compondo o custo operacional total (COT) e impactando indiretamente as análises de risco de fluxo de caixa." error={errors.proLaboreMes} />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <InputGroup label="Energia Elétrica" name="energiaEletricaMes" value={inputs.energiaEletricaMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Gasto estimado mensal com energia do escritório e de abastecimento, internet e telefonia. Utilizável na análise de resultados (rateio fixo administrativo), sendo diluído por boi/dia para cálculo do custo fixo operacional médio." error={errors.energiaEletricaMes} />
+                          <InputGroup label="Reparos & Manutenção" name="reparosManutencaoMes" value={inputs.reparosManutencaoMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Provisão mensal para manter benfeitorias, pistas de cochos, cercas e maquinários ativos. Utilizado na análise de resultados para o cálculo das despesas operacionais correntes, prevenindo a sobrevalorização de receitas ao prever o desgaste predial e o desgaste do maquinário de ração." error={errors.reparosManutencaoMes} />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <InputGroup label="Seguros" name="segurosMes" value={inputs.segurosMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Prêmio mensal prorrateado de apólices de seguro rural, rebanho e benfeitorias. Utilizado na análise de resultados dentro do encargo de custos operacionais fixos de segurança jurídica e mitigação de risco patrimonial." error={errors.segurosMes} />
+                          <InputGroup label="Imposto Territorial Rural (ITR)" name="itrMes" value={inputs.itrMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Fração mensal de quitação do imposto territorial aplicável à área produtiva do confinamento. Utilizado na análise de resultados sob a despesa fiscal dos custos fixos anuais rateados pela capacidade instalada." error={errors.itrMes} />
+                        </div>
+                        <InputGroup label="Financiamento" name="financiamentoMes" value={inputs.financiamentoMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Amortização e encargos financeiros mensais de financiamentos ativos (tratores, obras). Utilizado na análise de resultados no cálculo de saídas financeiras do fluxo de caixa e no retorno líquido do empreendedor." error={errors.financiamentoMes} />
                       </div>
-                      <InputGroup label="Financiamento" name="financiamentoMes" value={inputs.financiamentoMes} unit="R$/mês" onChange={handleInputChange} step={0.01} isCurrency tooltip="Parcelas mensais de financiamentos (amortização + juros)." error={errors.financiamentoMes} />
                     </div>
                   </div>
 
@@ -4157,11 +4148,11 @@ export default function App() {
                       <div className="py-8 text-center border border-dashed border-slate-800 rounded-xl mt-4">
                         <p className="text-sm text-slate-400">Nenhum financiamento detalhado. Use o valor manual abaixo ou adicione itens.</p>
                         <div className="mt-4 max-w-xs mx-auto">
-                          <InputGroup label="Financiamento Mensal Manual" name="financiamentoMes" value={inputs.financiamentoMes} onChange={handleInputChange} step={0.01} isCurrency tooltip="Parcelas mensais de financiamentos de máquinas, infraestrutura ou custeio (amortização + juros)." error={errors.financiamentoMes} />
+                          <InputGroup label="Financiamento Mensal Manual" name="financiamentoMes" value={inputs.financiamentoMes} onChange={handleInputChange} step={0.01} isCurrency tooltip="Amortização and encargos financeiros de financiamentos vigentes para bens de capital e veículos de ração. Utilizado na análise de resultados no painel de custos fixos e fluxos de caixa para dedução do retorno líquido sobre o capital próprio." error={errors.financiamentoMes} />
                         </div>
                       </div>
                     )}
-                    
+
                     {inputs.itensFinanciamento.length > 0 && (
                       <div className="mt-6 pt-5 border-t border-slate-800/80">
                         <div className="text-xs text-slate-400">
@@ -4189,12 +4180,12 @@ export default function App() {
                       </div>
                     </div>
                     <div className="space-y-4">
-                      <InputGroup label="Boi Magro" name="precoBoiMagro" value={inputs.precoBoiMagro} unit="R$/ani" onChange={handleInputChange} isCurrency tooltip={`Valor pago por animal na compra.`} extraInfo={`R$ ${(inputs.precoBoiMagro / inputs.pesoVivoInicial).toFixed(2)}/kg`} error={errors.precoBoiMagro} />
-                      <InputGroup label="Boi Gordo" name="precoBoiGordo" value={inputs.precoBoiGordo} unit="R$/@" onChange={handleInputChange} step={0.01} isCurrency tooltip={`Preço de venda projetado por arroba.`} extraInfo={`R$ ${((inputs.rendimentoCarcaca / 100) * (inputs.precoBoiGordo / 15)).toFixed(2)}/kg`} error={errors.precoBoiGordo} />
-                      <InputGroup label="Taxa Mínima de Atratividade (TMA) Anual" name="tmaAnual" value={inputs.tmaAnual} unit="%" onChange={handleInputChange} step={0.01} tooltip="Taxa Mínima de Atratividade." error={errors.tmaAnual} />
+                      <InputGroup label="Boi Magro" name="precoBoiMagro" value={inputs.precoBoiMagro} unit="R$/ani" onChange={handleInputChange} isCurrency tooltipPlacement="right" tooltip={`Preço médio projetado de aquisição por cabeça de boi magro reposição. Principal elemento de saída de caixa. Utilizado na análise de resultados para calcular o Custo de Compra Inicial (capital de giro/estoque) e, no painel de Mercado, compõe a matriz de sensibilidade do VPL e o indicador ágio de reposição.`} extraInfo={`R$ ${(inputs.precoBoiMagro / inputs.pesoVivoInicial).toFixed(2)}/kg`} error={errors.precoBoiMagro} />
+                      <InputGroup label="Boi Gordo" name="precoBoiGordo" value={inputs.precoBoiGordo} unit="R$/@" onChange={handleInputChange} step={0.01} isCurrency tooltipPlacement="right" tooltip={`Preço de venda planejado por arroba do boi gordo. Principal elemento de receita da atividade. Utilizado na aba de Mercado para estimar a receita bruta por lote/cabeça e, na análise de resultados, dita os fluxos de entradas de receita e os indicators de lucratividade líquida (Margem de Lucro e VPL).`} extraInfo={`R$ ${((inputs.rendimentoCarcaca / 100) * (inputs.precoBoiGordo / 15)).toFixed(2)}/kg`} error={errors.precoBoiGordo} />
+                      <InputGroup label="Taxa Mínima de Atratividade (TMA) Anual" name="tmaAnual" value={inputs.tmaAnual} unit="%" onChange={handleInputChange} step={0.01} tooltipPlacement="right" tooltip="Taxa Mínima de Atratividade (%), representando a rentabilidade anual alternativa exigida para investimentos de mesmo risco. É utilizada na análise de resultados como a taxa de desconto oficial no cálculo do Valor Presente Líquido (VPL) e do fluxo de caixa descontado." error={errors.tmaAnual} />
                       <div className="grid grid-cols-2 gap-3">
-                        <InputGroup label="Bonificação" name="bonificacaoPerc" value={inputs.bonificacaoPerc} unit="%" onChange={handleInputChange} step={0.1} error={errors.bonificacaoPerc} />
-                        <InputGroup label="Funrural" name="funruralPerc" value={inputs.funruralPerc} unit="%" onChange={handleInputChange} step={0.01} error={errors.funruralPerc} />
+                        <InputGroup label="Bonificação" name="bonificacaoPerc" value={inputs.bonificacaoPerc} unit="%" onChange={handleInputChange} step={0.1} tooltipPlacement="right" tooltip="Prêmio percentual sobre o valor básico da arroba (@) de boi gordo acordado com frigoríficos por cumprimento de padrões raciais ou mercadológicos (ex: Novilho Precoce). É utilizado no painel de Mercado e na análise de resultados para majorar as receitas financeiras líquidas por cabeça." error={errors.bonificacaoPerc} />
+                        <InputGroup label="Funrural" name="funruralPerc" value={inputs.funruralPerc} unit="%" onChange={handleInputChange} step={0.01} tooltipPlacement="right" tooltip="Alíquota tributária previdenciária incidente de forma descontada na receita de faturamento primário rural. É utilizada diretamente na aba de Mercado e na análise de resultados como dedução fiscal governamental das receitas antes da apuração das margens operacionais líquidas." error={errors.funruralPerc} />
                       </div>
                     </div>
                   </div>
@@ -4215,14 +4206,14 @@ export default function App() {
                     
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-3">
-                        <InputGroup label="Consumo Volumoso" name="cmsVolumoso" value={inputs.cmsVolumoso} unit="kg MN" onChange={handleInputChange} step={0.01} error={errors.cmsVolumoso} />
-                        <InputGroup label="Consumo Concentrado" name="cmsConcentrado" value={inputs.cmsConcentrado} unit="kg MN" onChange={handleInputChange} step={0.01} error={errors.cmsConcentrado} />
+                        <InputGroup label="Consumo Volumoso" name="cmsVolumoso" value={inputs.cmsVolumoso} unit="kg MN" onChange={handleInputChange} step={0.01} tooltipPlacement="right" tooltip="Quantidade física diária em kg de Matéria Natural (MN) de volumoso (como silagem) disponibilizada por animal. É utilizada na aba de Dieta para balanço alimentar e na análise de resultados para calcular o custo direto de alimentação. Também é usada na aba ESG, pois níveis de volumoso calibram as emissões estipuladas de gás metano entérico." error={errors.cmsVolumoso} />
+                        <InputGroup label="Consumo Concentrado" name="cmsConcentrado" value={inputs.cmsConcentrado} unit="kg MN" onChange={handleInputChange} step={0.01} tooltipPlacement="right" tooltip="Consumo físico diário em kg de Matéria Natural (MN) de rações e concentrados por cabeça. Constitui o principal insumo de rápido desembolso. É utilizado na aba de Dieta para o aporte de energia/núcleo e na análise de resultados na apuração do Custo Alimentar total por lote, bem como na aba ESG para calibrar a pegada ecológica da dieta por kg de carcaça." error={errors.cmsConcentrado} />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <InputGroup label="Preço de Volumoso" name="precoVolumoso" value={inputs.precoVolumoso} unit="R$/kg MN" onChange={handleInputChange} step={0.01} isCurrency error={errors.precoVolumoso} />
-                        <InputGroup label="Preço de Concentrado" name="precoConcentrado" value={inputs.precoConcentrado} unit="R$/kg MN" onChange={handleInputChange} step={0.01} isCurrency error={errors.precoConcentrado} />
+                        <InputGroup label="Preço de Volumoso" name="precoVolumoso" value={inputs.precoVolumoso} unit="R$/kg MN" onChange={handleInputChange} step={0.01} isCurrency tooltipPlacement="right" tooltip="Preço unitário por kg de alimento volumoso na base de matéria natural entregue. Utilizado no cálculo das rações na aba Dieta e na análise de resultados para projetar o Custo Operacional Efetivo (COE) da dieta volumosa, afetando a rentabilidade e o VPL final." error={errors.precoVolumoso} />
+                        <InputGroup label="Preço de Concentrado" name="precoConcentrado" value={inputs.precoConcentrado} unit="R$/kg MN" onChange={handleInputChange} step={0.01} isCurrency tooltipPlacement="right" tooltip="Preço unitário por kg de ração concentrada comercial ou formulada na fazenda. Tem enorme relevância nos gastos. Utilizado na aba Dieta para otimização de custo mínimo, na análise de resultados no cálculo do custo alimentar (Margem Bruta) e nos painéis de sensibilidade econômica e riscos do negócio." error={errors.precoDiesel} />
                       </div>
-                      <InputGroup label="Sobras no cocho" name="sobrasCochoPerc" value={inputs.sobrasCochoPerc} unit="%" onChange={handleInputChange} step={0.1} error={errors.sobrasCochoPerc} />
+                      <InputGroup label="Sobras no cocho" name="sobrasCochoPerc" value={inputs.sobrasCochoPerc} unit="%" onChange={handleInputChange} step={0.1} tooltipPlacement="right" tooltip="Taxa percentual planejada de sobras de alimento limpo no cocho (gerenciamento de cocho, normalmente de 2 a 5%). É usada na análise de resultados aumentando de forma proporcional o faturamento/custeio diário alimentar (fator físico de desperdício), ajustando a conversão alimentar econômica real." error={errors.sobrasCochoPerc} />
                     </div>
                   </div>
 
@@ -4245,7 +4236,8 @@ export default function App() {
                         unit="R$/ano" 
                         onChange={handleInputChange} 
                         isCurrency 
-                        tooltip="Total investido anualmente em desenvolvimento comunitário local, projetos sociais e infraestrutura de apoio à comunidade."
+                        tooltipPlacement="right"
+                        tooltip="Total investido anualmente em desenvolvimento comunitário local, projetos sociais e infraestrutura de apoio à comunidade. Utilizado na aba ESG para compor a nota total de impactos comunitários do pilar Social (S), influenciando o Índice ESG Geral do confinamento."
                         error={errors.investimentoSocialAnual} 
                       />
                       <div className="grid grid-cols-2 gap-3">
@@ -4255,7 +4247,8 @@ export default function App() {
                           value={inputs.horasTreinamentoFuncionarioAno} 
                           unit="h/ano" 
                           onChange={handleInputChange} 
-                          tooltip="Horas de capacitação por funcionário ao ano focadas em manejo de baixa tensão, segurança, zootecnia de precisão e bem-estar."
+                          tooltipPlacement="right"
+                          tooltip="Horas anuais de capacitação por colaborador de campo CLT focadas em segurança técnica, bem-estar de manejo e rotinas operacionais rurais de baixa tensão. Utilizado no pilar Social (S) da aba ESG, impactando de forma favorável o Score de Sustentabilidade global."
                           error={errors.horasTreinamentoFuncionarioAno} 
                         />
                         <InputGroup 
@@ -4265,7 +4258,8 @@ export default function App() {
                           unit="0-10" 
                           onChange={handleInputChange} 
                           step={1} 
-                          tooltip="Métrica estipulada de 0 a 10 que quantifica a adesão a rígidas práticas de ambiência, estresse mínimo e manejo humanizado de bovinos."
+                          tooltipPlacement="right"
+                          tooltip="Métrica estipulada técnica de 0 a 10 que qualifica a adesão a rígidos padrões de acesso a água limpa, sombreamento mecânico e ausência de agressões físicas e sonoras na lida. Usado na aba ESG de forma a influenciar a avaliação integrada de responsabilidade animal."
                           error={errors.indiceBemEstarAnimal} 
                         />
                       </div>
@@ -4285,7 +4279,7 @@ export default function App() {
                     </div>
                     <div className="space-y-4">
                       <div className="flex flex-col gap-2">
-                        <InputGroup label="Sanidade" name="custoSanidadePorBoi" value={inputs.custoSanidadePorBoi} unit="R$/boi" onChange={handleInputChange} isCurrency tooltip="Custo total estimado com medicamentos, vacinas, protocolos sanitários e manejo de saúde por animal. Crucial para mitigar riscos de mortalidade e garantir o GMD projetado." error={errors.custoSanidadePorBoi} />
+                        <InputGroup label="Sanidade" name="custoSanidadePorBoi" value={inputs.custoSanidadePorBoi} unit="R$/boi" onChange={handleInputChange} isCurrency tooltipPlacement="right" tooltip="Custo acumulado planejado por boi com vacinas, tratamentos clínicos e de rebanho. É utilizado na análise de resultados dentro do cálculo dos Custos Variáveis por ciclo, sendo chave na saúde preventiva para resguardar o GMD e conter as perdas por óbitos (Mortalidade)." error={errors.custoSanidadePorBoi} />
                         <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                           {[
                             { label: 'Otimista', value: 75, color: 'bg-emerald-950/40 text-emerald-400 border-emerald-900/30' },
@@ -4303,16 +4297,16 @@ export default function App() {
                           ))}
                         </div>
                       </div>
-                      <InputGroup label="Frete & Taxas" name="fretePorAnimal" value={inputs.fretePorAnimal} unit="R$/ani" onChange={handleInputChange} isCurrency tooltip={`Soma dos custos de transporte (compra e venda), taxas de GTA e rastreabilidade.`} error={errors.fretePorAnimal} />
+                      <InputGroup label="Frete & Taxas" name="fretePorAnimal" value={inputs.fretePorAnimal} unit="R$/ani" onChange={handleInputChange} isCurrency tooltipPlacement="right" tooltip={`Soma das despesas de deslocamento de boiada, taxas de GTA, balança e rastreabilidade individual. Utilizado na análise de resultados no painel de custos variáveis totais para desconto direto nos saldos de faturamento e margens da aba de Mercado.`} error={errors.fretePorAnimal} />
                       <div className="grid grid-cols-2 gap-4">
-                        <InputGroup label="Comissão Compra" name="comissaoCompraPerc" value={inputs.comissaoCompraPerc} unit="%" onChange={handleInputChange} tooltip="Comissão paga na compra do boi magro (corretagem)." error={errors.comissaoCompraPerc} />
-                        <InputGroup label="Comissão Venda" name="comissaoVendaPerc" value={inputs.comissaoVendaPerc} unit="%" onChange={handleInputChange} tooltip="Comissão paga na venda do boi gordo (corretagem)." error={errors.comissaoVendaPerc} />
+                        <InputGroup label="Comissão Compra" name="comissaoCompraPerc" value={inputs.comissaoCompraPerc} unit="%" onChange={handleInputChange} tooltipPlacement="right" tooltip="Percentual pago a intermediários ou corretores credenciados ao adquirir os bois magros. Aplicado na análise de resultados como custo adicional de imobilização operacional da reposição de estoque." error={errors.comissaoCompraPerc} />
+                        <InputGroup label="Comissão Venda" name="comissaoVendaPerc" value={inputs.comissaoVendaPerc} unit="%" onChange={handleInputChange} tooltipPlacement="right" tooltip="Percentual descontado pela assessoria comercial e leiloaria na hora da liquidação dos animais confinados. Descontado do faturamento líquido na aba de Mercado e na análise de resultados." error={errors.comissaoVendaPerc} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
-                        <InputGroup label="Consumo Diesel" name="dieselLitrosCabecaDia" value={inputs.dieselLitrosCabecaDia} unit="L/cab/dia" onChange={handleInputChange} tooltip="Consumo médio de diesel por cabeça por dia para trato e distribuição de ração." error={errors.dieselLitrosCabecaDia} />
-                        <InputGroup label="Preço Diesel" name="precoDiesel" value={inputs.precoDiesel} unit="R$/L" onChange={handleInputChange} isCurrency tooltip="Preço médio do litro do diesel posto no confinamento." error={errors.precoDiesel} />
+                        <InputGroup label="Consumo Diesel" name="dieselLitrosCabecaDia" value={inputs.dieselLitrosCabecaDia} unit="L/cab/dia" onChange={handleInputChange} tooltipPlacement="right" tooltip="Demanda estimada do combustível de tratores e vagões misturadores diariamente por boi. Utilizado na análise de resultados nas despesas de tracionamento mecânico diário de alimento, e na aba ESG como base para calcular a queima de diesel nas emissões de CO2 equivalentes." error={errors.dieselLitrosCabecaDia} />
+                        <InputGroup label="Preço Diesel" name="precoDiesel" value={inputs.precoDiesel} unit="R$/L" onChange={handleInputChange} isCurrency tooltipPlacement="right" tooltip="Valor de mercado do litro do óleo diesel posto em tanques na fazenda. Utilizado na análise de resultados para calcular o custo total de deslocamento de tratores industriais de distribuição de silagem." error={errors.precoDiesel} />
                       </div>
-                      <InputGroup label="Despesas Extras" name="outrosDespesasValor" value={inputs.outrosDespesasValor} unit="R$" onChange={handleInputChange} isCurrency tooltip={`Provisão para despesas eventuais e imprevistos (reparos, taxas extras, etc).`} error={errors.outrosDespesasValor} />
+                      <InputGroup label="Despesas Extras" name="outrosDespesasValor" value={inputs.outrosDespesasValor} unit="R$" onChange={handleInputChange} isCurrency tooltipPlacement="right" tooltip={`Provisão orçamentária emergencial para gastos imprevistos com peças ou intercorrências. Utilizado na análise de resultados para compor as premissas de custos de contingências gerais do ciclo.`} error={errors.outrosDespesasValor} />
                     </div>
                   </div>
                 </div>
@@ -4517,7 +4511,7 @@ export default function App() {
                     <div className="py-8 text-center">
                       <p className="text-sm text-slate-400 font-medium">Nenhum item cadastrado. Use o valor manual abaixo ou adicione itens.</p>
                       <div className="mt-4 max-w-xs mx-auto">
-                        <InputGroup label="Depreciação Mensal Manual" name="depreciacaoMes" value={inputs.depreciacaoMes} onChange={handleInputChange} step={0.01} isCurrency tooltip="Reserva financeira mensal para reposição futura de ativos. Garante a sustentabilidade do negócio a longo prazo ao prever a renovação de máquinas e benfeitorias sem descapitalização." error={errors.depreciacaoMes} />
+                        <InputGroup label="Depreciação Mensal Manual" name="depreciacaoMes" value={inputs.depreciacaoMes} onChange={handleInputChange} step={0.01} isCurrency tooltip="Provisão financeira mensal estipulada para prever a depreciação técnica acumulada de cercas, galpões e maquinários. Utilizado na análise de resultados (Custo Fixo) para estipular o Custo Operacional Total (COT) e preservar a sustentabilidade econômica sem descapitalização futura." error={errors.depreciacaoMes} />
                       </div>
                     </div>
                   )}
@@ -5131,6 +5125,125 @@ export default function App() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              {/* Projeção de Lucro Estimado por Animal */}
+              <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left mt-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                  <div>
+                    <h3 className="font-semibold text-slate-200 flex items-center gap-2 text-base font-display">
+                      <DollarSign className="w-5 h-5 text-emerald-400" />
+                      Projeção Dinâmica de Lucro por Animal no Confinamento
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Acompanhamento do resultado líquido estimado por cabeça com o passar dos dias, ponderando o ganho de carcaça e o acúmulo de custos.
+                    </p>
+                  </div>
+                  <div className="shrink-0 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-1.5 text-xs text-emerald-400 font-bold">
+                    Cenário Determinístico Ativo
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-stretch">
+                  <div className="lg:col-span-3 h-[350px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={results.evolucao} margin={{ top: 15, right: 30, left: 20, bottom: 25 }}>
+                        <defs>
+                          <linearGradient id="colorLucro" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                        <XAxis 
+                          dataKey="dia" 
+                          label={{ value: 'Dia de Confinamento', position: 'insideBottom', offset: -15, fontSize: 11, fill: '#94a3b8' }} 
+                          tick={{ fontSize: 10, fill: '#94a3b8' }}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                        />
+                        <YAxis 
+                          label={{ value: 'Lucro Líquido (R$ / Animal)', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#94a3b8', offset: 10 }} 
+                          tick={{ fontSize: 10, fill: '#94a3b8' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #1e293b', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.4)' }}
+                          formatter={(value: number) => [formatCurrency(value), 'Lucro Líquido Estimado']}
+                          labelFormatter={(label) => `Dia ${label}`}
+                        />
+                        <ReferenceLine y={0} stroke="#ef4444" strokeWidth={1} strokeDasharray="3 3" label={{ value: 'Ponto de Equilíbrio (R$ 0)', fill: '#ef4444', position: 'top', fontSize: 9 }} />
+                        {results.evolucao.reduce((max, point) => ((point.lucroEstimado ?? 0) > (max.lucroEstimado ?? -Infinity) ? point : max), results.evolucao[0] || { dia: 0, lucroEstimado: 0 }).dia > 0 && (
+                          <ReferenceLine 
+                            x={results.evolucao.reduce((max, point) => ((point.lucroEstimado ?? 0) > (max.lucroEstimado ?? -Infinity) ? point : max), results.evolucao[0] || { dia: 0, lucroEstimado: 0 }).dia} 
+                            stroke="#3b82f6" 
+                            strokeWidth={1} 
+                            strokeDasharray="4 4" 
+                            label={{ 
+                              value: `Lucro Máximo (Dia ${results.evolucao.reduce((max, point) => ((point.lucroEstimado ?? 0) > (max.lucroEstimado ?? -Infinity) ? point : max), results.evolucao[0] || { dia: 0, lucroEstimado: 0 }).dia})`, 
+                              fill: '#3b82f6', 
+                              position: 'insideTopLeft', 
+                              fontSize: 9,
+                              fontWeight: 'bold' 
+                            }} 
+                          />
+                        )}
+                        <Area type="monotone" dataKey="lucroEstimado" name="Lucro Líquido" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorLucro)" dot={{ r: 3, fill: '#10b981', strokeWidth: 0 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="lg:col-span-1 flex flex-col justify-between bg-[#070a13] p-4 rounded-xl border border-slate-800/60 divide-y divide-slate-800">
+                    <div className="pb-4">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Informações Chave do Lote</p>
+                      
+                      <div className="mt-4 space-y-3">
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">Lucro Planejado Final (Dia {inputs.tempoAlimentacao})</span>
+                          <span className={`text-lg font-bold font-mono ${results.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {formatCurrency(results.lucro)} <span className="text-xs font-normal">/ animal</span>
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">Máximo Retorno Econômico</span>
+                          {(() => {
+                            const maxPoint = results.evolucao.reduce((max, point) => ((point.lucroEstimado ?? 0) > (max.lucroEstimado ?? -Infinity) ? point : max), results.evolucao[0] || { dia: 0, lucroEstimado: 0 });
+                            return (
+                              <span className="text-sm font-bold text-slate-250 font-mono">
+                                {formatCurrency(maxPoint.lucroEstimado || 0)} <span className="text-xs text-blue-400">no Dia {maxPoint.dia}</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">Ponto de Equilíbrio Temporal</span>
+                          {(() => {
+                            const breakEvenPoint = results.evolucao.find(p => (p.lucroEstimado ?? 0) >= 0);
+                            return (
+                              <span className="text-sm font-bold text-slate-250 font-mono">
+                                {breakEvenPoint ? `Dia ${breakEvenPoint.dia} de trato` : <span className="text-rose-400">Ciclo não rentável</span>}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 text-[11px] text-slate-400 space-y-2 leading-relaxed">
+                      <p>
+                        💡 <strong>Análise de Otimização:</strong> 
+                      </p>
+                      <p>
+                        Durante os primeiros dias de confinamento, o lucro líquido acumulado por animal costuma ser negativo devido ao custo inicial da reposição (boi magro) e despesas fixas.
+                      </p>
+                      <p>
+                        Com o passar do tempo e o ganho acumulado de arrobas, a curva atinge o **Ponto de Equilíbrio (Lucro Zero)** e sobe em direção ao lucro positivo, alcançando o rendimento máximo ideal antes do abate.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -10106,7 +10219,7 @@ export default function App() {
                         </button>
                         <button
                           onClick={() => deleteSimulation(sim.id)}
-                          className="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-all"
+                          className="p-2 text-rose-400 hover:text-rose-350 hover:bg-rose-500/10 rounded-lg transition-all"
                           title="Excluir"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -10148,48 +10261,48 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="relative w-full max-w-lg bg-[#0f172a] rounded-3xl shadow-2xl border border-slate-800/85 overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-emerald-50 shrink-0">
+              <div className="p-6 border-b border-slate-800/60 flex items-center justify-between bg-[#070a13] shrink-0">
                 <div className="flex items-center gap-2">
                   <Info className="w-5 h-5 text-emerald-400" />
-                  <h2 className="text-lg font-bold text-slate-100">Como Interpretar o Histograma</h2>
+                  <h2 className="text-lg font-bold text-slate-105">Como Interpretar o Histograma</h2>
                 </div>
                 <button 
                   onClick={() => setIsHistogramInfoOpen(false)}
-                  className="p-2 hover:bg-white/50 rounded-full transition-colors"
+                  className="p-2 hover:bg-slate-800/60 rounded-full transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
               
-              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 text-left">
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
                     O que é o Histograma?
                   </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
+                  <p className="text-sm text-slate-300 leading-relaxed">
                     Ele mostra a <strong>frequência</strong> com que cada nível de VPL ocorreu nas milhares de simulações realizadas. É o "mapa da incerteza" do seu projeto.
                   </p>
                 </section>
 
                 <div className="space-y-4">
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                    <h4 className="text-xs font-bold text-slate-900 uppercase mb-2">Média</h4>
-                    <p className="text-xs text-slate-700">
+                  <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/60">
+                    <h4 className="text-xs font-bold text-slate-200 uppercase mb-2">Média</h4>
+                    <p className="text-xs text-slate-400">
                       É o VPL mais provável. Representa o centro da distribuição.
                     </p>
                   </div>
-                  <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
-                    <h4 className="text-xs font-bold text-amber-800 uppercase mb-2">Desvio Padrão</h4>
-                    <p className="text-xs text-amber-700">
+                  <div className="p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                    <h4 className="text-xs font-bold text-amber-400 uppercase mb-2">Desvio Padrão</h4>
+                    <p className="text-xs text-slate-300">
                       Mede a dispersão. Quanto maior, mais "espalhado" é o gráfico e maior é a incerteza (risco) sobre o resultado final.
                     </p>
                   </div>
-                  <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
-                    <h4 className="text-xs font-bold text-purple-800 uppercase mb-2">Coeficiente de Variação (C.V.)</h4>
-                    <p className="text-xs text-purple-700">
+                  <div className="p-4 bg-purple-500/10 rounded-2xl border border-purple-500/20">
+                    <h4 className="text-xs font-bold text-purple-400 uppercase mb-2">Coeficiente de Variação (C.V.)</h4>
+                    <p className="text-xs text-slate-300">
                       Relaciona o risco (desvio) com o retorno (média). 
                       <br/>- Abaixo de 20%: Baixo risco relativo.
                       <br/>- Acima de 30%: Alto risco relativo.
@@ -10198,40 +10311,41 @@ export default function App() {
                 </div>
 
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-4 h-0.5 border-t-2 border-dashed border-blue-500" />
                     Linha Pontilhada Azul
                   </h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-slate-300">
                     Representa o <strong>VPL Determinístico</strong>, ou seja, o resultado calculado com os valores fixos que você inseriu nos parâmetros, sem considerar as variações de mercado.
                   </p>
                 </section>
 
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-4 h-0.5 border-t-2 border-dashed border-violet-500" />
                     Linha Pontilhada Violeta
                   </h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-slate-300">
                     Representa o <strong>VPL Probabilístico (Médio)</strong>, que é a média de todos os cenários simulados no Monte Carlo. É o resultado mais provável considerando as incertezas.
                   </p>
                 </section>
 
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-red-500" />
                     Linha de VPL Zero
                   </h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-slate-300">
                     A área do gráfico à <strong>esquerda</strong> da linha vermelha representa a probabilidade de VPL negativo. Quanto mais o gráfico "foge" para a esquerda, mais arriscado é o negócio.
                   </p>
                 </section>
               </div>
 
-              <div className="p-6 bg-gray-50 flex justify-end">
+              <div className="p-6 bg-[#070a13] border-t border-slate-800/40 flex justify-end">
                 <button
+                  type="button"
                   onClick={() => setIsHistogramInfoOpen(false)}
-                  className="px-8 py-2 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all"
+                  className="px-8 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-950/40 border border-emerald-500/30 transition-all cursor-pointer"
                 >
                   Entendi
                 </button>
@@ -10239,7 +10353,7 @@ export default function App() {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </ AnimatePresence>
 
       {/* Regression Info Modal */}
       <AnimatePresence>
@@ -10256,53 +10370,54 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="relative w-full max-w-lg bg-[#0f172a] rounded-3xl shadow-2xl border border-slate-800/85 overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-slate-50 shrink-0">
+              <div className="p-6 border-b border-slate-800/60 flex items-center justify-between bg-[#070a13] shrink-0">
                 <div className="flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-slate-600" />
-                  <h2 className="text-lg font-bold text-slate-100">Análise de Regressão Múltipla</h2>
+                  <Calculator className="w-5 h-5 text-blue-400" />
+                  <h2 className="text-lg font-bold text-slate-105">Análise de Regressão Múltipla</h2>
                 </div>
                 <button 
                   onClick={() => setIsRegressionInfoOpen(false)}
-                  className="p-2 hover:bg-white/50 rounded-full transition-colors"
+                  className="p-2 hover:bg-slate-800/60 rounded-full transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
               
-              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 text-left">
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-blue-500" />
                     O que são os Standard Betas?
                   </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
+                  <p className="text-sm text-slate-300 leading-relaxed">
                     Diferente da correlação simples, os coeficientes de regressão padronizados (Standard Betas) medem o impacto de uma variável <strong>mantendo todas as outras constantes</strong>.
                   </p>
                 </section>
 
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-purple-500" />
                     O que é o R² (R-Quadrado)?
                   </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
+                  <p className="text-sm text-slate-300 leading-relaxed">
                     O R² indica quanto da variação total do VPL é explicada pelo modelo linear. Se o R² for baixo (ex: &lt; 0.80), significa que o modelo possui <strong>fortes relações não-lineares</strong> ou interações complexas que uma reta não consegue capturar perfeitamente.
                   </p>
                 </section>
 
-                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 italic">
+                <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/60 italic">
                   <p className="text-xs text-slate-400">
                     <strong>Por que usar?</strong> Se os seus inputs fossem correlacionados entre si, a regressão seria mais precisa que a correlação simples para identificar os verdadeiros "drivers" de VPL.
                   </p>
                 </div>
               </div>
 
-              <div className="p-6 bg-gray-50 flex justify-end">
+              <div className="p-6 bg-[#070a13] border-t border-slate-800/40 flex justify-end">
                 <button
+                  type="button"
                   onClick={() => setIsRegressionInfoOpen(false)}
-                  className="px-8 py-2 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all"
+                  className="px-8 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-blue-950/40 border border-blue-500/30 transition-all cursor-pointer"
                 >
                   Entendi
                 </button>
@@ -10327,42 +10442,42 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="relative w-full max-w-lg bg-[#0f172a] rounded-3xl shadow-2xl border border-slate-800/85 overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-emerald-50 shrink-0">
+              <div className="p-6 border-b border-slate-800/60 flex items-center justify-between bg-[#070a13] shrink-0">
                 <div className="flex items-center gap-2">
                   <Activity className="w-5 h-5 text-emerald-400" />
-                  <h2 className="text-lg font-bold text-slate-100">Análise Morris (OAT)</h2>
+                  <h2 className="text-lg font-bold text-slate-105">Análise Morris (OAT)</h2>
                 </div>
                 <button 
                   onClick={() => setIsMorrisInfoOpen(false)}
-                  className="p-2 hover:bg-white/50 rounded-full transition-colors"
+                  className="p-2 hover:bg-slate-800/60 rounded-full transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
               
-              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 text-left">
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
                     O que é o Método de Morris?
                   </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
+                  <p className="text-sm text-slate-300 leading-relaxed">
                     É uma técnica de triagem que identifica quais variáveis têm maior impacto e quais apresentam comportamentos complexos (não-lineares ou interações).
                   </p>
                 </section>
 
                 <div className="grid grid-cols-1 gap-4">
-                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                  <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
                     <h4 className="text-xs font-bold text-emerald-400 uppercase mb-2">Importância (μ*)</h4>
-                    <p className="text-xs text-emerald-400">
+                    <p className="text-xs text-slate-300">
                       Representa a influência média da variável no VPL. Quanto maior, mais "importante" é a variável.
                     </p>
                   </div>
-                  <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
-                    <h4 className="text-xs font-bold text-amber-800 uppercase mb-2">Interação/Não-linearidade (σ)</h4>
-                    <p className="text-xs text-amber-700">
+                  <div className="p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                    <h4 className="text-xs font-bold text-amber-400 uppercase mb-2">Interação/Não-linearidade (σ)</h4>
+                    <p className="text-xs text-slate-300">
                       Indica se o efeito da variável muda dependendo de outros fatores. Valores altos sugerem que o risco é complexo e interconectado.
                     </p>
                   </div>
@@ -10373,10 +10488,11 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="p-6 bg-gray-50 flex justify-end">
+              <div className="p-6 bg-[#070a13] border-t border-slate-800/40 flex justify-end">
                 <button
+                  type="button"
                   onClick={() => setIsMorrisInfoOpen(false)}
-                  className="px-8 py-2 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all"
+                  className="px-8 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-950/40 border border-emerald-500/30 transition-all cursor-pointer"
                 >
                   Entendi
                 </button>
@@ -10401,58 +10517,59 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="relative w-full max-w-lg bg-[#0f172a] rounded-3xl shadow-2xl border border-slate-800/85 overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-amber-50 shrink-0">
+              <div className="p-6 border-b border-slate-800/60 flex items-center justify-between bg-[#070a13] shrink-0">
                 <div className="flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-amber-600" />
-                  <h2 className="text-lg font-bold text-slate-100">Índices de Sobol</h2>
+                  <Zap className="w-5 h-5 text-amber-400" />
+                  <h2 className="text-lg font-bold text-slate-105">Índices de Sobol</h2>
                 </div>
                 <button 
                   onClick={() => setIsSobolInfoOpen(false)}
-                  className="p-2 hover:bg-white/50 rounded-full transition-colors"
+                  className="p-2 hover:bg-slate-800/60 rounded-full transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
               
-              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 text-left">
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-amber-500" />
                     Decomposição da Variância
                   </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
+                  <p className="text-sm text-slate-400 leading-relaxed">
                     A análise de Sobol quantifica exatamente quanto da incerteza (variância) do VPL é causada por cada variável.
                   </p>
                 </section>
 
                 <div className="space-y-4">
-                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                  <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
                     <h4 className="text-xs font-bold text-emerald-400 uppercase mb-2">S1 (Efeito Direto)</h4>
-                    <p className="text-xs text-emerald-400">
+                    <p className="text-xs text-slate-300">
                       A porcentagem da variância explicada apenas por esta variável isoladamente.
                     </p>
                   </div>
-                  <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
-                    <h4 className="text-xs font-bold text-amber-800 uppercase mb-2">Interações</h4>
-                    <p className="text-xs text-amber-700">
+                  <div className="p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                    <h4 className="text-xs font-bold text-amber-400 uppercase mb-2">Interações</h4>
+                    <p className="text-xs text-slate-300">
                       A variância que surge da combinação desta variável com outras. É o "efeito multiplicador" do risco.
                     </p>
                   </div>
-                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200">
-                    <h4 className="text-xs font-bold text-gray-800 uppercase mb-2">ST (Índice Total)</h4>
-                    <p className="text-xs text-gray-600">
+                  <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/60">
+                    <h4 className="text-xs font-bold text-slate-250 uppercase mb-2">ST (Índice Total)</h4>
+                    <p className="text-xs text-slate-300">
                       A soma de S1 e todas as suas interações. Representa o risco total associado à variável.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="p-6 bg-gray-50 flex justify-end">
+              <div className="p-6 bg-[#070a13] border-t border-slate-800/40 flex justify-end">
                 <button
+                  type="button"
                   onClick={() => setIsSobolInfoOpen(false)}
-                  className="px-8 py-2 bg-amber-600 text-white rounded-xl font-bold shadow-lg shadow-amber-600/20 hover:bg-amber-700 transition-all"
+                  className="px-8 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-amber-950/40 border border-amber-500/30 transition-all cursor-pointer"
                 >
                   Entendi
                 </button>
@@ -10477,44 +10594,44 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="relative w-full max-w-lg bg-[#0f172a] rounded-3xl shadow-2xl border border-slate-800/85 overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-emerald-50 shrink-0">
+              <div className="p-6 border-b border-slate-800/60 flex items-center justify-between bg-[#070a13] shrink-0">
                 <div className="flex items-center gap-2">
                   <Info className="w-5 h-5 text-emerald-400" />
-                  <h2 className="text-lg font-bold text-slate-100">Como Interpretar a Análise de Sensibilidade (Correlação)</h2>
+                  <h2 className="text-lg font-bold text-slate-105">Como Interpretar a Análise de Sensibilidade (Correlação)</h2>
                 </div>
                 <button 
                   onClick={() => setIsSensitivityInfoOpen(false)}
-                  className="p-2 hover:bg-white/50 rounded-full transition-colors"
+                  className="p-2 hover:bg-slate-800/60 rounded-full transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
               
-              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 text-left">
                 <section className="space-y-2">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <h3 className="font-bold text-slate-200 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
                     O que são os Coeficientes?
                   </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
+                  <p className="text-sm text-slate-300 leading-relaxed">
                     Eles medem a <strong>força e a direção</strong> da relação entre cada variável de entrada e o VPL final. O valor varia de -1 a +1.
                   </p>
                 </section>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                  <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
                     <h4 className="text-xs font-bold text-emerald-400 uppercase mb-2">Impacto Positivo (+)</h4>
-                    <p className="text-xs text-emerald-400">
+                    <p className="text-xs text-slate-300">
                       Barras para a <strong>direita</strong>. Quando este valor aumenta, o VPL tende a aumentar. 
                       <br/><br/>
                       <em>Ex: Preço do Boi Gordo.</em>
                     </p>
                   </div>
-                  <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100">
-                    <h4 className="text-xs font-bold text-rose-800 uppercase mb-2">Impacto Negativo (-)</h4>
-                    <p className="text-xs text-rose-700">
+                  <div className="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/20">
+                    <h4 className="text-xs font-bold text-rose-400 uppercase mb-2">Impacto Negativo (-)</h4>
+                    <p className="text-xs text-slate-300">
                       Barras para a <strong>esquerda</strong>. Quando este valor aumenta, o VPL tende a diminuir.
                       <br/><br/>
                       <em>Ex: Preço do Milho.</em>
@@ -10523,11 +10640,11 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="p-6 bg-gray-50 flex justify-end">
+              <div className="p-6 bg-[#070a13] border-t border-slate-800/40 flex justify-end">
                 <button
                   type="button"
                   onClick={() => setIsSensitivityInfoOpen(false)}
-                  className="px-8 py-2 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/25 hover:bg-emerald-700 transition-all cursor-pointer"
+                  className="px-8 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-950/40 border border-emerald-500/30 transition-all cursor-pointer"
                 >
                   Entendi
                 </button>
@@ -11342,7 +11459,8 @@ function InputGroup({
   isCurrency = false,
   isInteger = false,
   unit,
-  error
+  error,
+  tooltipPlacement = 'center'
 }: { 
   label: string, 
   name: string, 
@@ -11356,7 +11474,8 @@ function InputGroup({
   isCurrency?: boolean,
   isInteger?: boolean,
   unit?: string,
-  error?: string
+  error?: string,
+  tooltipPlacement?: 'left' | 'right' | 'center'
 }) {
   const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/\D/g, '');
@@ -11379,6 +11498,27 @@ function InputGroup({
     maximumFractionDigits: isInteger ? 0 : 2 
   }).format(Number(value) || 0);
 
+  const getTooltipStyles = (placement: 'left' | 'right' | 'center') => {
+    switch (placement) {
+      case 'left':
+        return {
+          container: "absolute bottom-full left-0 -translate-x-3 mb-2 w-64 sm:w-72 md:w-80 p-2.5 bg-[#0a0f1d] text-slate-200 text-[10px] rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-20 shadow-xl leading-relaxed border border-slate-800 text-left font-normal normal-case",
+          arrow: "absolute top-full left-4 border-4 border-transparent border-t-[#0a0f1d]"
+        };
+      case 'right':
+        return {
+          container: "absolute bottom-full right-0 translate-x-3 mb-2 w-64 sm:w-72 md:w-80 p-2.5 bg-[#0a0f1d] text-slate-200 text-[10px] rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-20 shadow-xl leading-relaxed border border-slate-800 text-left font-normal normal-case",
+          arrow: "absolute top-full right-4 border-4 border-transparent border-t-[#0a0f1d]"
+        };
+      case 'center':
+      default:
+        return {
+          container: "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 sm:w-72 md:w-80 p-2.5 bg-[#0a0f1d] text-slate-200 text-[10px] rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-20 shadow-xl leading-relaxed border border-slate-800 text-center font-normal normal-case",
+          arrow: "absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#0a0f1d]"
+        };
+    }
+  };
+
   return (
     <motion.div 
       layout
@@ -11394,9 +11534,9 @@ function InputGroup({
             {tooltip && (
               <div className="relative group/tooltip">
                 <HelpCircle className="w-3 h-3 text-slate-500 cursor-help hover:text-slate-300 transition-colors" />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2.5 bg-[#0a0f1d] text-slate-200 text-[10px] rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-20 shadow-xl leading-relaxed border border-slate-800 text-center font-normal normal-case">
+                <div className={getTooltipStyles(tooltipPlacement).container}>
                   {tooltip}
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#0a0f1d]" />
+                  <div className={getTooltipStyles(tooltipPlacement).arrow} />
                 </div>
               </div>
             )}
@@ -12841,7 +12981,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                         <div>
                           <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4 font-display flex items-center justify-between border-b border-emerald-500/10 pb-2">
                             <span>Uso de Metodologia de Confinamento & Modelagem</span>
-                            <span className="text-[9px] text-slate-500 font-normal lowercase font-sans">20 títulos</span>
+                            <span className="text-[9px] text-slate-500 font-normal lowercase font-sans">21 títulos</span>
                           </h4>
                           <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
                             <li className="pl-1">
@@ -13084,6 +13224,18 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                                 <ExternalLink className="w-2 h-2" />
                               </a>
                             </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">MATSUNAGA, M.; BEMELMANS, P. F.; TOLEDO, P. E. N.; DULLEY, R. D.; OKAWA, H.; PEDROSO, I. A. (1976)</strong>. Metodologia de custo utilizada pelo IEA. <em>Agricultura em São Paulo</em>, v.23, p.123-139, 1976.
+                              <a
+                                href="https://iea.agricultura.sp.gov.br/ftpiea/rea/tomo1_76/artigo3.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
                           </ul>
                         </div>
                       </div>
@@ -13129,6 +13281,33 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                                 className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
                               >
                                 DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">WALL, D. M. (1997)</strong>. Distributions and correlations in Monte-Carlo simulation. <em>Construction Management and Economics</em>, v.15, p.241-258, 1997.
+                              <a
+                                href="https://ideas.repec.org/a/taf/conmgt/v15y1997i3p241-258.html"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">CONOVER, W. J. (1999)</strong>. Practical nonparametric statistics. 3. ed. Wiley, New York, USA, 592 p. (Livro).
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">YANG, I.-T. (2005)</strong>. Simulation-based estimation for correlated cost elements. <em>International Journal of Project Management</em>, v.23, p.275-282, 2005.
+                              <a
+                                href="https://www.sciencedirect.com/science/article/pii/S0263786305000086"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
                                 <ExternalLink className="w-2 h-2" />
                               </a>
                             </li>
@@ -13223,10 +13402,25 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               </a>
                             </li>
                             <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">HADAR, J.; RUSSELL, W. R. (1969)</strong>. Rules for ordering uncertain prospects. <em>American Economic Review</em>, v.59, p.25-34, 1969.
+                              <a
+                                href="https://www.scirp.org/reference/referencespapers?referenceid=1683397"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                Acesso
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">ASSAF NETO, A. (2022)</strong>. Matemática financeira e suas aplicações. São Paulo: Atlas. (Livro)
                             </li>
                             <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">KASSAI, J. R. et al. (2000)</strong>. Retorno de investimento: abordagem matemática e contábil do lucro empresarial. São Paulo: Atlas. (Livro)
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">ALBRIGHT, S. C.; WINSTON, W. L.; ZAPPE, C. J. (2010)</strong>. Data analysis and decision making. 4. ed. South-Western College Pub, Mason, Ohio, USA, 1080 p. (Livro).
                             </li>
                           </ul>
                         </div>

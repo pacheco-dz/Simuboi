@@ -310,6 +310,25 @@ export function calculateSimulation(inputs: SimulationInputs): SimulationResults
     const custoPorMmEGS = deltaEGS > 0 ? (custoAcumuladoEvol - custoCompra) / deltaEGS : 0;
     const custoPorKgGanhoEvol = deltaPeso > 0 ? (custoAcumuladoEvol - custoCompra) / deltaPeso : 0;
 
+    // Calcular Lucro Estimado por animal no dia (Lucro Projetado)
+    const rendimentoAtual = tempoAlimentacao > 0 
+      ? rendimentoCarcacaInicial + (rendimentoCarcaca - rendimentoCarcacaInicial) * (dia / tempoAlimentacao) 
+      : rendimentoCarcaca;
+    const pesoVivoFinalRealAtual = pesoAtualEvol * (1 - quebraPesoTransportePerc / 100);
+    const carcacaAtualKg = pesoVivoFinalRealAtual * (rendimentoAtual / 100);
+    const arrobasAtuais = carcacaAtualKg / 15;
+    const receitaVendaAtual = arrobasAtuais * precoBoiGordo;
+    const custoFunruralAtual = receitaVendaAtual * (funruralPerc / 100);
+    const custoComissaoVendaAtual = receitaVendaAtual * (comissaoVendaPerc / 100);
+    const custoComissoesAtual = custoComissaoCompra + custoComissaoVendaAtual;
+    const receitaBonificacaoAtual = receitaVendaAtual * (bonificacaoPerc / 100);
+    const receitaEstercoAtual = tempoAlimentacao > 0 ? (precoEsterco * quantidadeEsterco) * (dia / tempoAlimentacao) : 0;
+    const valorResidualAtual = tempoAlimentacao > 0 ? valorResidual * (dia / tempoAlimentacao) : 0;
+    const receitaBrutaAtual = receitaVendaAtual + receitaBonificacaoAtual + receitaEstercoAtual + valorResidualAtual;
+    const custoOportunidadeCapitalAtual = tempoAlimentacao > 0 ? custoOportunidadeCapital * (dia / tempoAlimentacao) : 0;
+    const custoTotalDia = custoAcumuladoEvol + custoComissoesAtual + custoFunruralAtual + custoOportunidadeCapitalAtual;
+    const lucroEstimado = receitaBrutaAtual - custoTotalDia;
+
     evolucao.push({
       dia,
       pesoEstimado: pesoAtualEvol,
@@ -318,7 +337,8 @@ export function calculateSimulation(inputs: SimulationInputs): SimulationResults
       gorduraReal: ultrassomReal?.espessuraGorduraReal,
       custoAcumulado: custoAcumuladoEvol,
       custoPorMmEGS,
-      custoPorKgGanho: custoPorKgGanhoEvol
+      custoPorKgGanho: custoPorKgGanhoEvol,
+      lucroEstimado
     });
   }
 
