@@ -370,9 +370,7 @@ const ReportOption = ({ label, checked, onChange, icon, disabled = false }: {
 export default function App() {
   // --- DETECTOR DE AUTENTICAÇÃO E BANCO DE DADOS SUPABASE ---
   const [currentUser, setCurrentUser] = useState<{ email: string } | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
-    return localStorage.getItem('simuboi_demo_mode') === 'true';
-  });
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'update_password'>('login');
   const [isIntegrationModalOpen, setIsIntegrationModalOpen] = useState(false);
   const [integrationTab, setIntegrationTab] = useState<'github' | 'vercel' | 'supabase'>('github');
