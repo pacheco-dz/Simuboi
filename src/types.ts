@@ -116,6 +116,10 @@ export interface SimulationInputs {
   // Correlações entre variáveis
   correlacoes: Record<string, Record<string, number>>;
   copulaType: 'gaussian' | 'clayton' | 'gumbel' | 'spearman' | 'independent';
+
+  // Configurações de Clima e Estresse Térmico
+  averageThi?: number;
+  ativarEstresseTermico?: boolean;
 }
 
 export interface FluxoCaixaItem {
@@ -221,6 +225,15 @@ export interface SimulationResults {
   custoTotalSemCompraDia: number;
   fluxoCaixa: FluxoCaixaItem[];
   evolucao: EvolucaoPonto[];
+
+  // Métricas de Impacto do Estresse Térmico
+  gmdOriginal?: number;
+  cmsVolumosoOriginal?: number;
+  cmsConcentradoOriginal?: number;
+  gmdPerdaEstressePerc?: number;
+  cmsPerdaEstressePerc?: number;
+  thiCalculado?: number;
+  statusClinicoClima?: string;
 }
 
 export interface LHSIteration {

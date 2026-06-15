@@ -3,15 +3,15 @@ import { SimulationInputs, SimulationResults, LHSSimulationResults, FluxoCaixaIt
 export function calculateSimulation(inputs: SimulationInputs): SimulationResults {
   const {
     pesoVivoInicial,
-    pesoVivoFinal,
+    pesoVivoFinal: inputPesoVivoFinal,
     rendimentoCarcaca,
     rendimentoCarcacaInicial,
     quebraPesoTransportePerc,
-    gmd,
+    gmd: inputGmd,
     precoBoiMagro,
     precoBoiGordo,
-    cmsVolumoso,
-    cmsConcentrado,
+    cmsVolumoso: inputCmsVolumoso,
+    cmsConcentrado: inputCmsConcentrado,
     precoVolumoso,
     precoConcentrado,
     sobrasCochoPerc,
@@ -60,6 +60,90 @@ export function calculateSimulation(inputs: SimulationInputs): SimulationResults
     raca,
     frameSize
   } = inputs;
+
+  let gmd = inputGmd;
+  let cmsVolumoso = inputCmsVolumoso;
+  let cmsConcentrado = inputCmsConcentrado;
+  let pesoVivoFinal = inputPesoVivoFinal;
+
+  let gmdPerdaEstressePerc = 0;
+  let cmsPerdaEstressePerc = 0;
+  let statusClinicoClima = 'Conforto Térmico';
+
+  const ativarEstresseTermico = inputs.ativarEstresseTermico ?? false;
+  const averageThi = inputs.averageThi ?? 72;
+
+  if (ativarEstresseTermico) {
+    const racaLower = (raca || 'nelore').toLowerCase();
+    const thi = averageThi;
+
+    if (racaLower === 'nelore') {
+      if (thi <= 75) {
+        statusClinicoClima = 'Conforto Térmico';
+        gmdPerdaEstressePerc = 0;
+        cmsPerdaEstressePerc = 0;
+      } else if (thi <= 79) {
+        statusClinicoClima = 'Estresse Térmico Leve';
+        gmdPerdaEstressePerc = (thi - 75) * 1.5;
+        cmsPerdaEstressePerc = (thi - 75) * 1.0;
+      } else if (thi <= 84) {
+        statusClinicoClima = 'Estresse Térmico Severo';
+        gmdPerdaEstressePerc = 6.0 + (thi - 79) * 3.5;
+        cmsPerdaEstressePerc = 4.0 + (thi - 79) * 2.2;
+      } else {
+        statusClinicoClima = 'Emergência (Risco de Morte)';
+        gmdPerdaEstressePerc = 23.5 + (thi - 84) * 6.0;
+        cmsPerdaEstressePerc = 15.0 + (thi - 84) * 4.0;
+      }
+    } else if (racaLower === 'cruzamento') {
+      if (thi <= 72) {
+        statusClinicoClima = 'Conforto Térmico';
+        gmdPerdaEstressePerc = 0;
+        cmsPerdaEstressePerc = 0;
+      } else if (thi <= 78) {
+        statusClinicoClima = 'Estresse Térmico Leve';
+        gmdPerdaEstressePerc = (thi - 72) * 2.0;
+        cmsPerdaEstressePerc = (thi - 72) * 1.2;
+      } else if (thi <= 84) {
+        statusClinicoClima = 'Estresse Térmico Severo';
+        gmdPerdaEstressePerc = 12.0 + (thi - 78) * 4.5;
+        cmsPerdaEstressePerc = 7.2 + (thi - 78) * 2.8;
+      } else {
+        statusClinicoClima = 'Emergência (Risco de Morte)';
+        gmdPerdaEstressePerc = 39.0 + (thi - 84) * 7.5;
+        cmsPerdaEstressePerc = 24.0 + (thi - 84) * 5.0;
+      }
+    } else {
+      if (thi <= 70) {
+        statusClinicoClima = 'Conforto Térmico';
+        gmdPerdaEstressePerc = 0;
+        cmsPerdaEstressePerc = 0;
+      } else if (thi <= 78) {
+        statusClinicoClima = 'Estresse Térmico Leve';
+        gmdPerdaEstressePerc = (thi - 70) * 2.8;
+        cmsPerdaEstressePerc = (thi - 70) * 1.8;
+      } else if (thi <= 84) {
+        statusClinicoClima = 'Estresse Térmico Severo';
+        gmdPerdaEstressePerc = 22.4 + (thi - 78) * 5.5;
+        cmsPerdaEstressePerc = 14.4 + (thi - 78) * 3.8;
+      } else {
+        statusClinicoClima = 'Emergência (Risco de Morte)';
+        gmdPerdaEstressePerc = 55.4 + (thi - 84) * 9.0;
+        cmsPerdaEstressePerc = 37.2 + (thi - 84) * 6.0;
+      }
+    }
+
+    gmdPerdaEstressePerc = Math.min(95, Math.max(0, gmdPerdaEstressePerc));
+    cmsPerdaEstressePerc = Math.min(75, Math.max(0, cmsPerdaEstressePerc));
+
+    gmd = inputGmd * (1 - gmdPerdaEstressePerc / 100);
+    cmsVolumoso = inputCmsVolumoso * (1 - cmsPerdaEstressePerc / 100);
+    cmsConcentrado = inputCmsConcentrado * (1 - cmsPerdaEstressePerc / 100);
+
+    const ganhoOriginal = inputPesoVivoFinal - pesoVivoInicial;
+    const ganhoAjustado = ganhoOriginal * (1 - gmdPerdaEstressePerc / 100);
+    pesoVivoFinal = pesoVivoInicial + ganhoAjustado;
+  }
 
   const tmaMensal = (Math.pow(1 + tmaAnual / 100, 1 / 12) - 1) * 100;
 
@@ -574,7 +658,16 @@ export function calculateSimulation(inputs: SimulationInputs): SimulationResults
     eficienciaAlimentar,
     custoTotalPorHa,
     fluxoCaixa,
-    evolucao
+    evolucao,
+
+    // Métricas de Impacto do Estresse Térmico
+    gmdOriginal: inputGmd,
+    cmsVolumosoOriginal: inputCmsVolumoso,
+    cmsConcentradoOriginal: inputCmsConcentrado,
+    gmdPerdaEstressePerc,
+    cmsPerdaEstressePerc,
+    thiCalculado: ativarEstresseTermico ? averageThi : undefined,
+    statusClinicoClima
   };
 }
 

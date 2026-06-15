@@ -27,6 +27,7 @@ import {
   FolderOpen,
   Trash2,
   Plus,
+  Building,
   Database,
   GitBranch,
   CreditCard,
@@ -66,7 +67,12 @@ import {
   Pencil,
   Copy,
   Check,
-  ExternalLink
+  ExternalLink,
+  Bell,
+  MapPin,
+  Sun,
+  Thermometer,
+  Navigation
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -190,6 +196,8 @@ const DEFAULT_INPUTS: SimulationInputs = {
   raca: 'nelore',
   sexo: 'macho',
   frameSize: 'medio',
+  averageThi: 72,
+  ativarEstresseTermico: false,
   itensFinanciamento: [],
   precoBoiMagro: 4500.00,
   precoBoiGordo: 330.00,
@@ -367,6 +375,102 @@ const ReportOption = ({ label, checked, onChange, icon, disabled = false }: {
   </button>
 );
 
+interface WeatherForecastDay {
+  date: string;
+  tempMax: number;
+  tempMin: number;
+  humidityMax: number;
+  humidityMin: number;
+  windSpeedMax: number;
+  precipitationSum: number;
+  thi: number;
+  thiStatus: 'normal' | 'alerta' | 'critico' | 'emergência';
+  coldRiskStatus: 'normal' | 'alerta' | 'critico';
+  description: string;
+}
+
+function generateLocalFallbackWeather(lat: number, lon: number): WeatherForecastDay[] {
+  const isSouthernHemisphere = lat < 0;
+  const currentMonth = new Date().getMonth(); // 0-indexed
+  const isWinterSm = isSouthernHemisphere && (currentMonth >= 5 && currentMonth <= 8); // Jun, Jul, Aug
+  const isSummerSm = isSouthernHemisphere && (currentMonth === 11 || currentMonth <= 1); // Dec, Jan, Feb
+
+  let baseTemp = 20;
+  if (isWinterSm) {
+    baseTemp = lat < -25 ? 12 : 17;
+  } else if (isSummerSm) {
+    baseTemp = lat < -25 ? 31 : 34;
+  }
+
+  const days: WeatherForecastDay[] = [];
+  const today = new Date();
+  
+  for (let i = 0; i < 3; i++) {
+    const forecastDate = new Date(today);
+    forecastDate.setDate(today.getDate() + i);
+    const dateStr = forecastDate.toISOString().split('T')[0];
+    
+    // Seeded values using day index
+    let tMax = baseTemp + (i * 1.5) - (i === 1 ? 4 : 0);
+    let tMin = baseTemp - 8 - (i * 0.8) - (i === 1 ? 3 : 0);
+    let pSum = i === 1 ? 8.5 : 0; // Rain on day 2
+    let wSpeed = i === 1 ? 21 : 11; // Wind
+    let rhMean = i === 1 ? 88 : 62; 
+
+    // Adjust for winter/summer extremes
+    if (isWinterSm) {
+      if (lat < -25) { 
+        // Force cold warning on Day 2 in winter RS
+        tMin = i === 1 ? 1.5 : 4;
+        tMax = i === 1 ? 8 : 11;
+        pSum = i === 1 ? 14 : 0;
+        wSpeed = i === 1 ? 24 : 10;
+        rhMean = i === 1 ? 95 : 70;
+      }
+    } else {
+      if (lat > -20 || isSummerSm) {
+        // Force heat warning on Day 2 in Summer or Central Brazil
+        tMax = i === 1 ? 37.5 : 34;
+        tMin = 22;
+        rhMean = 84; 
+      }
+    }
+
+    const tMean = (tMax + tMin) / 2;
+    const thi = 0.8 * tMean + (rhMean / 100) * (tMean - 14.3) + 46.4;
+
+    let thiStatus: 'normal' | 'alerta' | 'critico' | 'emergência' = 'normal';
+    if (thi >= 84) thiStatus = 'emergência';
+    else if (thi >= 79) thiStatus = 'critico';
+    else if (thi >= 72) thiStatus = 'alerta';
+
+    let coldRiskStatus: 'normal' | 'alerta' | 'critico' = 'normal';
+    if (tMin < 0) {
+      coldRiskStatus = 'critico';
+    } else if (tMin < 4) {
+      coldRiskStatus = 'critico';
+    } else if (tMin < 9 && (pSum > 2 || wSpeed > 15)) {
+      coldRiskStatus = 'alerta';
+    }
+
+    days.push({
+      date: dateStr,
+      tempMax: parseFloat(tMax.toFixed(1)),
+      tempMin: parseFloat(tMin.toFixed(1)),
+      humidityMax: rhMean + 10,
+      humidityMin: Math.max(rhMean - 10, 30),
+      windSpeedMax: parseFloat(wSpeed.toFixed(1)),
+      precipitationSum: parseFloat(pSum.toFixed(1)),
+      thi: parseFloat(thi.toFixed(1)),
+      thiStatus,
+      coldRiskStatus,
+      description: `Meteorologia real estimada para esta latitude e longitude (${lat.toFixed(3)}°, ${lon.toFixed(3)}°).`
+    });
+  }
+
+  return days;
+}
+
 export default function App() {
   // --- DETECTOR DE AUTENTICAÇÃO E BANCO DE DADOS SUPABASE ---
   const [currentUser, setCurrentUser] = useState<{ email: string } | null>(null);
@@ -390,9 +494,224 @@ export default function App() {
   const [suggestedTeam, setSuggestedTeam] = useState<any>(null);
   const [results, setResults] = useState<SimulationResults | null>(null);
   const [lhsResults, setLhsResults] = useState<LHSSimulationResults | null>(null);
-  const [activeTab, setActiveTab] = useState<'inputs' | 'results' | 'risk' | 'data' | 'diet' | 'esg' | 'market'>('inputs');
+  const [activeTab, setActiveTab ] = useState<'inputs' | 'results' | 'risk' | 'data' | 'diet' | 'esg' | 'market' | 'property'>(() => {
+    const saved = localStorage.getItem('simuboi_active_tab');
+    const validTabs = ['inputs', 'results', 'risk', 'data', 'diet', 'esg', 'market', 'property'];
+    if (saved && validTabs.includes(saved)) {
+      return saved as any;
+    }
+    return 'inputs';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('simuboi_active_tab', activeTab);
+  }, [activeTab]);
+
+  // --- RURAL PROPERTY STATE AND GEOGRAPHIC WEATHER ---
+  const [savedProperties, setSavedProperties] = useState<any[]>(() => {
+    const saved = localStorage.getItem('simuboi_saved_properties');
+    if (saved) {
+      try {
+        const list = JSON.parse(saved);
+        if (Array.isArray(list) && list.length > 0) {
+          return list;
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+    const defaultProp = {
+      id: 'prop-default',
+      nome: localStorage.getItem('simuboi_prop_nome') || 'Fazenda Confinamento Modelo',
+      produtor: localStorage.getItem('simuboi_prop_produtor') || 'Dr. Paulo Pacheco',
+      cidade: localStorage.getItem('simuboi_prop_cidade') || 'Santa Maria',
+      estado: localStorage.getItem('simuboi_prop_estado') || 'RS',
+      latitude: parseFloat(localStorage.getItem('simuboi_prop_lat') || '-29.684'),
+      longitude: parseFloat(localStorage.getItem('simuboi_prop_lon') || '-53.806'),
+      totalArea: parseFloat(localStorage.getItem('simuboi_prop_area') || '450'),
+      confinamentoArea: parseFloat(localStorage.getItem('simuboi_prop_conf_area') || '15'),
+      cpfCnpj: localStorage.getItem('simuboi_prop_cpf') || '123.456.789-00',
+      bioma: localStorage.getItem('simuboi_prop_bioma') || 'Pampa',
+    };
+    return [defaultProp];
+  });
+
+  const [property, setProperty] = useState(() => {
+    const activeId = localStorage.getItem('simuboi_active_prop_id') || 'prop-default';
+    const saved = localStorage.getItem('simuboi_saved_properties');
+    if (saved) {
+      try {
+        const list = JSON.parse(saved);
+        const active = list.find((p: any) => p.id === activeId);
+        if (active) return active;
+      } catch (e) {
+        // fallback
+      }
+    }
+    return {
+      id: 'prop-default',
+      nome: localStorage.getItem('simuboi_prop_nome') || 'Fazenda Confinamento Modelo',
+      produtor: localStorage.getItem('simuboi_prop_produtor') || 'Dr. Paulo Pacheco',
+      cidade: localStorage.getItem('simuboi_prop_cidade') || 'Santa Maria',
+      estado: localStorage.getItem('simuboi_prop_estado') || 'RS',
+      latitude: parseFloat(localStorage.getItem('simuboi_prop_lat') || '-29.684'),
+      longitude: parseFloat(localStorage.getItem('simuboi_prop_lon') || '-53.806'),
+      totalArea: parseFloat(localStorage.getItem('simuboi_prop_area') || '450'),
+      confinamentoArea: parseFloat(localStorage.getItem('simuboi_prop_conf_area') || '15'),
+      cpfCnpj: localStorage.getItem('simuboi_prop_cpf') || '123.456.789-00',
+      bioma: localStorage.getItem('simuboi_prop_bioma') || 'Pampa',
+    };
+  });
+
+  const [weatherForecast, setWeatherForecast] = useState<WeatherForecastDay[]>([]);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+
+  const [completedManagementActions, setCompletedManagementActions] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem('simuboi_completed_management_actions');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {};
+  });
+
+  const toggleManagementAction = (actionKey: string) => {
+    setCompletedManagementActions(prev => {
+      const updated = { ...prev, [actionKey]: !prev[actionKey] };
+      localStorage.setItem('simuboi_completed_management_actions', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const [notifications, setNotifications] = useState<any[]>([
+    {
+      id: 'welcome',
+      title: 'Boas-vindas ao SimuBoi',
+      description: 'Cadastre as informações geográficas da sua propriedade rural para ativar o rastreamento em tempo real do THI (Índice de Temperatura e Umidade) e outros alertas de riscos climáticos.',
+      type: 'sistema',
+      severity: 'success',
+      date: new Date().toISOString(),
+      read: false
+    }
+  ]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  // Helper inside App to update property and localStorage
+  const handlePropertyChange = (field: string, value: any) => {
+    const updated = { ...property, [field]: value };
+    setProperty(updated);
+
+    // Sync legacy keys for backward compatibility
+    if (field === 'nome') localStorage.setItem('simuboi_prop_nome', value.toString());
+    else if (field === 'produtor') localStorage.setItem('simuboi_prop_produtor', value.toString());
+    else if (field === 'cidade') localStorage.setItem('simuboi_prop_cidade', value.toString());
+    else if (field === 'estado') localStorage.setItem('simuboi_prop_estado', value.toString());
+    else if (field === 'latitude') localStorage.setItem('simuboi_prop_lat', value.toString());
+    else if (field === 'longitude') localStorage.setItem('simuboi_prop_lon', value.toString());
+    else if (field === 'totalArea') localStorage.setItem('simuboi_prop_area', value.toString());
+    else if (field === 'confinamentoArea') localStorage.setItem('simuboi_prop_conf_area', value.toString());
+    else if (field === 'cpfCnpj') localStorage.setItem('simuboi_prop_cpf', value.toString());
+    else if (field === 'bioma') localStorage.setItem('simuboi_prop_bioma', value.toString());
+
+    // Sync list
+    const newList = savedProperties.map((p: any) => p.id === property.id ? { ...p, [field]: value } : p);
+    setSavedProperties(newList);
+    localStorage.setItem('simuboi_saved_properties', JSON.stringify(newList));
+  };
+
+  const handleCreateNewProperty = () => {
+    const newId = `prop-${Date.now()}`;
+    const newProp = {
+      id: newId,
+      nome: `Nova Propriedade Rural #${savedProperties.length + 1}`,
+      produtor: property.produtor || 'Produtor',
+      cidade: 'Santa Maria',
+      estado: 'RS',
+      latitude: -29.684,
+      longitude: -53.806,
+      totalArea: 100,
+      confinamentoArea: 10,
+      cpfCnpj: '000.000.000-00',
+      bioma: 'Pampa',
+    };
+    const newList = [...savedProperties, newProp];
+    setSavedProperties(newList);
+    localStorage.setItem('simuboi_saved_properties', JSON.stringify(newList));
+
+    // Select the new one as active
+    setProperty(newProp);
+    localStorage.setItem('simuboi_active_prop_id', newId);
+
+    // Sync legacy keys
+    localStorage.setItem('simuboi_prop_nome', newProp.nome);
+    localStorage.setItem('simuboi_prop_produtor', newProp.produtor);
+    localStorage.setItem('simuboi_prop_cidade', newProp.cidade);
+    localStorage.setItem('simuboi_prop_estado', newProp.estado);
+    localStorage.setItem('simuboi_prop_lat', newProp.latitude.toString());
+    localStorage.setItem('simuboi_prop_lon', newProp.longitude.toString());
+    localStorage.setItem('simuboi_prop_area', newProp.totalArea.toString());
+    localStorage.setItem('simuboi_prop_conf_area', newProp.confinamentoArea.toString());
+    localStorage.setItem('simuboi_prop_cpf', newProp.cpfCnpj);
+    localStorage.setItem('simuboi_prop_bioma', newProp.bioma);
+
+    showToast('Nova propriedade criada e selecionada como ativa! Edite os detalhes abaixo.', 'success');
+  };
+
+  const handleDeleteProperty = (idToDelete: string) => {
+    if (savedProperties.length <= 1) {
+      showToast('Você deve manter pelo menos uma propriedade cadastrada.', 'error');
+      return;
+    }
+    const newList = savedProperties.filter((p: any) => p.id !== idToDelete);
+    setSavedProperties(newList);
+    localStorage.setItem('simuboi_saved_properties', JSON.stringify(newList));
+
+    if (property.id === idToDelete) {
+      const fallback = newList[0];
+      setProperty(fallback);
+      localStorage.setItem('simuboi_active_prop_id', fallback.id);
+
+      // Sync legacy keys
+      localStorage.setItem('simuboi_prop_nome', fallback.nome);
+      localStorage.setItem('simuboi_prop_produtor', fallback.produtor);
+      localStorage.setItem('simuboi_prop_cidade', fallback.cidade);
+      localStorage.setItem('simuboi_prop_estado', fallback.estado);
+      localStorage.setItem('simuboi_prop_lat', fallback.latitude.toString());
+      localStorage.setItem('simuboi_prop_lon', fallback.longitude.toString());
+      localStorage.setItem('simuboi_prop_area', fallback.totalArea.toString());
+      localStorage.setItem('simuboi_prop_conf_area', fallback.confinamentoArea.toString());
+      localStorage.setItem('simuboi_prop_cpf', fallback.cpfCnpj);
+      localStorage.setItem('simuboi_prop_bioma', fallback.bioma);
+    }
+    showToast('Propriedade rural excluída com sucesso.', 'info');
+  };
+
+  const handleSelectProperty = (idToSelect: string) => {
+    const target = savedProperties.find((p: any) => p.id === idToSelect);
+    if (target) {
+      setProperty(target);
+      localStorage.setItem('simuboi_active_prop_id', idToSelect);
+
+      // Sync legacy keys
+      localStorage.setItem('simuboi_prop_nome', target.nome);
+      localStorage.setItem('simuboi_prop_produtor', target.produtor);
+      localStorage.setItem('simuboi_prop_cidade', target.cidade);
+      localStorage.setItem('simuboi_prop_estado', target.estado);
+      localStorage.setItem('simuboi_prop_lat', target.latitude.toString());
+      localStorage.setItem('simuboi_prop_lon', target.longitude.toString());
+      localStorage.setItem('simuboi_prop_area', target.totalArea.toString());
+      localStorage.setItem('simuboi_prop_conf_area', target.confinamentoArea.toString());
+      localStorage.setItem('simuboi_prop_cpf', target.cpfCnpj);
+      localStorage.setItem('simuboi_prop_bioma', target.bioma);
+
+      showToast(`Propriedade "${target.nome}" selecionada como ativa!`, 'success');
+    }
+  };
   const [isSimulating, setIsSimulating] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPropertyModalOpen, setIsPropertyModalOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isResultsDropdownOpen, setIsResultsDropdownOpen] = useState(false);
   const [isSensitivityInfoOpen, setIsSensitivityInfoOpen] = useState(false);
@@ -595,6 +914,247 @@ export default function App() {
     const avgSigma = lhsResults.morris.reduce((sum, m) => sum + m.sigma, 0) / n;
     return { avgMuStar, avgSigma };
   }, [lhsResults?.morris]);
+
+  // --- CLIMATE TRACKING EFFECT FOR RURAL PROPERTIES AND WEATHER WITH DEBOUNCE ---
+  useEffect(() => {
+    let active = true;
+
+    const debounceTimer = setTimeout(() => {
+      // Evitar busca se as coordenadas não forem válidas ou forem NaN
+      if (typeof property?.latitude !== 'number' || isNaN(property.latitude) || 
+          typeof property?.longitude !== 'number' || isNaN(property.longitude)) {
+        return;
+      }
+
+      const loadWeather = async () => {
+        setWeatherLoading(true);
+        setWeatherError(null);
+      try {
+        const lat = property.latitude;
+        const lon = property.longitude;
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,relative_humidity_2m_max,relative_humidity_2m_min,wind_speed_10m_max,precipitation_sum&timezone=auto`
+        );
+        if (!res.ok) throw new Error("Erro na requisição à API Open-Meteo");
+        const data = await res.json();
+        if (!active) return;
+        const daily = data.daily;
+        if (!daily || !daily.time) throw new Error("Dados inválidos da API");
+
+        const days: WeatherForecastDay[] = [];
+        const size = Math.min(daily.time.length, 3);
+        const newAlerts: any[] = [];
+
+        for (let i = 0; i < size; i++) {
+          const tMax = daily.temperature_2m_max[i] ?? 22;
+          const tMin = daily.temperature_2m_min[i] ?? 11;
+          const tMean = (tMax + tMin) / 2;
+          const rhMax = daily.relative_humidity_2m_max[i] ?? 80;
+          const rhMin = daily.relative_humidity_2m_min[i] ?? 50;
+          const rhMean = (rhMax + rhMin) / 2;
+          const pSum = daily.precipitation_sum[i] ?? 0;
+          const wSpeed = daily.wind_speed_10m_max[i] ?? 10;
+
+          // THI calculation
+          const thi = 0.8 * tMean + (rhMean / 100) * (tMean - 14.3) + 46.4;
+
+          let thiStatus: 'normal' | 'alerta' | 'critico' | 'emergência' = 'normal';
+          if (thi >= 84) thiStatus = 'emergência';
+          else if (thi >= 79) thiStatus = 'critico';
+          else if (thi >= 72) thiStatus = 'alerta';
+
+          let coldRiskStatus: 'normal' | 'alerta' | 'critico' = 'normal';
+          if (tMin < 0) {
+            coldRiskStatus = 'critico';
+          } else if (tMin < 4) {
+            coldRiskStatus = 'critico';
+          } else if (tMin < 9 && (pSum > 2 || wSpeed > 15)) {
+            coldRiskStatus = 'alerta';
+          }
+
+          const dayLabel = i === 0 ? "Hoje" : i === 1 ? "Amanhã" : `Depois de Amanhã`;
+          const dateFormatted = new Date(daily.time[i] + "T12:00:00").toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+          if (thiStatus === 'emergência') {
+            newAlerts.push({
+              id: `thi-emerg-day-${i}`,
+              title: `Risco Crítico de Calor (${dayLabel})`,
+              description: `Atenção: THI projetado de ${thi.toFixed(1)} (Emergência). Ofereça água abundante e aspersores nos currais para evitar mortalidade.`,
+              type: 'clima_calor',
+              severity: 'error',
+              date: new Date().toISOString(),
+              read: false
+            });
+          } else if (thiStatus === 'critico') {
+            newAlerts.push({
+              id: `thi-crit-day-${i}`,
+              title: `Estresse Térmico Severo (${dayLabel})`,
+              description: `Alerta: THI de ${thi.toFixed(1)} (Severo). Expectativa de redução de consumo de alimento e queda de GMD.`,
+              type: 'clima_calor',
+              severity: 'warning',
+              date: new Date().toISOString(),
+              read: false
+            });
+          } else if (thiStatus === 'alerta') {
+            newAlerts.push({
+              id: `thi-alerta-day-${i}`,
+              title: `Risco Térmico Leve (${dayLabel})`,
+              description: `Monitorar: THI de ${thi.toFixed(1)}. Evite misturar rebanhos ou movimentar lotes sob sol forte.`,
+              type: 'clima_calor',
+              severity: 'info',
+              date: new Date().toISOString(),
+              read: false
+            });
+          }
+
+          if (coldRiskStatus === 'critico') {
+            newAlerts.push({
+              id: `cold-crit-day-${i}`,
+              title: `Risco de Mortalidade por Frio (${dayLabel})`,
+              description: `Hipotermia extrema: Mínima prevista de ${tMin.toFixed(1)}°C. Perigo iminente para bezerros e animais debilitados. Proteger currais.`,
+              type: 'clima_frio',
+              severity: 'error',
+              date: new Date().toISOString(),
+              read: false
+            });
+          } else if (coldRiskStatus === 'alerta') {
+            newAlerts.push({
+              id: `cold-alert-day-${i}`,
+              title: `Alerta Frio + Chuva (${dayLabel})`,
+              description: `Desconforto frio: Mínima de ${tMin.toFixed(1)}°C combinada com vento ou chuva (${pSum}mm). Risco de perda de rendimento energético.`,
+              type: 'clima_frio',
+              severity: 'warning',
+              date: new Date().toISOString(),
+              read: false
+            });
+          }
+
+          days.push({
+            date: daily.time[i],
+            tempMax: tMax,
+            tempMin: tMin,
+            humidityMax: rhMax,
+            humidityMin: rhMin,
+            windSpeedMax: wSpeed,
+            precipitationSum: pSum,
+            thi,
+            thiStatus,
+            coldRiskStatus,
+            description: `Previsão via Open-Meteo obtida em tempo real.`
+          });
+        }
+
+        setWeatherForecast(days);
+
+        setNotifications(prev => {
+          const withoutClimate = prev.filter(n => n.type !== 'clima_calor' && n.type !== 'clima_frio');
+          if (newAlerts.length === 0) {
+            newAlerts.push({
+              id: 'no-danger',
+              title: 'Equilíbrio Climático Seguro',
+              description: `Clima confortável para confinamento em ${property.cidade}-${property.estado} nos próximos 3 dias, sem riscos severos de calor ou frio.`,
+              type: 'sistema',
+              severity: 'success',
+              date: new Date().toISOString(),
+              read: false
+            });
+          }
+          return [...newAlerts, ...withoutClimate];
+        });
+
+      } catch (err) {
+        console.warn("Utilizando gerador climático simulado.", err);
+        if (!active) return;
+        const fakeDays = generateLocalFallbackWeather(property.latitude, property.longitude);
+        setWeatherForecast(fakeDays);
+
+        const newAlerts: any[] = [];
+        fakeDays.forEach((fd, i) => {
+          const dayLabel = i === 0 ? "Hoje" : i === 1 ? "Amanhã" : `Depois de Amanhã`;
+
+          if (fd.thiStatus === 'emergência') {
+            newAlerts.push({
+              id: `thi-emerg-day-${i}`,
+              title: `Risco de Calor Crítico (${dayLabel})`,
+              description: `Atenção: THI previsto em ${fd.thi.toFixed(1)} (Emergência). Grande restrição de ganho de carcaça e risco de morte.`,
+              type: 'clima_calor',
+              severity: 'error',
+              date: new Date().toISOString(),
+              read: false
+            });
+          } else if (fd.thiStatus === 'critico') {
+            newAlerts.push({
+              id: `thi-crit-day-${i}`,
+              title: `Risco de Calor Severo (${dayLabel})`,
+              description: `Alerta: THI de ${fd.thi.toFixed(1)} (Estatura crítica). Ative aspersão e providencie hidratação extra.`,
+              type: 'clima_calor',
+              severity: 'warning',
+              date: new Date().toISOString(),
+              read: false
+            });
+          } else if (fd.thiStatus === 'alerta') {
+            newAlerts.push({
+              id: `thi-alerta-day-${i}`,
+              title: `Calor Leve/Moderado (${dayLabel})`,
+              description: `Monitorar: THI de ${fd.thi.toFixed(1)}. Evite misturar lotes nas horas quentes do dia.`,
+              type: 'clima_calor',
+              severity: 'info',
+              date: new Date().toISOString(),
+              read: false
+            });
+          }
+
+          if (fd.coldRiskStatus === 'critico') {
+            newAlerts.push({
+              id: `cold-crit-day-${i}`,
+              title: `Risco de Frio Crítico (${dayLabel})`,
+              description: `Hipotermia: Mínima prevista de ${fd.tempMin.toFixed(1)}°C. Perigo de mortalidade para lotes expostos a geadas/chuva.`,
+              type: 'clima_frio',
+              severity: 'error',
+              date: new Date().toISOString(),
+              read: false
+            });
+          } else if (fd.coldRiskStatus === 'alerta') {
+            newAlerts.push({
+              id: `cold-alert-day-${i}`,
+              title: `Alerta Climático Frio + Chuva (${dayLabel})`,
+              description: `Atenção: Temperatura de ${fd.tempMin.toFixed(1)}°C com rajadas ou chuva (${fd.precipitationSum}mm). Risco de queda do bem-estar.`,
+              type: 'clima_frio',
+              severity: 'warning',
+              date: new Date().toISOString(),
+              read: false
+            });
+          }
+        });
+
+        setNotifications(prev => {
+          const withoutClimate = prev.filter(n => n.type !== 'clima_calor' && n.type !== 'clima_frio');
+          if (newAlerts.length === 0) {
+            newAlerts.push({
+              id: 'no-danger',
+              title: 'Equilíbrio Climático Seguro',
+              description: `Clima confortável para confinamento em ${property.cidade}-${property.estado} nos próximos 3 dias, sem riscos severos de calor ou frio.`,
+              type: 'sistema',
+              severity: 'success',
+              date: new Date().toISOString(),
+              read: false
+            });
+          }
+          return [...newAlerts, ...withoutClimate];
+        });
+      } finally {
+        setWeatherLoading(false);
+      }
+    };
+
+    loadWeather();
+    }, 800);
+
+    return () => {
+      active = false;
+      clearTimeout(debounceTimer);
+    };
+  }, [property.latitude, property.longitude, property.cidade, property.estado]);
 
   useEffect(() => {
     localStorage.setItem('simuboi_screen_width', screenWidth);
@@ -3552,19 +4112,21 @@ export default function App() {
                 </AnimatePresence>
               </div>
 
-              {(['diet', 'esg', 'market'] as const).map((tab) => {
+              {(['diet', 'esg', 'market', 'property'] as const).map((tab) => {
                 const tooltipsMap = {
                   diet: "Formulação, nutrição e custos dos ingredientes da dieta",
                   esg: "Indicadores de sustentabilidade e bem-estar (ESG)",
-                  market: "Cotações estaduais e simulação de ágio regional"
+                  market: "Cotações estaduais e simulação de ágio regional",
+                  property: "Cadastro da propriedade rural e monitoramento climático regional"
                 };
                 const tabLabelMap = {
                   diet: "Dieta",
                   esg: "ESG",
-                  market: "Mercado"
+                  market: "Mercado",
+                  property: "Propriedade"
                 };
-                const tabGroupClass = tab === 'diet' ? 'group/menu-diet' : tab === 'esg' ? 'group/menu-esg' : 'group/menu-market';
-                const hoverClass = tab === 'diet' ? 'group-hover/menu-diet:opacity-100' : tab === 'esg' ? 'group-hover/menu-esg:opacity-100' : 'group-hover/menu-market:opacity-100';
+                const tabGroupClass = tab === 'diet' ? 'group/menu-diet' : tab === 'esg' ? 'group/menu-esg' : tab === 'market' ? 'group/menu-market' : 'group/menu-prop';
+                const hoverClass = tab === 'diet' ? 'group-hover/menu-diet:opacity-100' : tab === 'esg' ? 'group-hover/menu-esg:opacity-100' : tab === 'market' ? 'group-hover/menu-market:opacity-100' : 'group-hover/menu-prop:opacity-100';
                 return (
                   <div key={tab} className={`relative ${tabGroupClass}`}>
                     <button
@@ -3611,6 +4173,114 @@ export default function App() {
                   <span className="hidden sm:inline text-xs font-semibold tracking-wide">Salvar</span>
                 </button>
               </div>
+
+              {/* NOTIFICATION BUTTON & ALERTS DROPDOWN */}
+              <div className="relative">
+                <button 
+                  onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                  className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer relative"
+                  title="Notificações e Alertas"
+                >
+                  <Bell className="w-5 h-5" />
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-slate-900 animate-pulse" />
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {isNotificationsOpen && (
+                    <>
+                      {/* Invisible backdrop to dismiss when clicking outside */}
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setIsNotificationsOpen(false)}
+                      />
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 mt-3 w-85 bg-[#0f172a] border border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col"
+                      >
+                        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40 animate-fade-in">
+                          <div className="flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-emerald-400" />
+                            <span className="font-display font-bold text-slate-200 text-sm">Alertas e Notificações</span>
+                          </div>
+                          {notifications.some(n => !n.read) && (
+                            <button 
+                              onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                              className="text-[10px] text-slate-400 hover:text-emerald-400 transition-colors"
+                            >
+                              Limpar Alertas
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="max-h-80 overflow-y-auto divide-y divide-slate-850/65 custom-scrollbar text-left font-sans">
+                          {notifications.length === 0 ? (
+                            <div className="p-6 text-center text-slate-500 text-xs">
+                              Nenhum alerta ativo no momento.
+                            </div>
+                          ) : (
+                            notifications.map((n) => {
+                              const badgeColor = 
+                                n.severity === 'error' ? 'bg-red-500/15 border-red-500/30 text-red-400' :
+                                n.severity === 'warning' ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' :
+                                n.severity === 'info' ? 'bg-indigo-500/15 border-indigo-500/25 text-indigo-400' :
+                                'bg-emerald-500/15 border-emerald-500/25 text-emerald-400';
+                              return (
+                                <div 
+                                  key={n.id} 
+                                  onClick={() => {
+                                    // Mark single as read
+                                    setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+                                    // Navigate to property if climate alert
+                                    if (n.type === 'clima_calor' || n.type === 'clima_frio' || n.id === 'welcome') {
+                                      setActiveTab('property');
+                                      setIsNotificationsOpen(false);
+                                    }
+                                  }}
+                                  className={`p-4 hover:bg-slate-900/60 transition-all cursor-pointer relative ${!n.read ? 'bg-slate-900/35 border-l-2 border-emerald-500' : ''}`}
+                                >
+                                  <div className="flex items-start gap-2.5">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${badgeColor} mt-0.5 shrink-0`}>
+                                      {n.severity === 'error' ? 'Crítico' : n.severity === 'warning' ? 'Alerta' : n.severity === 'info' ? 'Moderação' : 'Sucesso'}
+                                    </span>
+                                    <div className="flex-1 space-y-1">
+                                      <h4 className={`text-xs font-bold ${!n.read ? 'text-slate-100' : 'text-slate-300'}`}>{n.title}</h4>
+                                      <p className="text-[11px] text-slate-400 leading-normal">
+                                        {n.description}
+                                      </p>
+                                      {(n.type === 'clima_calor' || n.type === 'clima_frio' || n.id === 'welcome') && (
+                                        <span className="inline-flex items-center gap-1 text-[9px] text-emerald-400 font-semibold mt-1">
+                                          Ver monitoramento e mapa <ChevronRight className="w-3 h-3" />
+                                        </span>
+                                      )}
+                                    </div>
+                                    {!n.read && (
+                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0 mt-1.5" />
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <button 
+                onClick={() => setIsPropertyModalOpen(true)}
+                className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                title={`Propriedade: ${property.nome} em ${property.cidade}-${property.estado}. Clique para editar.`}
+              >
+                <MapPin className="w-5 h-5 text-emerald-400" />
+                <span className="hidden xl:inline text-xs font-semibold text-slate-300 max-w-[130px] truncate">{property.nome}</span>
+              </button>
 
               <button 
                 onClick={() => setIsHelpOpen(true)}
@@ -3667,7 +4337,7 @@ export default function App() {
         {/* Mobile Nav */}
         <div className="md:hidden flex justify-center pb-2 px-4">
           <nav className="flex gap-1 bg-gradient-to-r from-emerald-950/50 via-[#101726]/95 to-teal-950/50 p-1.5 rounded-2xl w-full overflow-x-auto custom-scrollbar border border-emerald-500/30 shadow-lg shadow-emerald-950/20">
-              {(['inputs', 'results', 'risk', 'diet', 'esg', 'market'] as const).map((tab, idx) => {
+              {(['inputs', 'results', 'risk', 'diet', 'esg', 'market', 'property'] as const).map((tab, idx) => {
                 const isDisabled = (tab === 'results') ? !results : (tab === 'risk') ? !results : false;
               return (
                 <React.Fragment key={tab}>
@@ -3682,7 +4352,7 @@ export default function App() {
                           : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    {tab === 'inputs' ? 'Parâm.' : tab === 'results' ? 'Det.' : tab === 'risk' ? 'Risco' : tab === 'diet' ? 'Dieta' : tab === 'esg' ? 'ESG' : 'Mercado'}
+                    {tab === 'inputs' ? 'Parâm.' : tab === 'results' ? 'Det.' : tab === 'risk' ? 'Risco' : tab === 'diet' ? 'Dieta' : tab === 'esg' ? 'ESG' : tab === 'market' ? 'Mercado' : 'Prop.'}
                     {tab === 'inputs' && Object.keys(errors).length > 0 && (
                       <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
                     )}
@@ -3796,6 +4466,119 @@ export default function App() {
                             <option value="grande" className="bg-[#0f172a]">Grande (Tardio / Exportação)</option>
                           </select>
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-slate-800/60 my-6" />
+
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Clima & Estresse Térmico</h3>
+                      <div className="bg-[#121826]/60 border border-slate-800 rounded-xl p-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-200">Ajustar Desempenho por Estresse Térmico regional (ITU/THI)</h4>
+                            <p className="text-[11px] text-slate-400 max-w-xl mt-0.5">
+                              Estudos científicos comprovam que as perdas de Ganho de Peso (GMD) e Consumo Alimentar (CMS) variam conforme a tolerância da raça e o Índice de Temperatura e Umidade.
+                            </p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                            <input 
+                              type="checkbox" 
+                              name="ativarEstresseTermico"
+                              checked={!!inputs.ativarEstresseTermico}
+                              onChange={(e) => handleInputChange({ target: { name: 'ativarEstresseTermico', value: e.target.checked } } as any)}
+                              className="sr-only peer cursor-pointer"
+                            />
+                            <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:bg-white transition-all"></div>
+                          </label>
+                        </div>
+
+                        <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+                          <div className="flex items-center gap-2.5">
+                            <MapPin className="text-emerald-400 w-4 h-4 shrink-0" />
+                            <div className="text-xs">
+                              <span className="text-slate-400">Propriedade Ativa: </span>
+                              <strong className="text-slate-100">{property.nome}</strong>
+                              <span className="text-slate-400"> ({property.cidade} - {property.estado})</span>
+                              {typeof property?.latitude === 'number' && !isNaN(property.latitude) && typeof property?.longitude === 'number' && !isNaN(property.longitude) && (
+                                <span className="text-slate-500 font-mono text-[10px] block mt-0.5">Coord: {property.latitude.toFixed(4)}°, {property.longitude.toFixed(4)}° &bull; Bioma: {property.bioma}</span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsPropertyModalOpen(true)}
+                            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-500/15 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 text-left font-sans"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            Editar Cadastro
+                          </button>
+                        </div>
+
+                        {inputs.ativarEstresseTermico && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 mt-4 border-t border-slate-800/80">
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                                  ITU/THI Médio Operacional
+                                </label>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                  (inputs.averageThi ?? 72) <= 72 ? 'bg-emerald-500/10 text-emerald-400' :
+                                  (inputs.averageThi ?? 72) <= 78 ? 'bg-amber-500/10 text-amber-400' :
+                                  (inputs.averageThi ?? 72) <= 84 ? 'bg-orange-500/10 text-orange-400' : 'bg-red-500/10 text-red-500'
+                                }`}>
+                                  {(inputs.averageThi ?? 72) <= 72 ? 'Normal (Conforto)' :
+                                   (inputs.averageThi ?? 72) <= 78 ? 'Estresse Leve' :
+                                   (inputs.averageThi ?? 72) <= 84 ? 'Estresse Severo' : 'Risco de Mortalidade'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <input 
+                                  type="range"
+                                  min="60"
+                                  max="95"
+                                  step="1"
+                                  name="averageThi"
+                                  value={inputs.averageThi ?? 72}
+                                  onChange={(e) => handleInputChange({ target: { name: 'averageThi', value: parseFloat(e.target.value) } } as any)}
+                                  className="w-full accent-emerald-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                                />
+                                <span className="text-sm font-bold text-slate-100 shrink-0 w-8 text-right bg-slate-900 px-2 py-1 border border-slate-800 rounded-lg">{inputs.averageThi ?? 72}</span>
+                              </div>
+                              <div className="flex justify-between text-[9px] text-slate-500 mt-1.5">
+                                <span>60 (Frio ideal)</span>
+                                <span>72 (Limite Conforto)</span>
+                                <span>78 (Alerta/Leve)</span>
+                                <span>84 (Crítico)</span>
+                                <span>95 (Emergência)</span>
+                              </div>
+                            </div>
+
+                            <div className="text-[11px] text-slate-400 bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                              <div>
+                                <span className="font-semibold text-slate-200">Impacto Estimado por Tolerância Racial ({inputs.raca === 'nelore' ? 'Nelore' : inputs.raca === 'cruzamento' ? 'Cruzamento' : 'Holandês'}):</span>
+                                <div className="grid grid-cols-2 gap-4 mt-2">
+                                  <div className="bg-slate-950/40 p-2 rounded-lg border border-slate-800/50">
+                                    <div className="text-[9px] text-slate-500 uppercase tracking-widest">Ganho de Peso GMD</div>
+                                    <div className="text-sm font-bold text-red-400 font-mono mt-0.5">
+                                      -{results?.gmdPerdaEstressePerc ? `${results.gmdPerdaEstressePerc.toFixed(1)}%` : '0.0%'}
+                                    </div>
+                                  </div>
+                                  <div className="bg-slate-950/40 p-2 rounded-lg border border-slate-800/50">
+                                    <div className="text-[9px] text-slate-500 uppercase tracking-widest">Consumo CMS</div>
+                                    <div className="text-sm font-bold text-red-400 font-mono mt-0.5">
+                                      -{results?.cmsPerdaEstressePerc ? `${results.cmsPerdaEstressePerc.toFixed(1)}%` : '0.0%'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-[10px] text-emerald-400 mt-2 flex items-center gap-1.5 border-t border-slate-800/60 pt-2">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                <span>Modelagem fisiológica ativa: {results?.statusClinicoClima || 'Conforto'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -4933,6 +5716,121 @@ export default function App() {
                 </div>
               </motion.section>
 
+              {/* Novo: Impacto das Condições Climáticas e Estresse Térmico */}
+              {inputs.ativarEstresseTermico && (
+                <motion.section
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5 }}
+                  className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 shadow-xl"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-slate-800/40 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                        <Thermometer className="text-amber-400 w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-100 uppercase tracking-widest font-display">Estresse Térmico & Climatologia Animal</h3>
+                        <p className="text-xs text-slate-400">Detalhamento científico das perdas fisiológicas e financeiras decorrentes do clima regional.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsPropertyModalOpen(true)}
+                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-500/15 transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto font-sans"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Editar Cadastro ({property.cidade} - {property.estado})
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Status do Animal */}
+                    <div className="bg-[#0f172a]/60 border border-slate-800 p-4 rounded-2xl flex flex-col justify-between">
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Status Bioclimático</div>
+                        <div className={`text-sm font-black uppercase px-2 py-1 rounded inline-block ${
+                          (inputs.averageThi ?? 72) <= 72 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                          (inputs.averageThi ?? 72) <= 78 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                          (inputs.averageThi ?? 72) <= 84 ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                        }`}>
+                          {results.statusClinicoClima || 'Conforto Térmico'}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-3 leading-relaxed">
+                          {(inputs.averageThi ?? 72) <= 72 ? 'Os animais operam em homeostase térmica perfeita. Não há alteração no consumo voluntário ou perda de energia metabólica para dissipação de calor.' :
+                           (inputs.averageThi ?? 72) <= 78 ? 'Início de ativação das respostas termorreguladoras (vasodilatação, busca por sombra). Ocorre uma pequena redução higiênica de consumo alimentício para mitigar o incremento calórico da digestão.' :
+                           (inputs.averageThi ?? 72) <= 84 ? 'Frequência respiratória severamente elevada. O animal reduz drasticamente a ingestão de concentrado para frear a produção de calor interna, mobilizando energia vital da engorda para atuar no resfriamento corporal.' :
+                           'Emergência zoológica severa. Risco crítico de alcalose respiratória aguda, acidose ruminal devido à salivação profusa, estresse oxidativo e colapso circulatório. Aumento iminente da taxa de mortalidade.'}
+                        </p>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-4 border-t border-slate-800/80 pt-2 font-mono">
+                        Referência Bioclimática: Mader et al. (2006)
+                      </div>
+                    </div>
+
+                    {/* Comparativo de Desempenho */}
+                    <div className="bg-[#0f172a]/60 border border-slate-800 p-4 rounded-2xl md:col-span-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Impacto Real no Desempenho (Teórico vs. Clima)</div>
+                      
+                      <div className="space-y-4">
+                        {/* GMD bar comparison */}
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Ganho Médio Diário (GMD)</span>
+                            <span className="font-bold text-red-400">
+                              {results.gmdOriginal?.toFixed(2)} kg → {((results.gmdOriginal ?? 0) * (1 - (results.gmdPerdaEstressePerc ?? 0) / 100)).toFixed(2)} kg ({results.gmdPerdaEstressePerc ? `-${results.gmdPerdaEstressePerc.toFixed(1)}%` : '0%'})
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                            <div className="bg-emerald-500 h-full" style={{ width: `${100 - (results.gmdPerdaEstressePerc ?? 0)}%` }} />
+                            <div className="bg-red-500/60 h-full animate-pulse" style={{ width: `${results.gmdPerdaEstressePerc ?? 0}%` }} />
+                          </div>
+                        </div>
+
+                        {/* CMS bar comparison */}
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Consumo Matéria Seca (CMS)</span>
+                            <span className="font-bold text-red-400">
+                              {((results.cmsVolumosoOriginal ?? 0) + (results.cmsConcentradoOriginal ?? 0)).toFixed(1)} kg → {(((results.cmsVolumosoOriginal ?? 0) + (results.cmsConcentradoOriginal ?? 0)) * (1 - (results.cmsPerdaEstressePerc ?? 0) / 100)).toFixed(1)} kg ({results.cmsPerdaEstressePerc ? `-${results.cmsPerdaEstressePerc.toFixed(1)}%` : '0%'})
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                            <div className="bg-emerald-500 h-full" style={{ width: `${100 - (results.cmsPerdaEstressePerc ?? 0)}%` }} />
+                            <div className="bg-red-500/60 h-full animate-pulse" style={{ width: `${results.cmsPerdaEstressePerc ?? 0}%` }} />
+                          </div>
+                        </div>
+
+                        {/* Peso Final bar comparison */}
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Peso Vivo Final de Abate (100 dias)</span>
+                            <span className="font-bold text-slate-200">
+                              {inputs.pesoVivoFinal} kg → {((inputs.pesoVivoInicial ?? 350) + ((results.gmdOriginal ?? 1.5) * (1 - (results.gmdPerdaEstressePerc ?? 0) / 100) * (inputs.tempoAlimentacao ?? 100))).toFixed(0)} kg
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                            <div className="bg-[#2dd4bf] h-full" style={{ width: `${Math.min(100, (((inputs.pesoVivoInicial ?? 350) + ((results.gmdOriginal ?? 1.5) * (1 - (results.gmdPerdaEstressePerc ?? 0) / 100) * (inputs.tempoAlimentacao ?? 100))) / (inputs.pesoVivoFinal ?? 500)) * 100)}%` }} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-850 pt-4 text-xs text-slate-400">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-2 rounded-full bg-red-400" />
+                          <span>Aumento no Custo de Ganho/kg: {(results.gmdPerdaEstressePerc ?? 0) > 0 ? `+${(results.gmdPerdaEstressePerc * 0.9).toFixed(1)}%` : '0%'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-2 rounded-full bg-orange-450" />
+                          <span>Piora na Conversão Alimentar: {(results.gmdPerdaEstressePerc ?? 0) > 0 ? `+${((results.gmdPerdaEstressePerc ?? 0) - (results.cmsPerdaEstressePerc ?? 0)).toFixed(1)}%` : '0%'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.section>
+              )}
+
               {/* 4. Detalhamento de Custos e Viabilidade */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <motion.div 
@@ -5196,36 +6094,66 @@ export default function App() {
                     <div className="pb-4">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Informações Chave do Lote</p>
                       
-                      <div className="mt-4 space-y-3">
-                        <div>
-                          <span className="text-[10px] text-slate-500 block">Lucro Planejado Final (Dia {inputs.tempoAlimentacao})</span>
-                          <span className={`text-lg font-bold font-mono ${results.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {formatCurrency(results.lucro)} <span className="text-xs font-normal">/ animal</span>
+                      <div className="mt-4 space-y-4">
+                        <div className="group relative cursor-help pb-1.5 border-b border-slate-800/10 last:border-b-0 last:pb-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-slate-400 block font-medium">Lucro Planejado Final (Dia {inputs.tempoAlimentacao})</span>
+                            <Info className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                          </div>
+                          <span className={`text-lg font-bold font-mono block mt-0.5 ${results.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {formatCurrency(results.lucro)} <span className="text-xs font-normal text-slate-500">/ animal</span>
                           </span>
+                          
+                          {/* Tooltip */}
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30 shadow-2xl leading-relaxed border border-white/10 text-center font-normal">
+                            <p className="font-bold mb-1 text-emerald-400">Lucro Planejado Final</p>
+                            O lucro líquido acumulado por cabeça projetado para o término do ciclo planejado (dia final da alimentação). Considera a diferença entre a receita bruta final e o custo total acumulado (boi magro, alimentação, sanidade, operacional e custo de oportunidade).
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
+                          </div>
                         </div>
 
-                        <div>
-                          <span className="text-[10px] text-slate-500 block">Máximo Retorno Econômico</span>
+                        <div className="group relative cursor-help pb-1.5 border-b border-slate-800/10 last:border-b-0 last:pb-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-slate-400 block font-medium">Máximo Retorno Econômico</span>
+                            <Info className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                          </div>
                           {(() => {
                             const maxPoint = results.evolucao.reduce((max, point) => ((point.lucroEstimado ?? 0) > (max.lucroEstimado ?? -Infinity) ? point : max), results.evolucao[0] || { dia: 0, lucroEstimado: 0 });
                             return (
-                              <span className="text-sm font-bold text-slate-250 font-mono">
-                                {formatCurrency(maxPoint.lucroEstimado || 0)} <span className="text-xs text-blue-400">no Dia {maxPoint.dia}</span>
+                              <span className="text-sm font-bold text-slate-250 font-mono block mt-0.5">
+                                {formatCurrency(maxPoint.lucroEstimado || 0)} <span className="text-xs text-blue-400 font-sans font-normal">no Dia {maxPoint.dia}</span>
                               </span>
                             );
                           })()}
+
+                          {/* Tooltip */}
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30 shadow-2xl leading-relaxed border border-white/10 text-center font-normal">
+                            <p className="font-bold mb-1 text-emerald-400">Máximo Retorno Econômico</p>
+                            Indica o dia de trato em que o lucro acumulado por animal é máximo, apontando o ponto ideal de abate sob o ponto de vista puramente econômico. Além deste dia, o lucro pode começar a cair devido à redução na eficiência biológica.
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
+                          </div>
                         </div>
 
-                        <div>
-                          <span className="text-[10px] text-slate-500 block">Ponto de Equilíbrio Temporal</span>
+                        <div className="group relative cursor-help pb-1.5 border-b border-slate-800/10 last:border-b-0 last:pb-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-slate-400 block font-medium">Ponto de Equilíbrio Temporal</span>
+                            <Info className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                          </div>
                           {(() => {
                             const breakEvenPoint = results.evolucao.find(p => (p.lucroEstimado ?? 0) >= 0);
                             return (
-                              <span className="text-sm font-bold text-slate-250 font-mono">
+                              <span className="text-sm font-bold text-slate-250 font-mono block mt-0.5">
                                 {breakEvenPoint ? `Dia ${breakEvenPoint.dia} de trato` : <span className="text-rose-400">Ciclo não rentável</span>}
                               </span>
                             );
                           })()}
+
+                          {/* Tooltip */}
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30 shadow-2xl leading-relaxed border border-white/10 text-center font-normal">
+                            <p className="font-bold mb-1 text-emerald-400">Ponto de Equilíbrio Temporal</p>
+                            Representa o dia exato do ciclo em que as receitas acumuladas cobrem exatamente todos os custos incorridos até então. A partir deste marco temporal, a operação passa do campo de prejuízo (zona vermelha) para a zona de lucro líquido positivo.
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -9374,6 +10302,789 @@ export default function App() {
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'property' && (
+            <motion.div
+              key="property"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="space-y-6"
+            >
+              {/* Card de Boas-vindas e Título */}
+              <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/85 shadow-lg hover:border-slate-700/50 transition-all duration-300">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                      <MapPin className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-display font-bold text-slate-100 text-lg tracking-tight">Cadastro da Propriedade Rural</h3>
+                      <p className="text-xs text-slate-400 mt-1">Gerencie a localização geográfica de seus confinamentos e consulte alertas meteorológicos e riscos climatológicos integrados.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        // Reset to Santa Maria (RS)
+                        handlePropertyChange('nome', 'Fazenda Confinamento Modelo');
+                        handlePropertyChange('produtor', 'Dr. Paulo Pacheco');
+                        handlePropertyChange('cidade', 'Santa Maria');
+                        handlePropertyChange('estado', 'RS');
+                        handlePropertyChange('latitude', -29.684);
+                        handlePropertyChange('longitude', -53.806);
+                        handlePropertyChange('totalArea', 450);
+                        handlePropertyChange('confinamentoArea', 15);
+                        handlePropertyChange('cpfCnpj', '123.456.789-00');
+                        handlePropertyChange('bioma', 'Pampa');
+                      }}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-705 text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer border border-slate-700/40"
+                    >
+                      Restaurar Padrão
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bento Grid layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-left">
+                {/* Lado Esquerdo: Formulário de Cadastro */}
+                <div className="lg:col-span-5 space-y-6">
+                  {/* NOVO: Seção Gerenciador de Propriedades Rurais */}
+                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/85 shadow-lg space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800/50 pb-3">
+                      <h4 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                        <Building className="w-4 h-4 text-emerald-400" />
+                        Propriedades Cadastradas ({savedProperties.length})
+                      </h4>
+                      <button
+                        onClick={handleCreateNewProperty}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer font-sans shadow-lg shadow-emerald-600/10"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Criar Nova
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Gerencie suas fazendas e selecione para simular e acompanhar climas específicos. Os dados de cada fazenda são persistidos localmente.
+                    </p>
+
+                    <div className="space-y-3.5 max-h-[260px] overflow-y-auto custom-scrollbar pr-0.5">
+                      {savedProperties.map((p) => {
+                        const isActive = p.id === property.id;
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => handleSelectProperty(p.id)}
+                            className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
+                              isActive 
+                                ? 'bg-emerald-500/5 border-emerald-500/40 shadow-inner' 
+                                : 'bg-[#121826]/40 border-slate-800/80 hover:border-slate-700/65 hover:bg-[#121826]/70'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                                isActive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-850 text-slate-400 group-hover:text-slate-300'
+                              }`}>
+                                <MapPin className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0 text-left">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={`text-xs font-bold truncate ${isActive ? 'text-emerald-300' : 'text-slate-300 group-hover:text-slate-100'}`}>
+                                    {p.nome}
+                                  </span>
+                                  {isActive && (
+                                    <span className="shrink-0 px-2 py-0.5 bg-emerald-500/15 text-emerald-400 text-[9px] font-bold rounded-md">
+                                      Ativa
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+                                  <span>{p.cidade} - {p.estado}</span>
+                                  <span>&bull;</span>
+                                  <span>{p.totalArea} ha</span>
+                                  <span>&bull;</span>
+                                  <span className="bg-slate-800/60 px-1.5 py-0.2 rounded text-slate-300">{p.bioma}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {savedProperties.length > 1 && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteProperty(p.id);
+                                  }}
+                                  className="p-1.5 hover:bg-red-500/10 rounded-lg text-slate-500 hover:text-red-400 transition-colors cursor-pointer"
+                                  title="Excluir propriedade"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/85 shadow-lg space-y-4">
+                    <h4 className="text-sm font-bold text-slate-200 border-b border-slate-800/50 pb-3 flex items-center gap-2">
+                       <Pencil className="w-4 h-4 text-emerald-400" />
+                       Dados de Localização e Propriedade
+                    </h4>
+
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Nome da Propriedade</label>
+                        <input
+                          type="text"
+                          value={property.nome}
+                          onChange={(e) => handlePropertyChange('nome', e.target.value)}
+                          className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Produtor Responsável</label>
+                        <input
+                          type="text"
+                          value={property.produtor}
+                          onChange={(e) => handlePropertyChange('produtor', e.target.value)}
+                          className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Cidade</label>
+                          <input
+                            type="text"
+                            value={property.cidade}
+                            onChange={(e) => handlePropertyChange('cidade', e.target.value)}
+                            className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Estado (UF)</label>
+                          <input
+                            type="text"
+                            value={property.estado}
+                            maxLength={2}
+                            onChange={(e) => handlePropertyChange('estado', e.target.value.toUpperCase())}
+                            className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none transition-all uppercase text-center"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Inscrição Estadual / Documento</label>
+                          <input
+                            type="text"
+                            value={property.cpfCnpj}
+                            onChange={(e) => handlePropertyChange('cpfCnpj', e.target.value)}
+                            className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Bioma Predominante</label>
+                          <select
+                            value={property.bioma}
+                            onChange={(e) => handlePropertyChange('bioma', e.target.value)}
+                            className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-3 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none transition-colors"
+                          >
+                            <option value="Pampa" className="bg-slate-900">Pampa</option>
+                            <option value="Cerrado" className="bg-slate-900">Cerrado</option>
+                            <option value="Mata Atlântica" className="bg-slate-900">Mata Atlântica</option>
+                            <option value="Amazônia" className="bg-slate-900">Amazônia</option>
+                            <option value="Caatinga" className="bg-slate-900">Caatinga</option>
+                            <option value="Pantanal" className="bg-slate-900">Pantanal</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Área Total (ha)</label>
+                          <input
+                            type="number"
+                            value={property.totalArea}
+                            onChange={(e) => handlePropertyChange('totalArea', parseFloat(e.target.value) || 0)}
+                            className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Área Confinada (ha)</label>
+                          <input
+                            type="number"
+                            value={property.confinamentoArea}
+                            onChange={(e) => handlePropertyChange('confinamentoArea', parseFloat(e.target.value) || 0)}
+                            className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="border-t border-slate-800/60 pt-4 space-y-4">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                          Coordenadas Geográficas (Necessárias para o Clima)
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] uppercase font-bold text-slate-400">Latitude (Graus Dec.)</label>
+                            <input
+                              type="number"
+                              step="0.0001"
+                              value={property.latitude}
+                              onChange={(e) => handlePropertyChange('latitude', parseFloat(e.target.value) || 0)}
+                              className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 font-mono text-xs font-semibold focus:outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] uppercase font-bold text-slate-400">Longitude (Graus Dec.)</label>
+                            <input
+                              type="number"
+                              step="0.0001"
+                              value={property.longitude}
+                              onChange={(e) => handlePropertyChange('longitude', parseFloat(e.target.value) || 0)}
+                              className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 font-mono text-xs font-semibold focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] uppercase font-bold text-slate-500">Região de Produção de Referência (Preencher com 1-click):</label>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {[
+                              { label: 'Pampa / RS', cidade: 'Santa Maria', estado: 'RS', lat: -29.684, lon: -53.806, bioma: 'Pampa' },
+                              { label: 'Cerrado / MT', cidade: 'Sorriso', estado: 'MT', lat: -12.544, lon: -55.722, bioma: 'Cerrado' },
+                              { label: 'Norte / PA', cidade: 'Redenção', estado: 'PA', lat: -8.028, lon: -50.033, bioma: 'Amazônia' },
+                              { label: 'Sudeste / SP', cidade: 'Barretos', estado: 'SP', lat: -20.557, lon: -48.568, bioma: 'Mata Atlântica' },
+                            ].map((preset) => (
+                              <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() => {
+                                  handlePropertyChange('cidade', preset.cidade);
+                                  handlePropertyChange('estado', preset.estado);
+                                  handlePropertyChange('latitude', preset.lat);
+                                  handlePropertyChange('longitude', preset.lon);
+                                  handlePropertyChange('bioma', preset.bioma);
+                                }}
+                                className="px-2.5 py-2 bg-[#121826] hover:bg-slate-800 border border-slate-850 hover:border-emerald-500/30 text-start rounded-xl transition-all"
+                              >
+                                <span className="font-bold text-[10px] text-slate-300 block">{preset.label}</span>
+                                <span className="text-[9px] text-slate-500 font-mono block mt-0.5">{preset.lat}, {preset.lon}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lado Direito: Meteorologia e Alertas Climáticos */}
+                <div className="lg:col-span-7 space-y-6">
+                  {/* Tempo Real / Forecast */}
+                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/85 shadow-lg space-y-5">
+                    <div className="flex items-center justify-between border-b border-slate-800/50 pb-3 flex-wrap gap-2">
+                      <h4 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                        <Sun className="w-5 h-5 text-amber-500 animate-pulse" />
+                        Rastreamento Meteorológico Regional & Previsão de 3 Dias
+                      </h4>
+                      <span className="text-[10px] px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-md font-bold uppercase tracking-wider">
+                        Geoprocessamento Ativado
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 bg-[#121826]/75 p-3.5 rounded-xl border border-slate-850">
+                      <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400">
+                        <MapPin className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 text-xs">
+                        <p className="text-slate-200 font-semibold">{property.nome}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5 font-normal">
+                          Conectado ao município de <span className="text-slate-300 font-semibold">{property.cidade} - {property.estado}</span> &bull; Coord: <span className="font-mono text-slate-300">
+                            {typeof property?.latitude === 'number' && !isNaN(property.latitude) ? property.latitude.toFixed(3) : '0.000'}°, {typeof property?.longitude === 'number' && !isNaN(property.longitude) ? property.longitude.toFixed(3) : '0.000'}°
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {weatherLoading ? (
+                      <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-3">
+                        <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
+                        Consultando API do Open-Meteo para a sua latitude/longitude...
+                      </div>
+                    ) : (
+                      <>
+                        {/* 3 Day Forecast Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {weatherForecast.map((day, idx) => {
+                            const dateLabel = idx === 0 ? 'Hoje' : idx === 1 ? 'Amanhã' : 'Depois de Amanhã';
+                            const dateObj = new Date(day.date + 'T12:00:00');
+                            const dateFormatted = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                            
+                            // Colors for THI
+                            const thiColorClass = 
+                              day.thiStatus === 'emergência' ? 'text-red-400 border-red-500/35 bg-red-500/5' :
+                              day.thiStatus === 'critico' ? 'text-amber-500 border-amber-500/35 bg-amber-500/5' :
+                              day.thiStatus === 'alerta' ? 'text-indigo-400 border-indigo-500/35 bg-indigo-500/5' :
+                              'text-emerald-400 border-emerald-500/35 bg-emerald-500/5';
+
+                            const thiiStatusLabel = 
+                              day.thiStatus === 'emergência' ? 'EMERGÊNCIA' :
+                              day.thiStatus === 'critico' ? 'ESTRESSE SEVERO' :
+                              day.thiStatus === 'alerta' ? 'ESTRESSE LEVE' :
+                              'CONFORTO TÉRMICO';
+
+                            return (
+                              <div key={idx} className="p-4 bg-slate-900 border border-slate-850 rounded-xl space-y-3.5 relative hover:border-slate-800 transition-all font-sans">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{dateLabel}</p>
+                                    <p className="text-xs font-bold text-slate-300 mt-0.5">{dateFormatted}</p>
+                                  </div>
+                                  <span className={`px-2 py-0.5 text-[8.5px] font-black rounded border tracking-tight ${thiColorClass}`}>
+                                    {thiiStatusLabel}
+                                  </span>
+                                </div>
+
+                                <div className="space-y-1.5 font-sans">
+                                  <div className="flex justify-between text-xs py-0.5 border-b border-slate-850/60">
+                                    <span className="text-slate-400">Temp. Max/Min</span>
+                                    <span className="font-bold text-slate-200">{day.tempMax}°C / {day.tempMin}°C</span>
+                                  </div>
+                                  <div className="flex justify-between text-xs py-0.5 border-b border-slate-850/60">
+                                    <span className="text-slate-400">Umidade</span>
+                                    <span className="font-bold text-slate-200">{day.humidityMax}%</span>
+                                  </div>
+                                  <div className="flex justify-between text-xs py-0.5 border-b border-slate-850/60">
+                                    <span className="text-slate-400">Precipitação</span>
+                                    <span className="font-bold text-slate-200">{day.precipitationSum} mm</span>
+                                  </div>
+                                  <div className="flex justify-[#121826] justify-between text-xs py-0.5">
+                                    <span className="text-slate-400">Ventos Max</span>
+                                    <span className="font-bold text-slate-200">{day.windSpeedMax} km/h</span>
+                                  </div>
+                                </div>
+
+                                {/* Custom THI Progress Block */}
+                                <div className="pt-2">
+                                  <div className="bg-[#121826]/70 p-2.5 rounded-xl border border-slate-850 text-center">
+                                    <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold block">Índice I.T.U. (THI)</span>
+                                    <span className={`text-xl font-black font-mono block mt-1 ${day.thiStatus === 'emergência' ? 'text-red-400 animate-pulse' : day.thiStatus === 'critico' ? 'text-amber-400' : 'text-emerald-405 text-emerald-400'}`}>
+                                      {day.thi.toFixed(1)}
+                                    </span>
+                                    <span className="text-[8px] text-slate-400 mt-1 block leading-relaxed">
+                                      {day.thiStatus === 'emergência' ? 'Risco crítico de morte' : day.thiStatus === 'critico' ? 'Risco alto de indigestão' : 'Operação estável'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* NOVO: Guia Rápido de Ações de Manejo Climatológico baseado na Previsão */}
+                        {(() => {
+                          if (!weatherForecast || weatherForecast.length === 0) return null;
+
+                          // Encontrar a pior condição climática do forecast
+                          // 'emergência' > 'critico' > 'alerta' > 'conforto/normal'
+                          const severityWeight: Record<string, number> = {
+                            'emergência': 4,
+                            'critico': 3,
+                            'alerta': 2,
+                            'conforto': 1,
+                            'normal': 1
+                          };
+
+                          let worstStatus = 'conforto';
+                          let highestThi = 0;
+
+                          weatherForecast.forEach((day) => {
+                            if (day.thi > highestThi) highestThi = day.thi;
+                            const status = day.thiStatus || 'conforto';
+                            if ((severityWeight[status] || 0) > (severityWeight[worstStatus] || 0)) {
+                              worstStatus = status;
+                            }
+                          });
+
+                          // Também verifica se há alerta de frio/hipotermia de frio ativo
+                          const hasColdRisk = weatherForecast.some(day => day.coldRiskStatus && day.coldRiskStatus !== 'normal');
+
+                          // Definir as ações baseadas no worstStatus
+                          interface ActionItem {
+                            id: string;
+                            title: string;
+                            desc: string;
+                            category: 'agua' | 'trato' | 'manejo' | 'nutricao' | 'infra';
+                            icon: React.ReactNode;
+                            why: string;
+                          }
+
+                          const actions: ActionItem[] = [];
+
+                          if (worstStatus === 'emergência') {
+                            actions.push({
+                              id: 'emerg-aspersores',
+                              title: 'Ativação Máxima de Aspersores',
+                              desc: 'Ligar aspersores na linha de cocho em ciclos contínuos de 1 min de aspersão para cada 4 min de vento.',
+                              category: 'agua',
+                              icon: <Droplets className="w-4 h-4 text-cyan-400" />,
+                              why: 'Molhar a derme do animal até o couro ativa a perda de calor por evaporação em taxas de até 5x maiores do que a transpiração natural.'
+                            });
+                            actions.push({
+                              id: 'emerg-trato',
+                              title: 'Concentrar 70% do Trato no Período Noturno',
+                              desc: 'Fornecer 35% do trato às 05h30 e os restantes 65-70% após as 17h30. Suspenda o trato no horário crítico.',
+                              category: 'trato',
+                              icon: <Clock className="w-4 h-4 text-amber-400" />,
+                              why: 'O pico do incremento calórico da fermentação ruminal ocorre 4 a 6 horas após a ingestão. Ao alimentar no fim do dia, este pico térmico acontecerá sob a fresca da noite.'
+                            });
+                            actions.push({
+                              id: 'emerg-vazao',
+                              title: 'Ampliar Vazão e Acesso à Água para 100L/cab',
+                              desc: 'Verificar se a pressão está acima de 15L/minuto. Efetuar limpeza tripla diária das pias.',
+                              category: 'agua',
+                              icon: <Zap className="w-4 h-4 text-emerald-400" />,
+                              why: 'Em THI extremos, bovinos de corte chegam a duplicar a ingestão diária de água limpa, competindo por espaço na linha de bebedouro.'
+                            });
+                            actions.push({
+                              id: 'emerg-suspensao',
+                              title: 'Voto de Silêncio e Bloqueio Total de Curral',
+                              desc: 'Proibir pesagens, vacinações programadas ou transferências de lote das 10h00 às 16h30.',
+                              category: 'manejo',
+                              icon: <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" />,
+                              why: 'A movimentação física forçada sob calor estressante eleva a temperatura retal rapidamente para >41°C, podendo desencadear morte súbita.'
+                            });
+                            actions.push({
+                              id: 'emerg-nutricao',
+                              title: 'Adensamento de Eletrólitos (Potássio e Sódio)',
+                              desc: 'Elevar teor de K na ração para 1.4% e Na para 0.4% da matéria seca, além de adicionar tamponantes.',
+                              category: 'nutricao',
+                              icon: <Leaf className="w-4 h-4 text-teal-400" />,
+                              why: 'Compensa a extrema perda foliar de sais minerais e neutraliza a acidose metabólica induzida pela hiperventilação.'
+                            });
+                          } else if (worstStatus === 'critico') {
+                            actions.push({
+                              id: 'crit-aspersores',
+                              title: 'Molhamento Intermitente Estratégico',
+                              desc: 'Ativar aspersores nos currais das 11h00 às 16h00 (ciclo de 1 min de água a cada 10 min de pausa).',
+                              category: 'agua',
+                              icon: <Droplets className="w-4 h-4 text-cyan-400" />,
+                              why: 'O resfriamento direto diminui a frequência respiratória (sopro) e mantém o gado na linha de cocho por mais tempo.'
+                            });
+                            actions.push({
+                              id: 'crit-trato',
+                              title: 'Postergação de 40% do Trato Diário',
+                              desc: 'Deslocar do meio-dia para as 16h30 o maior volume da ração fresca para evitar fermentações solares.',
+                              category: 'trato',
+                              icon: <Clock className="w-4 h-4 text-amber-400" />,
+                              why: 'Evita a sobra de alimento que se degrada no cocho quente pela exposição à luz e oxigênio (perda de palatabilidade).'
+                            });
+                            actions.push({
+                              id: 'crit-limpeza',
+                              title: 'Limpeza e Desinfecção Diária de Bebedouros',
+                              desc: 'Remover folhagens, restos de ração e lodo das pias logo pela manhã.',
+                              category: 'agua',
+                              icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />,
+                              why: 'A proliferação fúngica e bacteriana acelera com temperaturas elevadas, repelindo o consumo hídrico essencial.'
+                            });
+                            actions.push({
+                              id: 'crit-window',
+                              title: 'Curral Apenas das 06h00 às 08h30',
+                              desc: 'Restringir qualquer manejo de lote para a primeira janela matinal fresca.',
+                              category: 'manejo',
+                              icon: <Calendar className="w-4 h-4 text-indigo-400" />,
+                              why: 'Usufrui da inércia térmica noturna favorável quando os animais ainda estão com temperatura corporal estabilizada.'
+                            });
+                          } else if (worstStatus === 'alerta') {
+                            actions.push({
+                              id: 'alerta-tubulacao',
+                              title: 'Monitoramento Térmico de Tubulações',
+                              desc: 'Garantir que os encanamentos de água expostos ao sol não elevem a temperatura da água acima de 25°C.',
+                              category: 'agua',
+                              icon: <Droplets className="w-4 h-4 text-slate-400" />,
+                              why: 'Água mornas ou quentes reduzem severamente a ingestão de água, limitando a capacidade do rúmen de se termorregular.'
+                            });
+                            actions.push({
+                              id: 'alerta-sombra',
+                              title: 'Auditoria de Tensionamento e Sombra',
+                              desc: 'Verificar se as telas de sombreamento mantêm os 3.5 a 4.0m² por animal de área útil utilizada.',
+                              category: 'infra',
+                              icon: <TreePine className="w-4 h-4 text-emerald-400" />,
+                              why: 'Sombra frouxa ou rasgada diminui a reflexão dos raios UV e gera aglomeração violenta de animais disputando cobertura.'
+                            });
+                            actions.push({
+                              id: 'alerta-horario',
+                              title: 'Adequar Tratos nos Extremos do Dia',
+                              desc: 'Servir a dieta predominantemente no início da manhã (07h00) e final de tarde (16h30).',
+                              category: 'trato',
+                              icon: <Clock className="w-4 h-4 text-amber-500" />,
+                              why: 'Sincroniza o fornecimento de alimento com as janelas naturais em que o gado prefere se alimentar.'
+                            });
+                          } else {
+                            // Conforto térmico calor
+                            actions.push({
+                              id: 'conf-regular',
+                              title: 'Programação de Horários Padrão',
+                              desc: 'Manter a divisão padrão de 3 tratos diários distribuídos igualmente ao longo do dia.',
+                              category: 'trato',
+                              icon: <Clock className="w-4 h-4 text-emerald-400" />,
+                              why: 'Condição climatológica segura. Aproveite para manter a regularidade que estimula a microbiota do rúmen.'
+                            });
+                            actions.push({
+                              id: 'conf-limpeza',
+                              title: 'Limpeza de Cochos e Bebedouros (Rotina)',
+                              desc: 'Realizar lavagem a cada 48 horas e verificar vazão hidráulica regular.',
+                              category: 'agua',
+                              icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />,
+                              why: 'Mantém a biossegurança padrão do rebanho sem estressores ambientais ativos.'
+                            });
+                          }
+
+                          // Adicionar ação preventiva de frio se aplicável
+                          if (hasColdRisk) {
+                            actions.push({
+                              id: 'frio-quebravnto',
+                              title: 'Ativação de Quebra-Ventos Estruturais',
+                              desc: 'Garantir barreiras contra ventos frios vindos do sul nos piquetes menos arborizados.',
+                              category: 'infra',
+                              icon: <Wind className="w-4 h-4 text-indigo-400" />,
+                              why: 'O vento frio associado a lombo úmido aumenta exponencialmente a taxa de resfriamento convector, podendo causar pneumonia.'
+                            });
+                            actions.push({
+                              id: 'frio-drenagem',
+                              title: 'Escoamento de Lamaceiros e Umidade',
+                              desc: 'Drenar valas e raspar o acúmulo de lama nos pontos críticos de tráfego de animais.',
+                              category: 'infra',
+                              icon: <Map className="w-4 h-4 text-blue-400" />,
+                              why: 'Ambiente com lama impede o animal de deitar confortavelmente, gerando fadiga física e aumentando o estresse condutivo.'
+                            });
+                            actions.push({
+                              id: 'frio-dieta',
+                              title: 'Ajuste Calórico Emergencial (+8% Energia)',
+                              desc: 'Acrescentar fontes de energia rápida ou grãos moídos na porção noturna para termorregulação.',
+                              category: 'trato',
+                              icon: <TrendingUp className="w-4 h-4 text-amber-500" />,
+                              why: 'Animais sob estresse de frio necessitam de maior energia de manutenção simplesmente para produzir calor corporal.'
+                            });
+                          }
+
+                          // Cálculo de progresso de ações marcadas no checklist
+                          const currentPropId = property.id || 'prop-default';
+                          const actionsForProp = actions.map(act => `${currentPropId}-${act.id}`);
+                          const checkedCount = actionsForProp.filter(itemKey => !!completedManagementActions[itemKey]).length;
+                          const progressPercent = Math.round((checkedCount / actions.length) * 100) || 0;
+
+                          // Diagnóstico text and colors
+                          let statusBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                          let worstStatusText = 'Ótimo Conforto';
+                          let diagnosticSum = 'Ausência de estressores térmicos relevantes nos próximos dias. Assegure a rotina de manejo operacional padrão no confinamento.';
+
+                          if (worstStatus === 'emergência') {
+                            statusBadgeColor = 'bg-red-500/15 text-red-400 border-red-500/30 animate-pulse';
+                            worstStatusText = 'Alerta de Emergência Climática';
+                            diagnosticSum = 'ITU Extremo previsto nos próximos dias. Risco de indigestão, parada cardíaca ou morte por insolação. Exige ações de molhamento por aspersão, vazão máxima de água limpa e suspensão de manejos estressantes.';
+                          } else if (worstStatus === 'critico') {
+                            statusBadgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+                            worstStatusText = 'Estresse Térmico Severo de Calor';
+                            diagnosticSum = 'ITU elevado previsto. Ocorre queda significativa no consumo de matéria seca e no ganho de peso diário. Reorganize os tratos alimentares para os horários amenos.';
+                          } else if (worstStatus === 'alerta') {
+                            statusBadgeColor = 'bg-indigo-505/15 bg-indigo-550/10 text-indigo-400 border-indigo-500/20';
+                            worstStatusText = 'Estresse Térmico Moderado';
+                            diagnosticSum = 'Surgimento inicial de estresse climatológico. Adeque os horários de fornecimento de trato para evitar que coincidam com picos solares.';
+                          }
+
+                          if (hasColdRisk && worstStatus === 'conforto') {
+                            statusBadgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+                            worstStatusText = 'Alerta de Resfriamento';
+                            diagnosticSum = 'Previsão de geada, frio acentuado com vento ou chuva úmida nos próximos dias. Riscos de hipotermia de rebanho e perda de rendimento por tiritamento.';
+                          }
+
+                          return (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 15 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="mt-6 border border-slate-800 p-5 rounded-2xl bg-[#090e1a] text-left space-y-4"
+                            >
+                              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3 flex-wrap gap-2">
+                                <div className="space-y-0.5">
+                                  <h4 className="text-xs font-bold text-slate-200 uppercase tracking-widest flex items-center gap-1.5">
+                                    <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                                    Guia de Ações de Manejo Sugeridas (Automático)
+                                  </h4>
+                                  <p className="text-[10px] text-slate-400">
+                                    Intervenções prioritárias personalizadas para a fazenda <strong>{property.nome}</strong>.
+                                  </p>
+                                </div>
+                                <span className={`px-2.5 py-1 text-[9px] font-black uppercase rounded-lg border leading-tight ${statusBadgeColor}`}>
+                                  {worstStatusText}
+                                </span>
+                              </div>
+
+                              {/* Card de Diagnóstico do Clima */}
+                              <div className="p-3.5 bg-slate-900/60 border border-slate-850 rounded-xl space-y-2 text-xs">
+                                <p className="text-slate-300 font-normal leading-relaxed">
+                                  {diagnosticSum}
+                                </p>
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1.5 border-t border-slate-800/50">
+                                  <span>ITU Máximo Estimado: <strong className="text-slate-200 font-bold">{highestThi.toFixed(1)}</strong></span>
+                                  <span>Proteção Ambiental: {worstStatus === 'alerta' || worstStatus === 'critico' || worstStatus === 'emergência' ? <span className="text-rose-450 text-rose-400 font-bold">Ajustes Necessários</span> : <span className="text-emerald-400 font-semibold">Segura / Estável</span>}</span>
+                                </div>
+                              </div>
+
+                              {/* Progress bar of checklist */}
+                              <div className="space-y-1.5 pt-1">
+                                <div className="flex items-center justify-between text-[10px]">
+                                  <span className="text-slate-400 font-bold uppercase tracking-wider">Ações Adotadas pela Fazenda:</span>
+                                  <span className="text-slate-200 font-mono font-bold">{checkedCount} de {actions.length} ({progressPercent}%)</span>
+                                </div>
+                                <div className="h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-850">
+                                  <div 
+                                    className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
+                                    style={{ width: `${progressPercent}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Action List items Checklist */}
+                              <div className="space-y-2.5 max-h-[350px] overflow-y-auto custom-scrollbar pr-1">
+                                {actions.map((act) => {
+                                  const itemKey = `${currentPropId}-${act.id}`;
+                                  const isChecked = !!completedManagementActions[itemKey];
+
+                                  return (
+                                    <div 
+                                      key={act.id}
+                                      onClick={() => toggleManagementAction(itemKey)}
+                                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start gap-3.5 relative group ${
+                                        isChecked 
+                                          ? 'bg-emerald-950/10 border-emerald-500/30' 
+                                          : 'bg-slate-900/40 border-slate-850 hover:bg-slate-900/80 hover:border-slate-800'
+                                      }`}
+                                    >
+                                      <div className="mt-1 shrink-0">
+                                        <div className={`p-1 rounded-md border text-slate-105 flex items-center justify-center transition-all ${
+                                          isChecked ? 'bg-emerald-500 border-emerald-450 text-[#090e1a]' : 'bg-slate-950/60 border-slate-700/60 group-hover:border-slate-500'
+                                        }`}>
+                                          <Check className={`w-3.5 h-3.5 stroke-[3] transition-all text-[#090e1a] ${isChecked ? 'scale-100' : 'scale-0'}`} />
+                                        </div>
+                                      </div>
+
+                                      <div className="space-y-1 min-w-0 flex-1">
+                                        <div className="flex items-center justify-between">
+                                          <h5 className={`text-xs font-bold leading-tight ${isChecked ? 'text-slate-500 line-through' : 'text-slate-200 group-hover:text-amber-400'}`}>
+                                            {act.title}
+                                          </h5>
+                                        </div>
+                                        <p className="text-[11px] text-slate-300 leading-relaxed font-normal">
+                                          {act.desc}
+                                        </p>
+                                        
+                                        {/* Técnico explicativo Expandable */}
+                                        <div className="pt-1.5 border-t border-slate-800/40 mt-1.5 text-[10px] text-slate-400 leading-relaxed group-hover:text-slate-300 transition-colors flex items-start gap-1.5">
+                                          <span className="text-[10px] text-emerald-450 text-emerald-400 shrink-0 font-bold uppercase tracking-wider">Fundamento Zootécnico:</span>
+                                          <span className="italic">{act.why}</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Icon Badge Right */}
+                                      <div className={`p-1.5 rounded-lg border self-start shrink-0 ${isChecked ? 'bg-slate-900/40 text-slate-600 border-slate-850' : 'bg-slate-950 text-slate-400 group-hover:text-emerald-400 group-hover:border-slate-800 border-slate-850'}`}>
+                                        {act.icon}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-slate-800/80">
+                                <span className="flex items-center gap-1">
+                                  <Info className="w-3.5 h-3.5 text-slate-500 mt-px" />
+                                  Os itens salvam eletronicamente para cada propriedade ativa.
+                                </span>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Reset checklist for this property
+                                    setCompletedManagementActions(prev => {
+                                      const updated = { ...prev };
+                                      actions.forEach(act => {
+                                        delete updated[`${currentPropId}-${act.id}`];
+                                      });
+                                      localStorage.setItem('simuboi_completed_management_actions', JSON.stringify(updated));
+                                      return updated;
+                                    });
+                                    showToast('Lista de ações redefinida nesta fazenda!', 'info');
+                                  }}
+                                  className="text-[10px] text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                                >
+                                  Refazer Checklist
+                                </button>
+                              </div>
+                            </motion.div>
+                          );
+                        })()}
+
+                        {/* Alertas Climáticos Zootécnicos Baseados em Evidências Clínicas */}
+                        <div className="mt-4 border border-slate-800 p-5 rounded-2xl bg-[#0c1222] text-left">
+                          <h4 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-850 pb-2.5">
+                            <Thermometer className="w-4 h-4 text-emerald-400" />
+                            Avaliação de Riscos e Recomendações Clínicas de Manejo
+                          </h4>
+
+                          <div className="space-y-4">
+                            {/* Alerta de Estresse Térmico por Calor */}
+                            <div className="flex gap-3 bg-red-500/10 border border-red-500/20 p-4 rounded-xl">
+                              <div className="p-1 px-2.5 bg-red-550/10 bg-red-500/10 rounded-lg text-red-450 text-red-400 self-start text-xs font-bold font-mono">
+                                THI
+                              </div>
+                              <div className="text-xs space-y-1 font-sans">
+                                <h5 className="font-bold text-red-400">Estresse Térmico por Calor (Análise de ITU)</h5>
+                                <p className="text-slate-300 leading-normal">
+                                  Acima de um THI de 72, os animais gastam valiosa energia de manutenção para resfriar o organismo através da respiração acelerada. Sob estresse témino agudo, ocorre redução de até 15% na ingestão voluntária de Matéria Seca (MS), afetando o GMD (Ganho Médio Diário).
+                                </p>
+                                <ul className="list-disc pl-4 mt-2 text-slate-400 space-y-1 block">
+                                  <li>Prover sombras artificiais ou naturais (mínimo de 3.5 a 4.0 m²/animal).</li>
+                                  <li>Manter bebedouros sempre limpos e com vazão rápida (consumo aumenta em até 50%).</li>
+                                  <li>Evitar movimentações do gado (como pesagens e aplicação de vacinas) entre 10h e 16h.</li>
+                                </ul>
+                              </div>
+                            </div>
+
+                            {/* Alerta de Risco de Mortalidade por Frio e Chuva */}
+                            <div className="flex gap-3 bg-indigo-500/15 border border-indigo-500/30 p-4 rounded-xl">
+                              <div className="p-1 px-2 bg-indigo-550/10 bg-indigo-500/15 rounded-lg text-indigo-400 self-start text-xs font-bold font-mono">
+                                FRIO
+                              </div>
+                              <div className="text-xs space-y-1 font-sans">
+                                <h5 className="font-bold text-indigo-400">Hipotermia e Choque Térmico (Frio + Chuva)</h5>
+                                <p className="text-slate-300 leading-normal">
+                                  Em regiões como o Pampa Gaúcho ou durante frentes frias bruscas, noites com vento moderado (&gt;15km/h) combinadas com garoa e mínimas abaixo de 6°C aumentam drasticamente a perda de calor por convecção. Animais recém-alocados ou debilitados correm risco agudo de choque térmico, pneumonia e óbito por hipotermia.
+                                </p>
+                                <ul className="list-disc pl-4 mt-2 text-slate-400 space-y-1 block">
+                                  <li>Drenar poças e garantir lodo mínimo nas instalações para diminuir perda de calor condutiva.</li>
+                                  <li>Manter quebra-ventos ou barreiras físicas nas margens dos piquetes expostos ao vento sul.</li>
+                                  <li>Em frentes frias extremas, adequar dietas com teores energéticos levemente superiores.</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -11132,6 +12843,312 @@ export default function App() {
                   className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all cursor-pointer font-sans"
                 >
                   Concluir
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isPropertyModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPropertyModalOpen(false)}
+              className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-[#0f172a] border border-slate-800/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] z-50 text-left"
+            >
+              <div className="p-6 border-b border-slate-800/60 flex items-center justify-between shrink-0 bg-[#070a13]">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-emerald-400" />
+                  <h2 className="text-lg font-bold text-slate-100 font-display">Editar Propriedade Rural</h2>
+                </div>
+                <button 
+                  onClick={() => setIsPropertyModalOpen(false)}
+                  className="p-2 hover:bg-slate-800 rounded-full transition-colors text-slate-400 hover:text-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1 text-left">
+                {/* NOVO: Seletor e Gerenciador de Propriedades no Modal */}
+                <div className="bg-[#121826]/80 p-4 rounded-2xl border border-slate-800/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400 flex items-center gap-1.5 leading-none">
+                      <Building className="w-3.5 h-3.5 text-emerald-400" />
+                      Propriedades Cadastradas ({savedProperties.length})
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleCreateNewProperty}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-bold transition-all flex items-center gap-1 cursor-pointer font-sans"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Nova Fazenda
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-[140px] overflow-y-auto custom-scrollbar">
+                    {savedProperties.map((p) => {
+                      const isActive = p.id === property.id;
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => handleSelectProperty(p.id)}
+                          className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-between group text-xs ${
+                            isActive 
+                              ? 'bg-emerald-500/5 border-emerald-500/35 shadow-inner' 
+                              : 'bg-slate-900/60 border-slate-850 hover:border-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`p-1 rounded ${isActive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                              <MapPin className="w-3 h-3" />
+                            </div>
+                            <div className="min-w-0 text-start">
+                              <span className={`font-semibold truncate block ${isActive ? 'text-emerald-300' : 'text-slate-300'}`}>
+                                {p.nome}
+                              </span>
+                              <span className="text-[9px] text-slate-500 block leading-none mt-0.5">
+                                {p.cidade} - {p.estado} &bull; {p.totalArea} ha &bull; {p.bioma}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isActive && (
+                              <span className="shrink-0 text-[8px] bg-emerald-500/10 text-emerald-400 font-bold px-1.5 py-0.5 rounded">
+                                Ativa
+                              </span>
+                            )}
+                            {savedProperties.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteProperty(p.id);
+                                }}
+                                className="p-1 hover:bg-red-500/10 rounded text-slate-500 hover:text-red-400 transition-colors cursor-pointer"
+                                title="Excluir propriedade"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800/40 my-2" />
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Nome da Propriedade</label>
+                  <input
+                    type="text"
+                    value={property.nome}
+                    onChange={(e) => {
+                      handlePropertyChange('nome', e.target.value);
+                    }}
+                    className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none transition-colors border-slate-800 text-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Produtor Responsável</label>
+                  <input
+                    type="text"
+                    value={property.produtor}
+                    onChange={(e) => {
+                      handlePropertyChange('produtor', e.target.value);
+                    }}
+                    className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none transition-colors border-slate-800 text-slate-200"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Cidade</label>
+                    <input
+                      type="text"
+                      value={property.cidade}
+                      onChange={(e) => {
+                        handlePropertyChange('cidade', e.target.value);
+                      }}
+                      className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none transition-colors border-slate-800 text-slate-200"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Estado (UF)</label>
+                    <input
+                      type="text"
+                      value={property.estado}
+                      maxLength={2}
+                      onChange={(e) => {
+                        handlePropertyChange('estado', e.target.value.toUpperCase());
+                      }}
+                      className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none transition-all uppercase text-center border-slate-800 text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Inscrição Estadual / Documento</label>
+                    <input
+                      type="text"
+                      value={property.cpfCnpj}
+                      onChange={(e) => {
+                        handlePropertyChange('cpfCnpj', e.target.value);
+                      }}
+                      className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none transition-colors border-slate-800 text-slate-200"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Bioma Predominante</label>
+                    <select
+                      value={property.bioma}
+                      onChange={(e) => {
+                        handlePropertyChange('bioma', e.target.value);
+                      }}
+                      className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-3 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none transition-colors border-slate-800 text-slate-200"
+                    >
+                      <option value="Pampa" className="bg-slate-900">Pampa</option>
+                      <option value="Cerrado" className="bg-slate-900">Cerrado</option>
+                      <option value="Mata Atlântica" className="bg-slate-900">Mata Atlântica</option>
+                      <option value="Amazônia" className="bg-slate-900">Amazônia</option>
+                      <option value="Caatinga" className="bg-slate-900">Caatinga</option>
+                      <option value="Pantanal" className="bg-slate-900">Pantanal</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Área Total (ha)</label>
+                    <input
+                      type="number"
+                      value={property.totalArea}
+                      onChange={(e) => {
+                        handlePropertyChange('totalArea', parseFloat(e.target.value) || 0);
+                      }}
+                      className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none border-slate-800 text-slate-200"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Área Confinada (ha)</label>
+                    <input
+                      type="number"
+                      value={property.confinamentoArea}
+                      onChange={(e) => {
+                        handlePropertyChange('confinamentoArea', parseFloat(e.target.value) || 0);
+                      }}
+                      className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none border-slate-800 text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800/60 pt-4 space-y-4">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">
+                    <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                    Coordenadas Geográficas (Climatologia dinâmica)
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] uppercase font-bold text-slate-400">Latitude (Graus Dec.)</label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={property.latitude}
+                        onChange={(e) => {
+                          handlePropertyChange('latitude', parseFloat(e.target.value) || 0);
+                        }}
+                        className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 font-mono text-xs font-semibold focus:outline-none border-slate-800"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] uppercase font-bold text-slate-400">Longitude (Graus Dec.)</label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={property.longitude}
+                        onChange={(e) => {
+                          handlePropertyChange('longitude', parseFloat(e.target.value) || 0);
+                        }}
+                        className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 font-mono text-xs font-semibold focus:outline-none border-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick Presets */}
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] uppercase font-bold text-slate-550 block font-sans">Região de Produção de Referência (Preencher com 1-click):</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { label: 'Pampa / RS', cidade: 'Santa Maria', estado: 'RS', lat: -29.684, lon: -53.806, bioma: 'Pampa' },
+                        { label: 'Cerrado / MT', cidade: 'Sorriso', estado: 'MT', lat: -12.544, lon: -55.722, bioma: 'Cerrado' },
+                        { label: 'Norte / PA', cidade: 'Redenção', estado: 'PA', lat: -8.028, lon: -50.033, bioma: 'Amazônia' },
+                        { label: 'Sudeste / SP', cidade: 'Barretos', estado: 'SP', lat: -20.557, lon: -48.568, bioma: 'Mata Atlântica' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => {
+                            handlePropertyChange('cidade', preset.cidade);
+                            handlePropertyChange('estado', preset.estado);
+                            handlePropertyChange('latitude', preset.lat);
+                            handlePropertyChange('longitude', preset.lon);
+                            handlePropertyChange('bioma', preset.bioma);
+                          }}
+                          className="px-2.5 py-1.5 bg-[#121826] hover:bg-slate-800 border border-slate-850 hover:border-emerald-500/30 text-start rounded-xl transition-all cursor-pointer"
+                        >
+                          <span className="font-bold text-[10px] text-slate-300 block">{preset.label}</span>
+                          <span className="text-[9px] text-slate-500 font-mono block mt-0.5">{preset.lat}, {preset.lon}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-[#070a13] border-t border-slate-800/60 flex justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handlePropertyChange('nome', 'Fazenda Confinamento Modelo');
+                    handlePropertyChange('produtor', 'Dr. Paulo Pacheco');
+                    handlePropertyChange('cidade', 'Santa Maria');
+                    handlePropertyChange('estado', 'RS');
+                    handlePropertyChange('latitude', -29.684);
+                    handlePropertyChange('longitude', -53.806);
+                    handlePropertyChange('totalArea', 450);
+                    handlePropertyChange('confinamentoArea', 15);
+                    handlePropertyChange('cpfCnpj', '123.456.789-00');
+                    handlePropertyChange('bioma', 'Pampa');
+                    showToast('Propriedade resetada para os valores padrão.', 'info');
+                  }}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-slate-700/50"
+                >
+                  Restaurar Padrão
+                </button>
+                <button
+                  onClick={() => {
+                    setIsPropertyModalOpen(false);
+                    showToast('Propriedade rural atualizada com sucesso!', 'success');
+                  }}
+                  className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-600/20 transition-all cursor-pointer font-sans"
+                >
+                  Confirmar e Fechar
                 </button>
               </div>
             </motion.div>
@@ -12965,6 +14982,74 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                       </div>
                     </div>
                   </section>
+
+                  {/* NOVO: 10. Climatologia e Modelagem de Estresse Térmico (ITU/THI) */}
+                  <section className="bg-[#070a13] p-8 rounded-3xl border border-slate-800 text-left">
+                    <h3 className="text-base font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
+                      <div className="w-1.5 h-6 bg-rose-500 rounded-full" />
+                      10. Climatologia e Modelagem de Estresse Térmico (ITU/THI)
+                    </h3>
+                    <div className="prose prose-sm max-w-none text-slate-300 space-y-6 text-xs sm:text-sm leading-relaxed font-sans text-left">
+                      <p>
+                        A modelagem biometeorológica do SimuBoi quantifica os efeitos do ambiente térmico sobre o desempenho produtivo animal, baseando-se no <strong>Índice de Temperatura e Umidade (ITU / THI - Temperature-Humidity Index)</strong>. Quando os animais ultrapassam seus limites de bem-estar térmico (limiar de homeostase), ocorre redução voluntária do consumo de matéria seca (CMS) e do ganho médio diário (GMD) como mecanismo de termorregulação.
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-[#0f172a] p-5 rounded-2xl border border-slate-800">
+                          <span className="text-[10px] font-bold text-rose-455 tracking-wider uppercase block">Nelore (Zebuínos)</span>
+                          <p className="text-xs text-slate-400 leading-relaxed mt-2 font-light">
+                            <strong>Limiar de Conforto:</strong> ITU ≤ 75 <br /><br />
+                            <strong>Estresse Leve (75 &lt; ITU ≤ 79):</strong> <br />
+                            <span className="font-mono text-[10px] text-rose-400">GMD Perda: (ITU - 75) × 1.5%</span> <br />
+                            <span className="font-mono text-[10px] text-rose-350">CMS Perda: (ITU - 75) × 1.0%</span> <br /><br />
+                            <strong>Estresse Severo (79 &lt; ITU ≤ 84):</strong> <br />
+                            <span className="font-mono text-[10px] text-rose-400">GMD Perda: 6.0 + (ITU - 79) × 3.5%</span> <br />
+                            <span className="font-mono text-[10px] text-rose-350">CMS Perda: 4.0 + (ITU - 79) × 2.2%</span> <br /><br />
+                            <strong>Emergência (ITU &gt; 84):</strong> <br />
+                            <span className="font-mono text-[10px] text-rose-400">GMD Perda: 23.5 + (ITU - 84) × 6.0%</span> <br />
+                            <span className="font-mono text-[10px] text-rose-350">CMS Perda: 15.0 + (ITU - 84) × 4.0%</span>
+                          </p>
+                        </div>
+
+                        <div className="bg-[#0f172a] p-5 rounded-2xl border border-slate-800">
+                          <span className="text-[10px] font-bold text-amber-400 tracking-wider uppercase block">Cruzado (Meio-Sangue)</span>
+                          <p className="text-xs text-slate-400 leading-relaxed mt-2 font-light">
+                            <strong>Limiar de Conforto:</strong> ITU ≤ 72 <br /><br />
+                            <strong>Estresse Leve (72 &lt; ITU ≤ 78):</strong> <br />
+                            <span className="font-mono text-[10px] text-amber-450">GMD Perda: (ITU - 72) × 2.0%</span> <br />
+                            <span className="font-mono text-[10px] text-amber-400">CMS Perda: (ITU - 72) × 1.2%</span> <br /><br />
+                            <strong>Estresse Severo (78 &lt; ITU ≤ 84):</strong> <br />
+                            <span className="font-mono text-[10px] text-amber-450">GMD Perda: 12.0 + (ITU - 78) × 4.5%</span> <br />
+                            <span className="font-mono text-[10px] text-amber-400">CMS Perda: 7.2 + (ITU - 78) × 2.8%</span> <br /><br />
+                            <strong>Emergência (ITU &gt; 84):</strong> <br />
+                            <span className="font-mono text-[10px] text-amber-450">GMD Perda: 39.0 + (ITU - 84) × 7.5%</span> <br />
+                            <span className="font-mono text-[10px] text-amber-400">CMS Perda: 24.0 + (ITU - 84) × 5.0%</span>
+                          </p>
+                        </div>
+
+                        <div className="bg-[#0f172a] p-5 rounded-2xl border border-slate-800">
+                          <span className="text-[10px] font-bold text-sky-400 tracking-wider uppercase block">Europeu (Holandês)</span>
+                          <p className="text-xs text-slate-400 leading-relaxed mt-2 font-light">
+                            <strong>Limiar de Conforto:</strong> ITU ≤ 70 <br /><br />
+                            <strong>Estresse Leve (70 &lt; ITU ≤ 78):</strong> <br />
+                            <span className="font-mono text-[10px] text-sky-400">GMD Perda: (ITU - 70) × 2.8%</span> <br />
+                            <span className="font-mono text-[10px] text-sky-350">CMS Perda: (ITU - 70) × 1.8%</span> <br /><br />
+                            <strong>Estresse Severo (78 &lt; ITU ≤ 84):</strong> <br />
+                            <span className="font-mono text-[10px] text-sky-400">GMD Perda: 22.4 + (ITU - 78) × 5.5%</span> <br />
+                            <span className="font-mono text-[10px] text-sky-350">CMS Perda: 14.4 + (ITU - 78) × 3.8%</span> <br /><br />
+                            <strong>Emergência (ITU &gt; 84):</strong> <br />
+                            <span className="font-mono text-[10px] text-sky-400">GMD Perda: 55.4 + (ITU - 84) × 9.0%</span> <br />
+                            <span className="font-mono text-[10px] text-sky-350">CMS Perda: 37.2 + (ITU - 84) × 6.0%</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#131b35]/45 p-4 rounded-xl border border-slate-800/80 text-xs text-slate-300 leading-relaxed">
+                        <strong className="text-slate-100">Alerta Preditivo & Localização de Propriedades:</strong> <br />
+                        O sistema conecta as geo-coordenadas (latitude e longitude) da propriedade rural cadastrada com a API meteorológica em tempo real para obter as previsões dinâmicas dos próximos 3 dias. Emite avisos imediatos de <strong>Risco de Calor Severo</strong> caso o ITU exceda as faixas críticas de tolerância da raça, ou <strong>Risco de Frio Crítico</strong> (risco de pneumonia e hipotermia) em situações de temperaturas excessivamente baixas associadas a rajadas de vento e precipitação considerável.
+                      </div>
+                    </div>
+                  </section>
                 </div>
               ) : activeHelpTab === 'references' ? (
                 <div className="space-y-12">
@@ -13458,6 +15543,51 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                             </li>
                           </ul>
                         </div>
+
+                        {/* 5. Climatologia, Bem-Estar e Estresse Térmico */}
+                        <div>
+                          <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-4 font-display flex items-center justify-between border-b border-emerald-500/10 pb-2">
+                            <span>Climatologia, Bem-Estar & Estresse Térmico</span>
+                          </h4>
+                          <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">NARDONE, A.; RONCHI, B.; LACERENZA, C.; RANIERI, M. S.; BERNABUCCI, U. (2010)</strong>. Effects of climate changes on animal production and sustainability of livestock systems. <em>Animal Development</em>, v.4, p.113-133, 2010.
+                              <a
+                                href="https://doi.org/10.1016/j.animal.2010.04.014"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">MADER, T. L.; DAVIS, M. S.; BROWN-BRANDL, T. (2006)</strong>. Environmental factors influencing heat stress in feedlot cattle. <em>Journal of Animal Science</em>, v.84, n.3, p.712-719, 2006.
+                              <a
+                                href="https://doi.org/10.2527/2006.843712x"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">HAHN, G. L. (1999)</strong>. Dynamic responses of cattle to thermal heat loads. <em>Journal of Animal Science</em>, v.77, n.suppl_2, p.10-20, 1999.
+                              <a
+                                href="https://doi.org/10.2527/1999.77suppl_210x"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                DOI
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                          </ul>
+                        </div>
                       </div>
                     </div>
                   </section>
@@ -13822,6 +15952,41 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               </span>
                               <p className="text-[11px] leading-relaxed">
                                 Avalie a <strong>Quebra de VPL</strong> resultante e compare-a com as reservas de capital operacional da sua empresa rural. Determine se o novo Ponto de Equilíbrio exigido para a venda é realizável no mercado de gado atual.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CENÁRIO 4 */}
+                      <div className="p-6 bg-slate-950/40 rounded-3xl border border-rose-500/10 hover:border-rose-500/25 transition-all">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="px-2.5 py-1 text-[10px] font-bold bg-rose-500/10 border border-rose-500/20 text-rose-350 rounded-lg font-mono">CASO ESTUDO 4</span>
+                          <h4 className="font-bold text-slate-100 text-sm font-display">
+                            Gestão de Alertas Climáticos & Perdas por Estresse Térmico
+                          </h4>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans mb-4">
+                          <strong>Desafio Produtivo:</strong> Durante ondas de calor extremo previsíveis de verão, o gado reduz consumo espontâneo e passa por estresse respiratório. Como calcular o impacto econômico em ganho de peso e projetar as perdas financeiras brutas no caixa?
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans text-slate-405">
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80">
+                            <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-indigo-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Como Conduzir no software:
+                            </span>
+                            <ol className="list-decimal pl-4 space-y-1">
+                              <li>Cadastre a sua propriedade rural incluindo a sua <strong>Localização Geográfica</strong> correta.</li>
+                              <li>Monitore no painel superior o botão de <strong>Notificações/Alertas</strong> para avisos preditivos de frio ou calor extremo para os próximos 3 dias.</li>
+                              <li>Consulte na aba <strong>Instalações e Clima</strong> o GMD e CMS perdidos em decorrência do ITU atual da localidade.</li>
+                            </ol>
+                          </div>
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80 flex flex-col justify-between">
+                            <div>
+                              <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ação Estratégica Recomendada:
+                              </span>
+                              <p className="text-[11px] leading-relaxed">
+                                Avalie a perda simulada sob a rentabilidade total. Invista em sombreamento artificial (natural ou telado de 50%), ventiladores/aspersores ou altere a dieta para maior densidade energética para amortecer as perdas de ingestão voluntária.
                               </p>
                             </div>
                           </div>
