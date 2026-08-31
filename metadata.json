@@ -1,5 +1,8 @@
 {
-  "name": "Remix: SimuBoi - Simulador de viabilidade econômica avançada do Confinamento Bovino",
-  "description": "Plataforma profissional de simulação de confinamento com análise de risco estocástico, testes de estresse, dominância estocástica e otimização de dietas.",
-  "requestFramePermissions": []
+  "name": "Remix: ULTRASSSOM SimuBoi - Simulador de viabilidade econômica avançada do Confinamento Bovino",
+  "description": "Plataforma profissional de simulação de confinamento com análise de risco estocástico, testes de estresse, dominância estocástica e otimização de dietas. Ampliado para o módulo ULTRASSOM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

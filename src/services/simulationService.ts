@@ -568,8 +568,24 @@ export function calculateSimulation(inputs: SimulationInputs): SimulationResults
   const balancoFosforo = Math.max(0, ingestaoP - retencaoP);
 
   // 2. Emissões e Pegadas
-  const emissaoMetanoKg = ganhoPesoTotal * 2.0; // ~2kg CH4 por kg de ganho (estimativa simplificada)
-  const pegadaCarbonoTotal = ganhoPesoTotal * 0.05; // t CO2e
+  const CH4_FACTOR_VOLUMOSO = 22; // g CH4 / kg MS de volumoso
+  const CH4_FACTOR_CONCENTRADO = 12; // g CH4 / kg MS de concentrado
+  
+  // Utilizando o MS estimado de forma simples (estimativa 30% MS volumoso, 88% MS concentrado)
+  const msVolumoso = cmsVolumoso * 0.30;
+  const msConcentrado = cmsConcentrado * 0.88;
+  const producaoMetanoPorDia = (msVolumoso * CH4_FACTOR_VOLUMOSO + msConcentrado * CH4_FACTOR_CONCENTRADO); // g CH4/dia
+  const emissaoMetanoKg = (producaoMetanoPorDia * tempoAlimentacao) / 1000; // total kg CH4 no ciclo
+  
+  const pegadaCarbonoTotal = emissaoMetanoKg * 28; // kg CO2e (baseado no GWP 28 do CH4) -> t CO2e = pegadaCarbonoTotal/1000
+
+  // Simulador de Crédito de Carbono
+  const linhaBaseMetano = 65; // kg CH4 (exemplo de media do rebanho sem otimizacao)
+  const co2eEvitadoKg = Math.max(0, (linhaBaseMetano - emissaoMetanoKg) * 28);
+  const creditosGerados = co2eEvitadoKg / 1000; // em toneladas de CO2e
+  const precoCreditoCarbono = inputs.precoCreditoCarbono || 50; // default R$ 50/t
+  const receitaCreditoCarbono = creditosGerados * precoCreditoCarbono; // por animal
+  
   const pegadaHidricaTotal = (tempoAlimentacao * 45 / 1000) * (1 - usoAguaRecicladaPerc / 100); // m3/animal
 
   // 3. Eficiência de Uso da Terra
@@ -577,12 +593,13 @@ export function calculateSimulation(inputs: SimulationInputs): SimulationResults
 
   // 4. Índice de Sustentabilidade (0-100)
   let scoreESG = 0;
-  scoreESG += (indiceBemEstarAnimal / 10) * 25; // Bem-estar (25%)
+  scoreESG += (indiceBemEstarAnimal / 10) * 20; // Bem-estar (20%)
   scoreESG += (usoEnergiaRenovavelPerc / 100) * 15; // Energia (15%)
   scoreESG += (usoAguaRecicladaPerc / 100) * 10; // Água (10%)
   scoreESG += (certificacaoCompliance ? 15 : 0); // Governança (15%)
   scoreESG += (rastreabilidadeTotal ? 15 : 0); // Rastreabilidade (15%)
-  scoreESG += Math.min(20, (horasTreinamentoFuncionarioAno / 40) * 20); // Social (20%)
+  scoreESG += Math.min(10, (horasTreinamentoFuncionarioAno / 40) * 10); // Social (10%)
+  scoreESG += (emissaoMetanoKg < linhaBaseMetano ? 15 : 0); // Bonus por Redução de Emissao (15%)
   const indiceSustentabilidade = scoreESG;
 
   return {
@@ -592,12 +609,13 @@ export function calculateSimulation(inputs: SimulationInputs): SimulationResults
     custoOperacionalTotal,
     custoTotal,
     custoOportunidadeTotal,
-    receitaBruta,
-    receitaBrutaPorHa,
+    receitaBruta: receitaBruta + receitaCreditoCarbono, // inclui receita de carbono
+    receitaBrutaPorHa: receitaBrutaPorHa + (receitaCreditoCarbono * survivalRate * animaisPorHa),
     receitaVenda,
     receitaBonificacao,
     receitaEsterco,
     valorResidual,
+    receitaCreditoCarbono,
     margemBruta,
     margemLiquida,
     lucro,
@@ -1125,6 +1143,14 @@ export function runLHSSimulation(inputs: SimulationInputs, iterations: number = 
   const tirMedia = iterationsData.reduce((a, b) => a + b.tir, 0) / iterations;
   const vplMinimo = results[0];
   const vplMaximo = results[iterations - 1];
+  
+  // Percentis de VPL (filtrando caudas extremas e improváveis)
+  const vplP10 = results[Math.floor(iterations * 0.10)];
+  const vplP90 = results[Math.floor(iterations * 0.90)];
+  const vplP5 = results[Math.floor(iterations * 0.05)];
+  const vplP95 = results[Math.floor(iterations * 0.95)];
+  const vplP50 = results[Math.floor(iterations * 0.50)];
+
   const probabilidadeVplNegativo = (prejuizos / iterations) * 100;
 
   // Cálculo de Desvio Padrão e Coeficiente de Variação
@@ -1160,8 +1186,13 @@ export function runLHSSimulation(inputs: SimulationInputs, iterations: number = 
     const copula = inputs.copulaType || 'gaussian';
     
     let nivelRisco: 'baixo' | 'moderado' | 'alto' = 'moderado';
-    if (probPrejuizo < 5 && cv < 15) nivelRisco = 'baixo';
-    else if (probPrejuizo > 20 || cv > 30) nivelRisco = 'alto';
+    if (probPrejuizo < 5) {
+      nivelRisco = 'baixo';
+    } else if (probPrejuizo > 15) {
+      nivelRisco = 'alto';
+    } else {
+      nivelRisco = 'moderado';
+    }
     
     let titulo = "Parecer Técnico de Risco";
     let texto = "";
@@ -1196,6 +1227,11 @@ export function runLHSSimulation(inputs: SimulationInputs, iterations: number = 
     vplMedio,
     vplMinimo,
     vplMaximo,
+    vplP10,
+    vplP90,
+    vplP5,
+    vplP95,
+    vplP50,
     desvioPadrao,
     coeficienteVariacao,
     lucroMedio,

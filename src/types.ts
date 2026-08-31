@@ -100,6 +100,7 @@ export interface SimulationInputs {
   usoAguaRecicladaPerc: number;
   certificacaoCompliance: boolean;
   rastreabilidadeTotal: boolean;
+  precoCreditoCarbono: number; // R$ por tonelada de CO2eq mitigada
 
   // Evolução e Pesagens
   pesagens: Pesagem[];
@@ -162,6 +163,7 @@ export interface SimulationResults {
   receitaBonificacao: number;
   receitaEsterco: number;
   valorResidual: number;
+  receitaCreditoCarbono: number;
   margemBruta: number;
   margemLiquida: number;
   lucro: number;
@@ -264,6 +266,11 @@ export interface LHSSimulationResults {
   vplMedio: number;
   vplMinimo: number;
   vplMaximo: number;
+  vplP10?: number;
+  vplP90?: number;
+  vplP5?: number;
+  vplP95?: number;
+  vplP50?: number;
   desvioPadrao: number;
   coeficienteVariacao: number;
   lucroMedio: number;
@@ -323,6 +330,7 @@ export interface Ingredient {
   minIncl?: number; // Min inclusion (% of DM)
   maxIncl?: number; // Max inclusion (% of DM)
   selected?: boolean;
+  ch4Potential?: number; // Fator de potencial de emissão de metano entérico (g CH4 / kg MS)
 }
 
 export interface DietRequirements {
@@ -341,7 +349,7 @@ export interface DietRequirements {
   cms?: number; // Consumo de Matéria Seca (kg/dia)
   forageMin?: number;
   forageMax?: number;
-  optimizationGoal?: 'cost' | 'gmd';
+  optimizationGoal?: 'cost' | 'gmd' | 'eco';
 }
 
 export interface DietOptimizationResult {
@@ -364,6 +372,9 @@ export interface DietOptimizationResult {
   predictedGmd: number;
   feedConversion: number;
   waterIntake: number;
+  estimatedCh4Daily?: number; // g CH4/dia
+  estimatedCo2Daily?: number; // g CO2e/dia
+  nitrogenBalanceDaily?: number; // g N/dia
   alerts: string[];
   nutritionalProfile: {
     pb: number;

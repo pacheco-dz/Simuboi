@@ -1,31 +1,32 @@
-import solver from 'javascript-lp-solver';
+import solverPkg from 'javascript-lp-solver';
+const solver = (solverPkg as any).default || solverPkg;
 import { Ingredient, DietRequirements, DietOptimizationResult, DietAnimalProfile } from '../types';
 
 export const DEFAULT_INGREDIENTS: Ingredient[] = [
-  { id: '1', name: 'Milho Grão', type: 'concentrado', price: 1.2, pb: 9, ndt: 88, fdn: 12, ms: 88, ca: 0.03, p: 0.28, mg: 0.12, k: 0.40, na: 0.02, s: 0.12, vitA: 0, vitE: 20, ee: 4.0, pdr: 40, maxIncl: 85, selected: true },
-  { id: '2', name: 'Farelo de Soja', type: 'concentrado', price: 2.5, pb: 46, ndt: 80, fdn: 15, ms: 89, ca: 0.30, p: 0.65, mg: 0.30, k: 2.20, na: 0.02, s: 0.40, vitA: 0, vitE: 5, ee: 1.5, pdr: 35, maxIncl: 30, selected: true },
-  { id: '3', name: 'Silagem de Milho', type: 'volumoso', price: 0.35, pb: 7, ndt: 65, fdn: 45, ms: 33, ca: 0.25, p: 0.20, mg: 0.20, k: 1.20, na: 0.01, s: 0.10, vitA: 15000, vitE: 30, ee: 3.0, pdr: 70, minIncl: 10, selected: true },
-  { id: '4', name: 'Caroço de Algodão', type: 'concentrado', price: 1.8, pb: 22, ndt: 90, fdn: 44, ms: 90, ca: 0.16, p: 0.60, mg: 0.40, k: 1.20, na: 0.02, s: 0.25, vitA: 0, vitE: 40, ee: 18.0, pdr: 30, maxIncl: 15, selected: true },
-  { id: '5', name: 'Ureia', type: 'mineral', price: 3.5, pb: 280, ndt: 0, fdn: 0, ms: 99, ca: 0, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 100, isUrea: true, maxIncl: 1.5, selected: true },
-  { id: '6', name: 'Núcleo Mineral', type: 'mineral', price: 4.5, pb: 0, ndt: 0, fdn: 0, ms: 95, ca: 18, p: 6, mg: 2.5, k: 0.5, na: 10, s: 2, vitA: 200000, vitE: 500, ee: 0, pdr: 0, minIncl: 3, maxIncl: 5, selected: true },
-  { id: '7', name: 'Polpa Cítrica', type: 'concentrado', price: 1.1, pb: 7, ndt: 78, fdn: 21, ms: 88, ca: 1.8, p: 0.12, mg: 0.15, k: 1.10, na: 0.05, s: 0.10, vitA: 0, vitE: 0, ee: 2.0, pdr: 45, maxIncl: 30, selected: true },
-  { id: '8', name: 'Farelo de Trigo', type: 'concentrado', price: 1.0, pb: 17, ndt: 71, fdn: 40, ms: 88, ca: 0.14, p: 1.0, mg: 0.50, k: 1.50, na: 0.05, s: 0.25, vitA: 0, vitE: 10, ee: 4.0, pdr: 75, maxIncl: 25, selected: true },
-  { id: '9', name: 'Sorgo Grão', type: 'concentrado', price: 1.0, pb: 10, ndt: 82, fdn: 12, ms: 88, ca: 0.04, p: 0.30, mg: 0.15, k: 0.45, na: 0.02, s: 0.15, vitA: 0, vitE: 15, ee: 3.0, pdr: 45, maxIncl: 60, selected: true },
-  { id: '10', name: 'Casca de Soja', type: 'concentrado', price: 0.9, pb: 12, ndt: 75, fdn: 60, ms: 90, ca: 0.50, p: 0.20, mg: 0.25, k: 1.50, na: 0.02, s: 0.15, vitA: 0, vitE: 0, ee: 2.0, pdr: 50, maxIncl: 40, selected: true },
-  { id: '11', name: 'Farelo de Algodão 38', type: 'concentrado', price: 2.0, pb: 38, ndt: 72, fdn: 28, ms: 91, ca: 0.20, p: 1.10, mg: 0.60, k: 1.50, na: 0.03, s: 0.45, vitA: 0, vitE: 10, ee: 1.8, pdr: 40, maxIncl: 25, selected: true },
-  { id: '12', name: 'Feno de Tifton', type: 'volumoso', price: 0.8, pb: 12, ndt: 58, fdn: 70, ms: 85, ca: 0.40, p: 0.25, mg: 0.20, k: 1.80, na: 0.05, s: 0.20, vitA: 20000, vitE: 40, ee: 2.0, pdr: 75, selected: true },
-  { id: '13', name: 'DDG (Grão de Destilaria)', type: 'concentrado', price: 1.5, pb: 30, ndt: 85, fdn: 35, ms: 90, ca: 0.10, p: 0.80, mg: 0.30, k: 1.10, na: 0.20, s: 0.40, vitA: 0, vitE: 20, ee: 10.0, pdr: 45, maxIncl: 30, selected: true },
-  { id: '14', name: 'Silagem de Capim', type: 'volumoso', price: 0.25, pb: 8, ndt: 52, fdn: 65, ms: 28, ca: 0.35, p: 0.18, mg: 0.18, k: 1.50, na: 0.02, s: 0.15, vitA: 10000, vitE: 20, ee: 2.5, pdr: 75, selected: true },
-  { id: '15', name: 'Farelo de Milho (Refaz)', type: 'concentrado', price: 1.1, pb: 10, ndt: 80, fdn: 25, ms: 88, ca: 0.05, p: 0.35, mg: 0.15, k: 0.50, na: 0.02, s: 0.15, vitA: 0, vitE: 10, ee: 4.5, pdr: 50, selected: true },
-  { id: '16', name: 'Calcário Calcítico', type: 'mineral', price: 0.4, pb: 0, ndt: 0, fdn: 0, ms: 99, ca: 38, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, selected: true },
-  { id: '17', name: 'Fosfato Bicálcico', type: 'mineral', price: 3.8, pb: 0, ndt: 0, fdn: 0, ms: 98, ca: 24, p: 18, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, selected: true },
-  { id: '18', name: 'Cana-de-açúcar', type: 'volumoso', price: 0.15, pb: 3, ndt: 62, fdn: 48, ms: 25, ca: 0.15, p: 0.08, mg: 0.10, k: 0.80, na: 0.01, s: 0.05, vitA: 0, vitE: 0, ee: 1.5, pdr: 60, selected: false },
-  { id: '19', name: 'Silagem de Sorgo', type: 'volumoso', price: 0.30, pb: 8, ndt: 60, fdn: 52, ms: 30, ca: 0.30, p: 0.22, mg: 0.18, k: 1.10, na: 0.02, s: 0.12, vitA: 8000, vitE: 15, ee: 2.8, pdr: 65, selected: false },
-  { id: '20', name: 'Farelo de Amendoim', type: 'concentrado', price: 2.2, pb: 48, ndt: 82, fdn: 18, ms: 90, ca: 0.25, p: 0.60, mg: 0.35, k: 1.40, na: 0.03, s: 0.30, vitA: 0, vitE: 5, ee: 1.8, pdr: 40, selected: false },
-  { id: '21', name: 'Casca de Algodão', type: 'volumoso', price: 0.8, pb: 4, ndt: 42, fdn: 85, ms: 90, ca: 0.20, p: 0.10, mg: 0.15, k: 0.80, na: 0.02, s: 0.10, vitA: 0, vitE: 0, ee: 1.5, pdr: 50, selected: false },
-  { id: '22', name: 'Monensina Sódica', type: 'aditivo', price: 45.0, pb: 0, ndt: 0, fdn: 0, ms: 95, ca: 0, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, maxIncl: 0.03, selected: false },
-  { id: '23', name: 'Virginiamicina', type: 'aditivo', price: 85.0, pb: 0, ndt: 0, fdn: 0, ms: 95, ca: 0, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, maxIncl: 0.02, selected: false },
-  { id: '24', name: 'Probiótico', type: 'aditivo', price: 25.0, pb: 0, ndt: 0, fdn: 0, ms: 95, ca: 0, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, maxIncl: 0.1, selected: false },
+  { id: '1', name: 'Milho Grão', type: 'concentrado', price: 1.2, pb: 9, ndt: 88, fdn: 12, ms: 88, ca: 0.03, p: 0.28, mg: 0.12, k: 0.40, na: 0.02, s: 0.12, vitA: 0, vitE: 20, ee: 4.0, pdr: 40, maxIncl: 85, selected: true, ch4Potential: 12.5 },
+  { id: '2', name: 'Farelo de Soja', type: 'concentrado', price: 2.5, pb: 46, ndt: 80, fdn: 15, ms: 89, ca: 0.30, p: 0.65, mg: 0.30, k: 2.20, na: 0.02, s: 0.40, vitA: 0, vitE: 5, ee: 1.5, pdr: 35, maxIncl: 30, selected: true, ch4Potential: 14.0 },
+  { id: '3', name: 'Silagem de Milho', type: 'volumoso', price: 0.35, pb: 7, ndt: 65, fdn: 45, ms: 33, ca: 0.25, p: 0.20, mg: 0.20, k: 1.20, na: 0.01, s: 0.10, vitA: 15000, vitE: 30, ee: 3.0, pdr: 70, minIncl: 10, selected: true, ch4Potential: 21.0 },
+  { id: '4', name: 'Caroço de Algodão', type: 'concentrado', price: 1.8, pb: 22, ndt: 90, fdn: 44, ms: 90, ca: 0.16, p: 0.60, mg: 0.40, k: 1.20, na: 0.02, s: 0.25, vitA: 0, vitE: 40, ee: 18.0, pdr: 30, maxIncl: 15, selected: true, ch4Potential: 9.5 },
+  { id: '5', name: 'Ureia', type: 'mineral', price: 3.5, pb: 280, ndt: 0, fdn: 0, ms: 99, ca: 0, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 100, isUrea: true, maxIncl: 1.5, selected: true, ch4Potential: 0 },
+  { id: '6', name: 'Núcleo Mineral', type: 'mineral', price: 4.5, pb: 0, ndt: 0, fdn: 0, ms: 95, ca: 18, p: 6, mg: 2.5, k: 0.5, na: 10, s: 2, vitA: 200000, vitE: 500, ee: 0, pdr: 0, minIncl: 3, maxIncl: 5, selected: true, ch4Potential: 0 },
+  { id: '7', name: 'Polpa Cítrica', type: 'concentrado', price: 1.1, pb: 7, ndt: 78, fdn: 21, ms: 88, ca: 1.8, p: 0.12, mg: 0.15, k: 1.10, na: 0.05, s: 0.10, vitA: 0, vitE: 0, ee: 2.0, pdr: 45, maxIncl: 30, selected: true, ch4Potential: 16.0 },
+  { id: '8', name: 'Farelo de Trigo', type: 'concentrado', price: 1.0, pb: 17, ndt: 71, fdn: 40, ms: 88, ca: 0.14, p: 1.0, mg: 0.50, k: 1.50, na: 0.05, s: 0.25, vitA: 0, vitE: 10, ee: 4.0, pdr: 75, maxIncl: 25, selected: true, ch4Potential: 15.5 },
+  { id: '9', name: 'Sorgo Grão', type: 'concentrado', price: 1.0, pb: 10, ndt: 82, fdn: 12, ms: 88, ca: 0.04, p: 0.30, mg: 0.15, k: 0.45, na: 0.02, s: 0.15, vitA: 0, vitE: 15, ee: 3.0, pdr: 45, maxIncl: 60, selected: true, ch4Potential: 13.0 },
+  { id: '10', name: 'Casca de Soja', type: 'concentrado', price: 0.9, pb: 12, ndt: 75, fdn: 60, ms: 90, ca: 0.50, p: 0.20, mg: 0.25, k: 1.50, na: 0.02, s: 0.15, vitA: 0, vitE: 0, ee: 2.0, pdr: 50, maxIncl: 40, selected: true, ch4Potential: 15.0 },
+  { id: '11', name: 'Farelo de Algodão 38', type: 'concentrado', price: 2.0, pb: 38, ndt: 72, fdn: 28, ms: 91, ca: 0.20, p: 1.10, mg: 0.60, k: 1.50, na: 0.03, s: 0.45, vitA: 0, vitE: 10, ee: 1.8, pdr: 40, maxIncl: 25, selected: true, ch4Potential: 14.5 },
+  { id: '12', name: 'Feno de Tifton', type: 'volumoso', price: 0.8, pb: 12, ndt: 58, fdn: 70, ms: 85, ca: 0.40, p: 0.25, mg: 0.20, k: 1.80, na: 0.05, s: 0.20, vitA: 20000, vitE: 40, ee: 2.0, pdr: 75, selected: true, ch4Potential: 22.0 },
+  { id: '13', name: 'DDG (Grão de Destilaria)', type: 'concentrado', price: 1.5, pb: 30, ndt: 85, fdn: 35, ms: 90, ca: 0.10, p: 0.80, mg: 0.30, k: 1.10, na: 0.20, s: 0.40, vitA: 0, vitE: 20, ee: 10.0, pdr: 45, maxIncl: 30, selected: true, ch4Potential: 13.5 },
+  { id: '14', name: 'Silagem de Capim', type: 'volumoso', price: 0.25, pb: 8, ndt: 52, fdn: 65, ms: 28, ca: 0.35, p: 0.18, mg: 0.18, k: 1.50, na: 0.02, s: 0.15, vitA: 10000, vitE: 20, ee: 2.5, pdr: 75, selected: true, ch4Potential: 23.0 },
+  { id: '15', name: 'Farelo de Milho (Refaz)', type: 'concentrado', price: 1.1, pb: 10, ndt: 80, fdn: 25, ms: 88, ca: 0.05, p: 0.35, mg: 0.15, k: 0.50, na: 0.02, s: 0.15, vitA: 0, vitE: 10, ee: 4.5, pdr: 50, selected: true, ch4Potential: 14.0 },
+  { id: '16', name: 'Calcário Calcítico', type: 'mineral', price: 0.4, pb: 0, ndt: 0, fdn: 0, ms: 99, ca: 38, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, selected: true, ch4Potential: 0 },
+  { id: '17', name: 'Fosfato Bicálcico', type: 'mineral', price: 3.8, pb: 0, ndt: 0, fdn: 0, ms: 98, ca: 24, p: 18, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, selected: true, ch4Potential: 0 },
+  { id: '18', name: 'Cana-de-açúcar', type: 'volumoso', price: 0.15, pb: 3, ndt: 62, fdn: 48, ms: 25, ca: 0.15, p: 0.08, mg: 0.10, k: 0.80, na: 0.01, s: 0.05, vitA: 0, vitE: 0, ee: 1.5, pdr: 60, selected: false, ch4Potential: 20.0 },
+  { id: '19', name: 'Silagem de Sorgo', type: 'volumoso', price: 0.30, pb: 8, ndt: 60, fdn: 52, ms: 30, ca: 0.30, p: 0.22, mg: 0.18, k: 1.10, na: 0.02, s: 0.12, vitA: 8000, vitE: 15, ee: 2.8, pdr: 65, selected: false, ch4Potential: 22.0 },
+  { id: '20', name: 'Farelo de Amendoim', type: 'concentrado', price: 2.2, pb: 48, ndt: 82, fdn: 18, ms: 90, ca: 0.25, p: 0.60, mg: 0.35, k: 1.40, na: 0.03, s: 0.30, vitA: 0, vitE: 5, ee: 1.8, pdr: 40, selected: false, ch4Potential: 14.5 },
+  { id: '21', name: 'Casca de Algodão', type: 'volumoso', price: 0.8, pb: 4, ndt: 42, fdn: 85, ms: 90, ca: 0.20, p: 0.10, mg: 0.15, k: 0.80, na: 0.02, s: 0.10, vitA: 0, vitE: 0, ee: 1.5, pdr: 50, selected: false, ch4Potential: 23.5 },
+  { id: '22', name: 'Monensina Sódica', type: 'aditivo', price: 45.0, pb: 0, ndt: 0, fdn: 0, ms: 95, ca: 0, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, maxIncl: 0.03, selected: false, ch4Potential: 0 },
+  { id: '23', name: 'Virginiamicina', type: 'aditivo', price: 85.0, pb: 0, ndt: 0, fdn: 0, ms: 95, ca: 0, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, maxIncl: 0.02, selected: false, ch4Potential: 0 },
+  { id: '24', name: 'Probiótico', type: 'aditivo', price: 25.0, pb: 0, ndt: 0, fdn: 0, ms: 95, ca: 0, p: 0, mg: 0, k: 0, na: 0, s: 0, vitA: 0, vitE: 0, ee: 0, pdr: 0, maxIncl: 0.1, selected: false, ch4Potential: 0 },
 ];
 
 export function calculateRequirements(profile: DietAnimalProfile): DietRequirements {
@@ -157,6 +158,7 @@ export function optimizeDiet(
 
   while (iterations < MAX_ITERATIONS) {
     const isGmdGoal = currentRequirements.optimizationGoal === 'gmd';
+    const isEcoGoal = currentRequirements.optimizationGoal === 'eco';
     
     const model: any = {
       optimize: 'objective',
@@ -193,12 +195,20 @@ export function optimizeDiet(
       ndt: 100,
     };
 
-    model.constraints.pb = { min: currentRequirements.pbMin * 100 * (isGmdGoal ? 1 : safetyFactor) };
+    model.constraints.pb = { min: currentRequirements.pbMin * 100 * ((isGmdGoal || isEcoGoal) ? 1 : safetyFactor) };
     model.constraints.ndt = { min: currentRequirements.ndtMin * 100 };
+
+    // Para Eco-Otimo: penalizamos ingredientes com alto potencial de metano no objetivo
+    // O Carbon Methane Cost (proxy de penalidade) -> ex: R$ 0.10 por cada grama CH4/kg MS para refletir um forte incentivo a ingredientes "limpos".
+    const ch4PenaltyCost = 0.05; 
 
     ingredients.filter(ing => ing.selected).forEach((ing) => {
       const priceMS = ing.price / (ing.ms / 100);
       let objectiveValue = priceMS;
+      
+      if (isEcoGoal && ing.ch4Potential) {
+        objectiveValue += (ing.ch4Potential * ch4PenaltyCost);
+      }
       
       const pdrDM = (ing.pdr || 0) * (ing.pb / 100);
 
@@ -366,6 +376,19 @@ function processSolution(
   const predictedGmd = predictGMD({ ndt: actualNdt, pb: actualPb }, profile, cms);
   const feedConversion = predictedGmd > 0 ? cms / predictedGmd : 0;
 
+  // Calculo de Métricas Ambientais (Eco-ótima)
+  const estimatedCh4DailyVal = optimizedIngredients.reduce((sum, optIng) => {
+    const ing = ingredients.find(i => i.name === optIng.name)!;
+    const intakeDM = (optIng.percentage / 100) * cms;
+    return sum + intakeDM * (ing.ch4Potential || 0);
+  }, 0);
+
+  const estimatedCo2DailyVal = estimatedCh4DailyVal * 28; // g CO2e/dia (CH4 GWP = 28)
+
+  const nitrogenIntakeDaily = (cms * (actualPb / 100) * 1000) / 6.25;
+  const nitrogenRetentionDaily = (predictedGmd * 0.15 * 1000) / 6.25;
+  const nitrogenBalanceDailyVal = Math.max(0, nitrogenIntakeDaily - nitrogenRetentionDaily);
+
   // Technical Alerts & Metabolic Disorders
   const alerts: string[] = [];
   
@@ -420,6 +443,9 @@ function processSolution(
     predictedGmd,
     feedConversion,
     waterIntake,
+    estimatedCh4Daily: estimatedCh4DailyVal,
+    estimatedCo2Daily: estimatedCo2DailyVal,
+    nitrogenBalanceDaily: nitrogenBalanceDailyVal,
     alerts,
     nutritionalProfile: {
       pb: actualPb,
@@ -438,3 +464,20 @@ function processSolution(
     }
   };
 }
+
+export function recalculateDietWithPercentages(
+  percentages: { name: string; percentage: number }[],
+  ingredients: Ingredient[],
+  requirements: DietRequirements,
+  profile: DietAnimalProfile
+): DietOptimizationResult {
+  const resultObj: any = {
+    slack_pb: 0,
+    slack_ndt: 0
+  };
+  percentages.forEach(p => {
+    resultObj[p.name] = p.percentage;
+  });
+  return processSolution(resultObj, ingredients, requirements, profile);
+}
+

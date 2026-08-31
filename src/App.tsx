@@ -8,6 +8,7 @@ import {
   Clock, 
   ChevronRight, 
   ChevronDown, 
+  ChevronUp, 
   Info,
   Calculator,
   ArrowRightLeft,
@@ -72,25 +73,17 @@ import {
   MapPin,
   Sun,
   Thermometer,
-  Navigation
+  Navigation,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  supabase, 
-  isSupabaseConfigured, 
-  supabaseSignUp, 
-  supabaseSignIn, 
-  supabaseSignOut, 
-  supabaseResetPassword, 
-  supabaseUpdatePassword,
-  syncUserDataToSupabase,
-  fetchUserDataFromSupabase
-} from './lib/supabase';
+import { MarketTrendIndicator, MarketVolatilitySummary } from './components/MarketTrendIndicator';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { optimizeDiet, calculateRequirements, DEFAULT_INGREDIENTS } from './services/dietOptimizerService';
+import { optimizeDiet, calculateRequirements, DEFAULT_INGREDIENTS, recalculateDietWithPercentages } from './services/dietOptimizerService';
 import { fetchMarketPrices } from './services/marketService';
 import { SimulationInputs, SimulationResults, LHSSimulationResults, Pesagem, Ultrassom, SavedSimulation, MarketPrice, DepreciationItem, Ingredient, DietRequirements, DietOptimizationResult, DietAnimalProfile, SavedDiet } from './types';
 import { 
@@ -114,6 +107,7 @@ import {
   ZAxis
 } from 'recharts';
 import { calculateSimulation, runLHSSimulation } from './services/simulationService';
+import { UltrasoundSlaughterModule } from './components/UltrasoundSlaughterModule';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -199,8 +193,8 @@ const DEFAULT_INPUTS: SimulationInputs = {
   averageThi: 72,
   ativarEstresseTermico: false,
   itensFinanciamento: [],
-  precoBoiMagro: 4500.00,
-  precoBoiGordo: 330.00,
+  precoBoiMagro: 2920.00,
+  precoBoiGordo: 340.00,
   salarioMinimo: 3070.00,
   valorTerraHa: 50000,
   precoVolumoso: 0.54,
@@ -227,6 +221,7 @@ const DEFAULT_INPUTS: SimulationInputs = {
   usoAguaRecicladaPerc: 15,
   certificacaoCompliance: true,
   rastreabilidadeTotal: true,
+  precoCreditoCarbono: 50,
   desviosPadrao: {
     precoBoiMagro: 200,
     precoBoiGordo: 20,
@@ -356,21 +351,23 @@ const ReportOption = ({ label, checked, onChange, icon, disabled = false }: {
   <button
     onClick={onChange}
     disabled={disabled}
-    className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-      disabled ? 'opacity-40 cursor-not-allowed bg-gray-50 border-gray-100' :
-      checked ? 'border-emerald-500 bg-emerald-50/60' : 'border-gray-100 bg-white hover:border-gray-200'
+    className={`flex items-center justify-between p-2 rounded-xl border transition-all text-left ${
+      disabled ? 'opacity-25 cursor-not-allowed bg-slate-900/20 border-[#131c2e]' :
+      checked ? 'border-emerald-500/60 bg-emerald-500/5' : 'border-[#131c2e] bg-[#0d121f] hover:border-slate-800 hover:bg-slate-900/40'
     }`}
   >
-    <div className="flex items-center gap-3">
-      <div className={`p-2 rounded-lg ${checked ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-slate-400'}`}>
+    <div className="flex items-center gap-2">
+      <div className={`p-1.5 rounded-lg shrink-0 flex items-center justify-center [&>svg]:w-3.5 [&>svg]:h-3.5 ${checked ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-900/60 text-slate-500 border border-[#131c2e]'}`}>
         {icon}
       </div>
-      <span className={`font-semibold text-sm ${checked ? 'text-emerald-950 font-bold' : 'text-gray-600'}`}>{label}</span>
+      <span className={`font-sans text-[11px] leading-tight ${checked ? 'text-slate-100 font-medium' : 'text-slate-400 font-normal'}`}>
+        {label}
+      </span>
     </div>
-    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-      checked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-200'
+    <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+      checked ? 'bg-emerald-500 border-emerald-500' : 'border-[#131c2e]'
     }`}>
-      {checked && <CheckCircle2 className="w-4 h-4 text-white" />}
+      {checked && <CheckCircle2 className="w-2 h-2 text-[#070a13]" />}
     </div>
   </button>
 );
@@ -471,10 +468,45 @@ function generateLocalFallbackWeather(lat: number, lon: number): WeatherForecast
   return days;
 }
 
+const CustomScatterTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    let statusColor = 'text-emerald-400';
+    if (data.status.includes('Emergência')) statusColor = 'text-red-400';
+    else if (data.status.includes('Severo')) statusColor = 'text-amber-400';
+    else if (data.status.includes('Leve')) statusColor = 'text-indigo-400';
+    
+    return (
+      <div className="bg-[#0b0f19] border border-slate-800 p-3 rounded-xl shadow-xl text-[11px] font-sans space-y-1.5 text-left">
+        <p className="font-bold text-slate-200 border-b border-slate-800 pb-1 mb-1">Dia {data.day} do Lote</p>
+        <p className="text-slate-400">Temp. Média: <strong className="text-slate-200">{data.tempMean}°C</strong></p>
+        <p className="text-slate-400">Umidade Rel.: <strong className="text-slate-200">{data.humidity}%</strong></p>
+        <p className="text-slate-400">Índice THI: <strong className="text-slate-200">{data.thi}</strong></p>
+        <p className="text-slate-400">GMD Projetado: <strong className="text-emerald-400">{data.gmd.toFixed(3)} kg/dia</strong></p>
+        <p className="text-slate-400">Perda de Desempenho: <strong className="text-rose-400">-{data.gmdLoss}%</strong></p>
+        <p className="text-slate-400">Status: <strong className={statusColor}>{data.status}</strong></p>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function App() {
-  // --- DETECTOR DE AUTENTICAÇÃO E BANCO DE DADOS SUPABASE ---
-  const [currentUser, setCurrentUser] = useState<{ email: string } | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+  // --- MODO DE OPERAÇÃO LOCAL E OFFLINE-FIRST ---
+  const [currentUser, setCurrentUser] = useState<{ email: string } | null>(() => {
+    const saved = localStorage.getItem('simuboi_mock_session');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
+    return localStorage.getItem('simuboi_demo_mode') === 'true' || !!localStorage.getItem('simuboi_mock_session');
+  });
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'update_password'>('login');
   const [isIntegrationModalOpen, setIsIntegrationModalOpen] = useState(false);
   const [integrationTab, setIntegrationTab] = useState<'github' | 'vercel' | 'supabase'>('github');
@@ -494,9 +526,23 @@ export default function App() {
   const [suggestedTeam, setSuggestedTeam] = useState<any>(null);
   const [results, setResults] = useState<SimulationResults | null>(null);
   const [lhsResults, setLhsResults] = useState<LHSSimulationResults | null>(null);
-  const [activeTab, setActiveTab ] = useState<'inputs' | 'results' | 'risk' | 'data' | 'diet' | 'esg' | 'market' | 'property'>(() => {
+  const [vplChartRange, setVplChartRange] = useState<'full' | 'p10_p90'>('full');
+  const [ultrasoundSubTab, setUltrasoundSubTab] = useState<'recommendations' | 'animal' | 'lote' | 'manejo' | 'simulation' | 'calibration' | 'new_exam'>(() => {
+    const saved = localStorage.getItem('simuboi_ultrasound_subtab');
+    const validTabs = ['recommendations', 'animal', 'lote', 'manejo', 'simulation', 'calibration', 'new_exam'];
+    if (saved && validTabs.includes(saved)) {
+      return saved as any;
+    }
+    return 'recommendations';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('simuboi_ultrasound_subtab', ultrasoundSubTab);
+  }, [ultrasoundSubTab]);
+
+  const [activeTab, setActiveTab ] = useState<'inputs' | 'results' | 'risk' | 'data' | 'diet' | 'esg' | 'market' | 'property' | 'ultrasound'>(() => {
     const saved = localStorage.getItem('simuboi_active_tab');
-    const validTabs = ['inputs', 'results', 'risk', 'data', 'diet', 'esg', 'market', 'property'];
+    const validTabs = ['inputs', 'results', 'risk', 'data', 'diet', 'esg', 'market', 'property', 'ultrasound'];
     if (saved && validTabs.includes(saved)) {
       return saved as any;
     }
@@ -716,12 +762,23 @@ export default function App() {
   const [isResultsDropdownOpen, setIsResultsDropdownOpen] = useState(false);
   const [isSensitivityInfoOpen, setIsSensitivityInfoOpen] = useState(false);
   const [isRegressionInfoOpen, setIsRegressionInfoOpen] = useState(false);
+  const [regressionSearch, setRegressionSearch] = useState('');
+  const [showAllRegression, setShowAllRegression] = useState(false);
   const [isMorrisInfoOpen, setIsMorrisInfoOpen] = useState(false);
   const [isSobolInfoOpen, setIsSobolInfoOpen] = useState(false);
   const [isCopulaInfoOpen, setIsCopulaInfoOpen] = useState(false);
   const [isHistogramInfoOpen, setIsHistogramInfoOpen] = useState(false);
   const [isSavedSimsOpen, setIsSavedSimsOpen] = useState(false);
   const [savedSimulations, setSavedSimulations] = useState<SavedSimulation[]>([]);
+  const [loadedSimulationId, setLoadedSimulationId] = useState<string | null>(null);
+  const [soundAlertEnabled, setSoundAlertEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('simuboi_sound_alerts') !== 'false';
+  });
+  const soundAlertEnabledRef = React.useRef(soundAlertEnabled);
+  useEffect(() => {
+    soundAlertEnabledRef.current = soundAlertEnabled;
+  }, [soundAlertEnabled]);
+  const [saveMode, setSaveMode] = useState<'update' | 'new'>('new');
   const [selectedSimsForDominance, setSelectedSimsForDominance] = useState<string[]>([]);
   const [dominanceResults, setDominanceResults] = useState<any[]>([]);
   const [isCalculatingDominance, setIsCalculatingDominance] = useState(false);
@@ -816,6 +873,55 @@ export default function App() {
     rendimentoCarcaca: DEFAULT_INPUTS.rendimentoCarcaca
   });
   const [dietResult, setDietResult] = useState<DietOptimizationResult | null>(null);
+  const [originalDietResult, setOriginalDietResult] = useState<DietOptimizationResult | null>(null);
+
+  const handleRestoreOriginalDiet = () => {
+    if (originalDietResult) {
+      setDietResult(originalDietResult);
+      showToast("Formulação calculada originalmente restaurada com sucesso!", "success");
+    }
+  };
+
+  const handleIngredientPercentageChange = (ingName: string, newPercentage: number) => {
+    if (!dietResult) return;
+    
+    const currentIngredients = dietResult.ingredients;
+    const otherIngredients = currentIngredients.filter(ing => ing.name !== ingName);
+    const otherSum = otherIngredients.reduce((sum, ing) => sum + ing.percentage, 0);
+    
+    let updatedIngredients = currentIngredients.map(ing => {
+      if (ing.name === ingName) {
+        return { ...ing, percentage: newPercentage };
+      } else {
+        const share = otherSum > 0 ? ing.percentage / otherSum : (otherIngredients.length > 0 ? 1 / otherIngredients.length : 0);
+        const remaining = 100 - newPercentage;
+        return { ...ing, percentage: Math.max(0, remaining * share) };
+      }
+    });
+
+    const totalSum = updatedIngredients.reduce((sum, ing) => sum + ing.percentage, 0);
+    if (totalSum > 0) {
+      updatedIngredients = updatedIngredients.map(ing => ({
+        ...ing,
+        percentage: (ing.percentage / totalSum) * 100
+      }));
+    }
+
+    const requirementsToUse = {
+      ...dietRequirements,
+      forageMin: dietRequirements.forageMin,
+      forageMax: dietRequirements.forageMax,
+    };
+    const activeIngredientsList = dietIngredients.filter(ing => ing.selected);
+    const updatedResult = recalculateDietWithPercentages(
+      updatedIngredients,
+      activeIngredientsList,
+      requirementsToUse,
+      dietAnimalProfile
+    );
+
+    setDietResult(updatedResult);
+  };
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [isFullProfileModalOpen, setIsFullProfileModalOpen] = useState(false);
   const [isSavedDietsModalOpen, setIsSavedDietsModalOpen] = useState(false);
@@ -914,6 +1020,151 @@ export default function App() {
     const avgSigma = lhsResults.morris.reduce((sum, m) => sum + m.sigma, 0) / n;
     return { avgMuStar, avgSigma };
   }, [lhsResults?.morris]);
+
+  const scatterData = useMemo(() => {
+    const lat = property?.latitude ?? -29.684;
+    const lon = property?.longitude ?? -53.806;
+    const baseGmd = Number(inputs?.gmd) || 1.5;
+    const raca = inputs?.raca || 'nelore';
+
+    // Base temperature estimation based on latitude
+    const baseTemp = 28 - Math.abs(lat) * 0.35;
+    
+    const dataPoints = [];
+    for (let i = 1; i <= 30; i++) {
+      // Create a wave of temperature fluctuations to show stress correlation beautifully
+      const wave1 = Math.sin((i / 5) + (lat * 0.1));
+      const wave2 = Math.cos((i / 3) + (lon * 0.15));
+      const tempNoise = Math.sin(i * 1.7) * 3;
+      
+      const tempMean = baseTemp + wave1 * 5 + wave2 * 2 + tempNoise;
+      
+      // Relative humidity (with negative correlation to temperature)
+      const humidityNoise = Math.cos(i * 2.1) * 10;
+      const rhMean = Math.min(95, Math.max(35, 75 - (tempMean - baseTemp) * 1.5 + humidityNoise));
+      
+      // THI formula: 0.8 * T + (RH/100) * (T - 14.3) + 46.4
+      const thi = 0.8 * tempMean + (rhMean / 100) * (tempMean - 14.3) + 46.4;
+      
+      let gmdLossPerc = 0;
+      let status = 'Conforto Térmico';
+      
+      const racaLower = raca.toLowerCase();
+      if (racaLower === 'nelore' || racaLower === 'zebuino') {
+        if (thi <= 75) {
+          gmdLossPerc = 0;
+          status = 'Conforto Térmico';
+        } else if (thi <= 79) {
+          gmdLossPerc = (thi - 75) * 1.5;
+          status = 'Estresse Leve';
+        } else if (thi <= 84) {
+          gmdLossPerc = 6.0 + (thi - 79) * 3.5;
+          status = 'Estresse Severo';
+        } else {
+          gmdLossPerc = 23.5 + (thi - 84) * 6.0;
+          status = 'Emergência Térmica';
+        }
+      } else if (racaLower === 'cruzamento' || racaLower === 'cruzado') {
+        if (thi <= 72) {
+          gmdLossPerc = 0;
+          status = 'Conforto Térmico';
+        } else if (thi <= 78) {
+          gmdLossPerc = (thi - 72) * 2.0;
+          status = 'Estresse Leve';
+        } else if (thi <= 84) {
+          gmdLossPerc = 12.0 + (thi - 78) * 4.5;
+          status = 'Estresse Severo';
+        } else {
+          gmdLossPerc = 39.0 + (thi - 84) * 7.5;
+          status = 'Emergência Térmica';
+        }
+      } else {
+        if (thi <= 70) {
+          gmdLossPerc = 0;
+          status = 'Conforto Térmico';
+        } else if (thi <= 78) {
+          gmdLossPerc = (thi - 70) * 2.8;
+          status = 'Estresse Leve';
+        } else if (thi <= 84) {
+          gmdLossPerc = 22.4 + (thi - 78) * 5.5;
+          status = 'Estresse Severo';
+        } else {
+          gmdLossPerc = 55.4 + (thi - 84) * 9.0;
+          status = 'Emergência Térmica';
+        }
+      }
+      
+      let coldLossPerc = 0;
+      if (tempMean < 9) {
+        coldLossPerc = (9 - tempMean) * 4.5;
+        if (coldLossPerc > 0) {
+          status = tempMean < 4 ? 'Estresse por Frio Severo' : 'Estresse por Frio Leve';
+        }
+      }
+      
+      const totalLossPerc = Math.min(95, Math.max(0, gmdLossPerc + coldLossPerc));
+      const bioFluctuation = Math.sin(i * 4.3) * 0.04;
+      const projectedGmd = Math.max(0.05, baseGmd * (1 - totalLossPerc / 100) + bioFluctuation);
+      
+      dataPoints.push({
+        day: i,
+        tempMean: parseFloat(tempMean.toFixed(1)),
+        humidity: parseFloat(rhMean.toFixed(0)),
+        thi: parseFloat(thi.toFixed(1)),
+        gmd: parseFloat(projectedGmd.toFixed(3)),
+        gmdLoss: parseFloat(totalLossPerc.toFixed(1)),
+        status: status
+      });
+    }
+    
+    return dataPoints;
+  }, [property?.id, property?.latitude, property?.longitude, inputs?.gmd, inputs?.raca]);
+
+  const playClimateAlertSound = (customMessage?: string) => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      const now = ctx.currentTime;
+      
+      const playBeep = (startTime: number, freq: number, duration: number, type: 'sine' | 'triangle' | 'square' | 'sawtooth' = 'sine') => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, startTime);
+        
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.2, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration - 0.01);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      };
+
+      // Dual tone sequence for premium emergency warning beep
+      playBeep(now, 987.77, 0.15, 'sine');
+      playBeep(now + 0.2, 987.77, 0.15, 'sine');
+      playBeep(now + 0.4, 987.77, 0.3, 'sine');
+      
+      playBeep(now, 493.88, 0.15, 'triangle');
+      playBeep(now + 0.2, 493.88, 0.15, 'triangle');
+      playBeep(now + 0.4, 493.88, 0.3, 'triangle');
+
+      // Trigger standard system notification for background/desktop notification
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification("Alerta Climático Crítico - Inteligência em Confinamento", {
+          body: customMessage || "Risco crítico/emergência climática detectada nos lotes do confinamento!",
+          tag: "climate-alert"
+        });
+      }
+    } catch (err) {
+      console.warn("Could not play climate alert sound:", err);
+    }
+  };
 
   // --- CLIMATE TRACKING EFFECT FOR RURAL PROPERTIES AND WEATHER WITH DEBOUNCE ---
   useEffect(() => {
@@ -1046,6 +1297,17 @@ export default function App() {
 
         setWeatherForecast(days);
 
+        const severeDays = days.filter(d => 
+          d.thiStatus === 'emergência' || 
+          d.thiStatus === 'critico' || 
+          d.coldRiskStatus === 'critico'
+        );
+        if (severeDays.length > 0 && soundAlertEnabledRef.current) {
+          const detail = severeDays[0];
+          const typeStr = detail.thiStatus === 'emergência' || detail.thiStatus === 'critico' ? 'Calor Extremo' : 'Frio Extremo';
+          playClimateAlertSound(`Risco de ${typeStr} detectado nos próximos dias (THI: ${detail.thi.toFixed(1)}).`);
+        }
+
         setNotifications(prev => {
           const withoutClimate = prev.filter(n => n.type !== 'clima_calor' && n.type !== 'clima_frio');
           if (newAlerts.length === 0) {
@@ -1067,6 +1329,17 @@ export default function App() {
         if (!active) return;
         const fakeDays = generateLocalFallbackWeather(property.latitude, property.longitude);
         setWeatherForecast(fakeDays);
+
+        const severeFakeDays = fakeDays.filter(fd => 
+          fd.thiStatus === 'emergência' || 
+          fd.thiStatus === 'critico' || 
+          fd.coldRiskStatus === 'critico'
+        );
+        if (severeFakeDays.length > 0 && soundAlertEnabledRef.current) {
+          const detail = severeFakeDays[0];
+          const typeStr = detail.thiStatus === 'emergência' || detail.thiStatus === 'critico' ? 'Calor Extremo' : 'Frio Extremo';
+          playClimateAlertSound(`Risco de ${typeStr} detectado nos próximos dias (THI: ${detail.thi.toFixed(1)}).`);
+        }
 
         const newAlerts: any[] = [];
         fakeDays.forEach((fd, i) => {
@@ -1217,6 +1490,7 @@ export default function App() {
     if (dietMode === 'auto' && dietIngredients.length > 0) {
       const result = optimizeDiet(dietIngredients.filter(ing => ing.selected), dietRequirements, dietAnimalProfile);
       setDietResult(result);
+      setOriginalDietResult(result);
     }
   }, [dietRequirements, dietMode, dietIngredients]);
 
@@ -1276,6 +1550,40 @@ export default function App() {
       below: (below / total) * 100
     };
   }, [lhsResults, vplThreshold]);
+
+  const histogramData = useMemo(() => {
+    if (!lhsResults) return [];
+    if (vplChartRange === 'full') {
+      return lhsResults.histograma;
+    }
+    
+    // Sort all VPL iterations
+    const vpls = [...lhsResults.iteracoes].map(it => it.vpl).sort((a, b) => a - b);
+    const p10Val = lhsResults.vplP10 ?? vpls[Math.floor(vpls.length * 0.10)];
+    const p90Val = lhsResults.vplP90 ?? vpls[Math.floor(vpls.length * 0.90)];
+    
+    // Filter iterations within P10 and P90
+    const filteredVpls = vpls.filter(v => v >= p10Val && v <= p90Val);
+    if (filteredVpls.length === 0) return lhsResults.histograma;
+    
+    const minVal = filteredVpls[0];
+    const maxVal = filteredVpls[filteredVpls.length - 1];
+    const numBins = 15;
+    const binSize = (maxVal - minVal) / (numBins || 1);
+    const histogram = [];
+    
+    for (let i = 0; i < numBins; i++) {
+      const start = minVal + i * binSize;
+      const end = start + binSize;
+      const count = filteredVpls.filter(v => v >= start && v < end).length;
+      histogram.push({
+        faixa: `${Math.round(start)} a ${Math.round(end)}`,
+        frequencia: count,
+        valor: (start + end) / 2
+      });
+    }
+    return histogram;
+  }, [lhsResults, vplChartRange]);
 
   const topCorrelations = useMemo(() => {
     const list: { key1: string; key2: string; value: number }[] = [];
@@ -1410,77 +1718,27 @@ export default function App() {
     localStorage.setItem('simuboi_saved_diets', JSON.stringify(savedDiets));
   }, [savedDiets]);
 
-  // --- CONTROLLER DE SESSÃO DO SUPABASE & MOCK AUTH BANCO LOCAL ---
-  useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) {
-      const stored = localStorage.getItem('simuboi_mock_session');
-      if (stored) {
-        try {
-          setCurrentUser(JSON.parse(stored));
-        } catch {
-          // silence
-        }
-      }
-      return;
-    }
+  // --- CONTROLLER DE SESSÃO LOCAL E OFFLINE-FIRST ---
+  const handleSignOut = () => {
+    setCurrentUser(null);
+    setIsDemoMode(false);
+    localStorage.removeItem('simuboi_mock_session');
+    localStorage.removeItem('simuboi_demo_mode');
+    setAuthEmail('');
+    setAuthPassword('');
+    setAuthConfirmPassword('');
+    setAuthError('');
+    setAuthSuccess('');
+  };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setCurrentUser({ email: session.user.email || '' });
-      }
-    });
+  const enterDemoMode = () => {
+    setIsDemoMode(true);
+    setCurrentUser({ email: 'produtor@simuboi.local' });
+    localStorage.setItem('simuboi_demo_mode', 'true');
+    setAuthError('');
+    setAuthSuccess('');
+  };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setCurrentUser({ email: session.user.email || '' });
-      } else {
-        setCurrentUser(null);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Detectar link de redefinição de senha hash
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (hash && (hash.includes('type=recovery') || hash.includes('access_token='))) {
-      setAuthView('update_password');
-    }
-  }, []);
-
-  // Carregar dados remotos do Supabase quando logar
-  useEffect(() => {
-    if (currentUser) {
-      const loadRemoteData = async () => {
-        setIsSyncingData(true);
-        const remoteData = await fetchUserDataFromSupabase();
-        if (remoteData) {
-          if (remoteData.simulations && remoteData.simulations.length > 0) {
-            setSavedSimulations(remoteData.simulations);
-            localStorage.setItem('simuboi_simulations', JSON.stringify(remoteData.simulations));
-          }
-          if (remoteData.diets && remoteData.diets.length > 0) {
-            setSavedDiets(remoteData.diets);
-            localStorage.setItem('simuboi_saved_diets', JSON.stringify(remoteData.diets));
-          }
-        }
-        setIsSyncingData(false);
-      };
-      loadRemoteData();
-    }
-  }, [currentUser]);
-
-  // Sincronizar modificações locais estruturadas de volta para o Supabase
-  useEffect(() => {
-    if (currentUser && !isSyncingData) {
-      syncUserDataToSupabase(currentUser.email, savedSimulations, savedDiets);
-    }
-  }, [savedSimulations, savedDiets, currentUser]);
-
-  // Funções de manipulação do acesso
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail || !authPassword) {
@@ -1490,23 +1748,15 @@ export default function App() {
     setAuthError('');
     setAuthSuccess('');
     setIsAuthLoading(true);
-    try {
-      const { data, error } = await supabaseSignIn(authEmail, authPassword);
-      if (error) throw error;
-      if (data?.user) {
-        setCurrentUser({ email: data.user.email || authEmail });
-        if (!isSupabaseConfigured) {
-          localStorage.setItem('simuboi_mock_session', JSON.stringify({ email: data.user.email || authEmail }));
-        }
-        setAuthSuccess('Conexão realizada com sucesso!');
-        setIsDemoMode(false);
-        localStorage.removeItem('simuboi_demo_mode');
-      }
-    } catch (err: any) {
-      setAuthError(err.message || 'Erro ao realizar acesso.');
-    } finally {
+    
+    setTimeout(() => {
       setIsAuthLoading(false);
-    }
+      setCurrentUser({ email: authEmail });
+      setIsDemoMode(true);
+      localStorage.setItem('simuboi_mock_session', JSON.stringify({ email: authEmail }));
+      localStorage.removeItem('simuboi_demo_mode');
+      setAuthSuccess('Conexão realizada com sucesso!');
+    }, 800);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -1526,46 +1776,17 @@ export default function App() {
     setAuthError('');
     setAuthSuccess('');
     setIsAuthLoading(true);
-    try {
-      const { data, error } = await supabaseSignUp(authEmail, authPassword);
-      if (error) throw error;
-      if (data?.user) {
-        setAuthSuccess(
-          isSupabaseConfigured 
-            ? 'Conta registrada! Enviamos um link de confirmação para o seu e-mail.' 
-            : 'Conta criada com sucesso no modo Sandbox local!'
-        );
-        if (!isSupabaseConfigured) {
-          setTimeout(() => {
-            setCurrentUser({ email: authEmail });
-            localStorage.setItem('simuboi_mock_session', JSON.stringify({ email: authEmail }));
-            setIsDemoMode(false);
-            localStorage.removeItem('simuboi_demo_mode');
-          }, 1500);
-        }
-      }
-    } catch (err: any) {
-      setAuthError(err.message || 'Erro ao criar conta.');
-    } finally {
-      setIsAuthLoading(false);
-    }
-  };
 
-  const handleSignOut = async () => {
-    try {
-      await supabaseSignOut();
-    } catch (e) {
-      console.error(e);
-    }
-    setCurrentUser(null);
-    localStorage.removeItem('simuboi_mock_session');
-    setIsDemoMode(false);
-    localStorage.removeItem('simuboi_demo_mode');
-    setAuthEmail('');
-    setAuthPassword('');
-    setAuthConfirmPassword('');
-    setAuthError('');
-    setAuthSuccess('');
+    setTimeout(() => {
+      setIsAuthLoading(false);
+      setAuthSuccess('Conta criada com sucesso no modo Sandbox local!');
+      setTimeout(() => {
+        setCurrentUser({ email: authEmail });
+        setIsDemoMode(true);
+        localStorage.setItem('simuboi_mock_session', JSON.stringify({ email: authEmail }));
+        localStorage.removeItem('simuboi_demo_mode');
+      }, 1000);
+    }, 800);
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -1577,19 +1798,11 @@ export default function App() {
     setAuthError('');
     setAuthSuccess('');
     setIsAuthLoading(true);
-    try {
-      const { error } = await supabaseResetPassword(authEmail);
-      if (error) throw error;
-      setAuthSuccess(
-        isSupabaseConfigured
-          ? 'O link de recuperação de acesso foi enviado para o seu e-mail.'
-          : 'Instruções enviadas com sucesso no modo simulado local!'
-      );
-    } catch (err: any) {
-      setAuthError(err.message || 'Erro ao redefinir acesso.');
-    } finally {
+
+    setTimeout(() => {
       setIsAuthLoading(false);
-    }
+      setAuthSuccess('Instruções de redefinição de senha enviadas com sucesso no modo simulado local!');
+    }, 800);
   };
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
@@ -1609,28 +1822,17 @@ export default function App() {
     setAuthError('');
     setAuthSuccess('');
     setIsAuthLoading(true);
-    try {
-      const { error } = await supabaseUpdatePassword(authPassword);
-      if (error) throw error;
+
+    setTimeout(() => {
+      setIsAuthLoading(false);
       setAuthSuccess('Sua senha foi redefinida com êxito! Redirecionando...');
       setTimeout(() => {
         setAuthView('login');
         setAuthPassword('');
         setAuthConfirmPassword('');
         setAuthSuccess('');
-      }, 2000);
-    } catch (err: any) {
-      setAuthError(err.message || 'Erro ao redefinir a senha.');
-    } finally {
-      setIsAuthLoading(false);
-    }
-  };
-
-  const enterDemoMode = () => {
-    setIsDemoMode(true);
-    localStorage.setItem('simuboi_demo_mode', 'true');
-    setAuthError('');
-    setAuthSuccess('');
+      }, 1500);
+    }, 800);
   };
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -1801,8 +2003,10 @@ export default function App() {
           { l: 'Desvio Padrão', v: formatCurrency(lhsResults.desvioPadrao) },
           { l: 'Probabilidade de VPL > 0', v: `${lhsResults.probabilidadePositivo.toFixed(2)}%` },
           { l: 'Coeficiente de Variação', v: `${lhsResults.coeficienteVariacao.toFixed(2)}%` },
-          { l: 'VPL Mínimo Simulado', v: formatCurrency(lhsResults.vplMinimo) },
-          { l: 'VPL Máximo Simulado', v: formatCurrency(lhsResults.vplMaximo) },
+          { l: 'Cenário Pessimista (P10)', v: formatCurrency(lhsResults.vplP10 ?? lhsResults.vplMinimo) },
+          { l: 'Cenário Otimista (P90)', v: formatCurrency(lhsResults.vplP90 ?? lhsResults.vplMaximo) },
+          { l: 'VPL Mínimo Absoluto', v: formatCurrency(lhsResults.vplMinimo) },
+          { l: 'VPL Máximo Absoluto', v: formatCurrency(lhsResults.vplMaximo) },
         ];
 
         riskData.forEach(r => {
@@ -2833,6 +3037,7 @@ export default function App() {
 
   const handleLoadDiet = (diet: SavedDiet) => {
     setDietResult(diet.result);
+    setOriginalDietResult(diet.result);
     setDietRequirements(diet.requirements);
     setDietAnimalProfile(diet.animalProfile);
     setDietIngredients(diet.ingredients);
@@ -2899,6 +3104,7 @@ export default function App() {
 
         const result = optimizeDiet(ingredientsToUse, finalReqs, dietAnimalProfile);
         setDietResult(result);
+        setOriginalDietResult(result);
         if (!result.feasible) {
           showToast("Não foi possível encontrar uma solução para os requisitos informados. Tente relaxar algumas restrições.", "error");
         }
@@ -2918,7 +3124,7 @@ export default function App() {
     }));
   };
 
-  const handleAutoOptimizeAndApply = (goal: 'cost' | 'gmd') => {
+  const handleAutoOptimizeAndApply = (goal: 'cost' | 'gmd' | 'eco') => {
     try {
       // 1. Sync animal profile from inputs
       const currentProfile: DietAnimalProfile = {
@@ -2953,6 +3159,7 @@ export default function App() {
       }
 
       setDietResult(result);
+      setOriginalDietResult(result);
 
       // 5. Apply to main simulation
       setInputs(prev => ({
@@ -2963,7 +3170,7 @@ export default function App() {
         precoConcentrado: result.concentrateCostPerKgMN
       }));
 
-      const goalLabels = { cost: 'Custo Mínimo', gmd: 'Meta GMD' };
+      const goalLabels = { cost: 'Custo Mínimo', gmd: 'Meta GMD', eco: 'Eco-Ótima' };
       showToast(`Ajuste por "${goalLabels[goal]}" aplicado com sucesso!`, 'success');
     } catch (error) {
       console.error("Erro na auto-formulação:", error);
@@ -3117,31 +3324,95 @@ export default function App() {
     setSavedSimulations(sims);
   };
 
+  const handleOpenSaveModal = () => {
+    const loadedSimExists = loadedSimulationId && savedSimulations.some(s => s.id === loadedSimulationId);
+    if (loadedSimExists) {
+      setSaveMode('update');
+      const sim = savedSimulations.find(s => s.id === loadedSimulationId);
+      if (sim) {
+        setNewSimName(sim.name);
+      }
+    } else {
+      setSaveMode('new');
+      setNewSimName('');
+    }
+    setIsSaving(true);
+  };
+
   const handleSaveSimulation = () => {
     if (!newSimName.trim()) {
       showToast('Por favor, insira um nome para a simulação.', 'error');
       return;
     }
 
-    const newSim: SavedSimulation = {
-      id: crypto.randomUUID(),
-      name: newSimName,
-      date: new Date().toLocaleString('pt-BR'),
-      inputs: { ...inputs }
-    };
+    if (saveMode === 'update' && loadedSimulationId) {
+      const updated = savedSimulations.map(sim => {
+        if (sim.id === loadedSimulationId) {
+          return {
+            ...sim,
+            name: newSimName,
+            date: new Date().toLocaleString('pt-BR'),
+            inputs: { ...inputs }
+          };
+        }
+        return sim;
+      });
+      saveToLocalStorage(updated);
+      setIsSaving(false);
+      showToast(`Simulação "${newSimName}" atualizada com sucesso!`, 'success');
+    } else {
+      const newSim: SavedSimulation = {
+        id: crypto.randomUUID(),
+        name: newSimName,
+        date: new Date().toLocaleString('pt-BR'),
+        inputs: { ...inputs }
+      };
 
-    const updated = [...savedSimulations, newSim];
-    saveToLocalStorage(updated);
-    setNewSimName('');
-    setIsSaving(false);
-    showToast('Simulação salva com sucesso!', 'success');
+      const updated = [...savedSimulations, newSim];
+      saveToLocalStorage(updated);
+      setLoadedSimulationId(newSim.id);
+      setSaveMode('update');
+      setIsSaving(false);
+      showToast('Simulação salva com sucesso!', 'success');
+    }
   };
 
   const loadSimulation = (sim: SavedSimulation) => {
     setInputs(sim.inputs);
     setLhsResults(null);
+    setLoadedSimulationId(sim.id);
+    setNewSimName(sim.name);
+    setSaveMode('update');
     setIsSavedSimsOpen(false);
     showToast(`Simulação "${sim.name}" carregada.`, 'success');
+  };
+
+  const handleReportProjectChange = (id: string | null) => {
+    if (id === null) {
+      setLoadedSimulationId(null);
+      setNewSimName('');
+      setSaveMode('new');
+      showToast('Cenário Atual ativo para o relatório.', 'info');
+    } else {
+      const sim = savedSimulations.find(s => s.id === id);
+      if (sim) {
+        setInputs(sim.inputs);
+        setLoadedSimulationId(sim.id);
+        setNewSimName(sim.name);
+        setSaveMode('update');
+        
+        try {
+          // Pre-calculate LHS results automatically for this project so the report is complete
+          const mc = runLHSSimulation(sim.inputs, mcIterations);
+          setLhsResults(mc);
+        } catch (err) {
+          console.error("Erro na simulação automática LHS:", err);
+          setLhsResults(null);
+        }
+        
+        showToast(`Projeto "${sim.name}" carregado. Dados de risco prontos para o relatório!`, 'success');
+      }
+    }
   };
 
   const deleteSimulation = (id: string) => {
@@ -3152,6 +3423,10 @@ export default function App() {
       onConfirm: () => {
         const updated = savedSimulations.filter(s => s.id !== id);
         saveToLocalStorage(updated);
+        if (loadedSimulationId === id) {
+          setLoadedSimulationId(null);
+          setSaveMode('new');
+        }
         setConfirmConfig(prev => ({ ...prev, isOpen: false }));
       }
     });
@@ -3213,6 +3488,8 @@ export default function App() {
             vplMedio: lhs.vplMedio,
             vplMinimo: lhs.vplMinimo,
             vplMaximo: lhs.vplMaximo,
+            vplP10: lhs.vplP10,
+            vplP90: lhs.vplP90,
             probPrejuizo: lhs.probabilidadePrejuizo,
             desvioPadrao: lhs.desvioPadrao
           }
@@ -3614,13 +3891,13 @@ export default function App() {
     new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 2 }).format(val / 100);
 
   const InfoTooltip = ({ text }: { text: string }) => (
-    <div className="group relative inline-block ml-1 align-middle">
+    <span className="group relative inline-block ml-1 align-middle">
       <HelpCircle className="w-3 h-3 text-slate-400 cursor-help hover:text-purple-500 transition-colors" />
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-800 text-white text-[10px] rounded-lg shadow-2xl z-[100] font-normal normal-case leading-relaxed">
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-800 text-white text-[10px] rounded-lg shadow-2xl z-[99999] font-normal normal-case leading-relaxed">
         {text}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-800" />
-      </div>
-    </div>
+        <span className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-800" />
+      </span>
+    </span>
   );
 
   const NutrientItem = ({ label, value, unit }: { label: string, value: number, unit: string }) => (
@@ -3645,13 +3922,14 @@ export default function App() {
     return (
       <div 
         className="min-h-screen text-slate-100 font-sans flex items-center justify-center p-4 sm:p-6 selection:bg-emerald-500/20 selection:text-emerald-300 relative overflow-hidden bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `linear-gradient(rgba(7, 10, 19, 0.75), rgba(7, 10, 19, 0.75)), url(${bgImage})` }}
+        style={{ 
+          backgroundImage: `url(${bgImage})`, 
+          backgroundSize: 'cover', 
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        }}
       >
-        {/* Ambient subtle backdrops */}
-        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[500px] h-[500px] bg-[#3b82f6]/5 rounded-full blur-[100px] pointer-events-none" />
-
-        <div className="w-full max-w-md bg-[#0a0f1d] border border-slate-800/80 rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10 backdrop-blur-xl">
+        <div className="w-full max-w-md bg-[#0a0f1d] border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10 backdrop-blur-md">
           {/* Header */}
           <div className="flex flex-col items-center text-center mb-8">
             <div className="bg-gradient-to-tr from-emerald-600 to-teal-500 p-3.5 rounded-2xl shadow-xl shadow-emerald-500/10 mb-4 animate-pulse">
@@ -3660,9 +3938,6 @@ export default function App() {
             <h2 className="text-2xl font-black font-display tracking-tight text-white flex items-center gap-1">
               Simu<span className="text-emerald-400 font-semibold">Boi</span>
             </h2>
-            <p className="text-[10px] uppercase tracking-widest text-emerald-400 font-extrabold mt-1">
-              DZ - UFSM
-            </p>
             <p className="text-xs text-slate-400 max-w-xs mt-2.5 leading-relaxed">
               Modelagem Bioeconômica e Engenharia de Risco para Confinamento de Bovinos de Corte.
             </p>
@@ -3704,7 +3979,7 @@ export default function App() {
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726]/80 text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726] text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
                   />
                 </div>
               </div>
@@ -3719,7 +3994,7 @@ export default function App() {
                       setAuthError('');
                       setAuthSuccess('');
                     }}
-                    className="text-[11px] text-emerald-440 hover:text-emerald-400 transition-colors font-semibold"
+                    className="text-[11px] text-emerald-400 hover:text-emerald-350 transition-colors font-semibold"
                   >
                     Esqueceu a senha?
                   </button>
@@ -3732,12 +4007,12 @@ export default function App() {
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
                     required
-                    className="w-full pl-10 pr-10 py-2.5 bg-[#101726]/80 text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
+                    className="w-full pl-10 pr-10 py-2.5 bg-[#101726] text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
                   />
                   <button 
                     type="button" 
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-350 transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -3770,7 +4045,7 @@ export default function App() {
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726]/80 text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726] text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
                   />
                 </div>
               </div>
@@ -3785,12 +4060,12 @@ export default function App() {
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
                     required
-                    className="w-full pl-10 pr-10 py-2.5 bg-[#101726]/80 text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
+                    className="w-full pl-10 pr-10 py-2.5 bg-[#101726] text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
                   />
                   <button 
                     type="button" 
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-350 transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4 text-slate-400" />}
                   </button>
@@ -3807,7 +4082,7 @@ export default function App() {
                     value={authConfirmPassword}
                     onChange={(e) => setAuthConfirmPassword(e.target.value)}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726]/80 text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726] text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
                   />
                 </div>
               </div>
@@ -3838,7 +4113,7 @@ export default function App() {
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726]/80 text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726] text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
                   />
                 </div>
               </div>
@@ -3869,7 +4144,7 @@ export default function App() {
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726]/80 text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726] text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
                   />
                 </div>
               </div>
@@ -3884,7 +4159,7 @@ export default function App() {
                     value={authConfirmPassword}
                     onChange={(e) => setAuthConfirmPassword(e.target.value)}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726]/80 text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#101726] text-sm text-slate-100 rounded-xl border border-slate-800 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder:text-slate-600"
                   />
                 </div>
               </div>
@@ -3965,14 +4240,14 @@ export default function App() {
 
             {/* DEMO MODE BUTTON */}
             <div className="w-full flex items-center justify-center gap-2 relative mt-2">
-              <div className="h-px bg-slate-800/80 flex-1" />
+              <div className="h-px bg-slate-800 flex-1" />
               <span className="text-[10px] uppercase font-bold text-slate-600 tracking-wider">Alternativa</span>
-              <div className="h-px bg-slate-800/80 flex-1" />
+              <div className="h-px bg-slate-800 flex-1" />
             </div>
 
             <button 
               onClick={enterDemoMode}
-              className="w-full bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-slate-750 text-slate-200 py-3 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 cursor-pointer mt-1 hover:text-white"
+              className="w-full bg-[#101726] hover:bg-slate-850 border border-slate-800 text-slate-200 py-3 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 cursor-pointer mt-1 hover:text-white hover:border-slate-700"
             >
               <Monitor className="w-4 h-4 text-emerald-400 animate-pulse" />
               Acessar Modo Demo
@@ -3982,6 +4257,8 @@ export default function App() {
       </div>
     );
   }
+
+
 
   return (
 
@@ -3994,183 +4271,32 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b border-slate-800/60 bg-[#0a0f1d]/90 backdrop-blur-md">
+      <header className="sticky top-0 z-50 w-full border-b border-slate-800/60 bg-[#0a0f1d]/95 backdrop-blur-md">
         <div className={`${screenWidth === 'standard' ? 'max-w-7xl' : screenWidth === 'wide' ? 'max-w-[1600px]' : 'max-w-full'} mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between`}>
-          <div className="flex items-center gap-2.5">
-            <div className="bg-gradient-to-tr from-emerald-600 to-teal-500 p-2 rounded-xl shadow-lg shadow-emerald-500/15 shrink-0">
-              <TrendingUp className="text-white w-5 h-5" />
+          {/* Highlighted brand section with left separation */}
+          <div className="flex items-center gap-3 mr-auto md:mr-16 lg:mr-24 pl-1">
+            <div className="bg-gradient-to-tr from-emerald-500 to-teal-400 p-2.5 rounded-2xl shadow-lg shadow-emerald-500/25 shrink-0 border border-white/5">
+              <TrendingUp className="text-white w-5.5 h-5.5" />
             </div>
             <div className="flex flex-col shrink-0">
-              <h1 className="text-lg font-display font-black tracking-tight text-white leading-none">
-                Simu<span className="text-emerald-400 font-semibold">Boi</span>
+              <h1 className="text-2xl md:text-3xl font-display font-black tracking-tight text-white leading-none">
+                Simu<span className="text-emerald-400 font-extrabold text-shadow-sm">Boi</span>
               </h1>
-              <span className="text-[9px] font-extrabold text-emerald-400 tracking-wider mt-0.5 uppercase leading-none">DZ - UFSM</span>
+              <span className="text-[8.5px] text-emerald-400 font-black uppercase tracking-widest mt-0.5 opacity-85">Inteligência em confinamento</span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <nav className="hidden md:flex items-center gap-1.5 bg-gradient-to-r from-emerald-950/50 via-[#101726] to-teal-950/50 p-1.5 rounded-2xl border border-emerald-500/30 shadow-lg shadow-emerald-950/20 select-none">
-              <div className="relative group/menu-par">
-                <button
-                  onClick={() => setActiveTab('inputs')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'inputs' 
-                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950/20' 
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40'
-                  }`}
-                >
-                  Parâmetros
-                  {Object.keys(errors).length > 0 && (
-                    <span className="flex h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
-                  )}
-                </button>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2.5 w-48 p-2 bg-[#0c1222] text-slate-200 text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/menu-par:opacity-100 transition-opacity duration-250 z-50 shadow-2xl border border-slate-800 text-center font-normal leading-normal">
-                  Configuração de animais, dietas, custos e simulação estocástica
-                </div>
-              </div>
-
-              {/* Dropdown "Resultados" */}
-              <div 
-                className="relative"
-                onMouseEnter={() => setIsResultsDropdownOpen(true)}
-                onMouseLeave={() => setIsResultsDropdownOpen(false)}
-              >
-                <button
-                  onClick={() => setIsResultsDropdownOpen(prev => !prev)}
-                  title="Indicadores de Resultados (Determinístico / Risco)"
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'results' || activeTab === 'risk'
-                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950/20'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40'
-                  }`}
-                >
-                  <span>Resultados</span>
-                  <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isResultsDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                <AnimatePresence>
-                  {isResultsDropdownOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                      transition={{ duration: 0.12 }}
-                      className="absolute left-0 mt-1.5 w-60 bg-[#0c1222] border border-slate-800/90 p-1.5 rounded-xl shadow-2xl z-50 flex flex-col gap-1"
-                    >
-                      <button
-                        onClick={() => {
-                          if (results) {
-                            setActiveTab('results');
-                            setIsResultsDropdownOpen(false);
-                          }
-                        }}
-                        disabled={!results}
-                        title={!results ? "Execute a simulação para ver os resultados" : "Lucro projetado, fluxo de caixa e indicadores bioeconômicos"}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all flex flex-col cursor-pointer ${
-                          activeTab === 'results'
-                            ? 'bg-slate-850 text-emerald-400 border border-slate-800/40'
-                            : !results
-                              ? 'text-slate-600 cursor-not-allowed opacity-40'
-                              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40'
-                        }`}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <span className={`h-1.5 w-1.5 rounded-full ${activeTab === 'results' ? 'bg-emerald-400' : 'bg-transparent'}`} />
-                          Análise Determinística
-                        </span>
-                        <span className="text-[10px] font-normal text-slate-500 mt-0.5 leading-relaxed pl-3">
-                          Lucro projetado, fluxo de caixa e indicadores bioeconômicos.
-                        </span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          if (lhsResults) {
-                            setActiveTab('risk');
-                            setIsResultsDropdownOpen(false);
-                          }
-                        }}
-                        disabled={!lhsResults}
-                        title={!lhsResults ? "Execute a análise de risco (LHS) para ver estes dados" : "Simulação de Monte Carlo, análise probabilística e S-Curve"}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all flex flex-col cursor-pointer ${
-                          activeTab === 'risk'
-                            ? 'bg-slate-850 text-emerald-400 border border-slate-800/40'
-                            : !lhsResults
-                              ? 'text-slate-600 cursor-not-allowed opacity-40'
-                              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40'
-                        }`}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <span className={`h-1.5 w-1.5 rounded-full ${activeTab === 'risk' ? 'bg-emerald-400' : 'bg-transparent'}`} />
-                          Análise de Risco
-                        </span>
-                        <span className="text-[10px] font-normal text-slate-500 mt-0.5 leading-relaxed pl-3">
-                          Simulação de Monte Carlo, análise probabilística e S-Curve.
-                        </span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {(['diet', 'esg', 'market', 'property'] as const).map((tab) => {
-                const tooltipsMap = {
-                  diet: "Formulação, nutrição e custos dos ingredientes da dieta",
-                  esg: "Indicadores de sustentabilidade e bem-estar (ESG)",
-                  market: "Cotações estaduais e simulação de ágio regional",
-                  property: "Cadastro da propriedade rural e monitoramento climático regional"
-                };
-                const tabLabelMap = {
-                  diet: "Dieta",
-                  esg: "ESG",
-                  market: "Mercado",
-                  property: "Propriedade"
-                };
-                const tabGroupClass = tab === 'diet' ? 'group/menu-diet' : tab === 'esg' ? 'group/menu-esg' : tab === 'market' ? 'group/menu-market' : 'group/menu-prop';
-                const hoverClass = tab === 'diet' ? 'group-hover/menu-diet:opacity-100' : tab === 'esg' ? 'group-hover/menu-esg:opacity-100' : tab === 'market' ? 'group-hover/menu-market:opacity-100' : 'group-hover/menu-prop:opacity-100';
-                return (
-                  <div key={tab} className={`relative ${tabGroupClass}`}>
-                    <button
-                      onClick={() => setActiveTab(tab)}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer ${
-                        activeTab === tab 
-                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950/20' 
-                          : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40'
-                      }`}
-                    >
-                      {tabLabelMap[tab]}
-                    </button>
-                    <div className={`absolute top-full left-1/2 -translate-x-1/2 mt-2.5 w-48 p-2 bg-[#0c1222] text-slate-200 text-[10px] rounded-lg opacity-0 pointer-events-none ${hoverClass} transition-opacity duration-250 z-50 shadow-2xl border border-slate-800 text-center font-normal leading-normal`}>
-                      {tooltipsMap[tab]}
-                    </div>
-                  </div>
-                );
-              })}
-            </nav>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 mr-1 border-r border-slate-800/60 pr-2">
+          
+          {/* Tighter grouped actions and navigation */}
+          <div className="flex items-center gap-1 bg-[#111726]/30 p-1 rounded-xl border border-slate-850/50 shadow-inner">
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-0.5 mr-0.5 border-r border-slate-800/60 pr-1.5">
                 <button
                   onClick={() => setIsReportModalOpen(true)}
-                  className="px-3 py-2 text-slate-300 hover:text-indigo-400 hover:bg-slate-800/50 rounded-xl border border-transparent hover:border-slate-700/50 transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                  className="px-2.5 py-1.5 text-slate-300 hover:text-indigo-400 hover:bg-slate-800/40 rounded-lg border border-transparent hover:border-slate-700/30 transition-all duration-200 flex items-center gap-1.5 cursor-pointer"
                   title="Configurar e Baixar Relatório PDF"
                 >
-                  <Download className="w-4 h-4 text-slate-400 group-hover:text-indigo-400" />
-                  <span className="hidden sm:inline text-xs font-semibold tracking-wide">Relatório</span>
-                </button>
-                <button
-                  onClick={() => setIsSavedSimsOpen(true)}
-                  className="px-3 py-2 text-slate-300 hover:text-teal-400 hover:bg-slate-800/50 rounded-xl border border-transparent hover:border-slate-700/50 transition-all duration-200 flex items-center gap-2 cursor-pointer"
-                  title="Abrir Simulações Salvas"
-                >
-                  <FolderOpen className="w-4 h-4 text-slate-400 group-hover:text-teal-400" />
-                  <span className="hidden sm:inline text-xs font-semibold tracking-wide">Projetos</span>
-                </button>
-                <button
-                  onClick={() => setIsSaving(true)}
-                  className="px-3 py-2 text-slate-300 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl border border-transparent hover:border-slate-700/50 transition-all duration-200 flex items-center gap-2 cursor-pointer"
-                  title="Salvar Simulação Atual"
-                >
-                  <Save className="w-4 h-4 text-slate-400 group-hover:text-emerald-400" />
-                  <span className="hidden sm:inline text-xs font-semibold tracking-wide">Salvar</span>
+                  <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400" />
+                  <span className="hidden sm:inline text-[11px] font-bold tracking-wide">Relatório</span>
                 </button>
               </div>
 
@@ -4178,7 +4304,7 @@ export default function App() {
               <div className="relative">
                 <button 
                   onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                  className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer relative"
+                  className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer relative"
                   title="Notificações e Alertas"
                 >
                   <Bell className="w-5 h-5" />
@@ -4215,6 +4341,56 @@ export default function App() {
                               Limpar Alertas
                             </button>
                           )}
+                        </div>
+
+                        {/* PREMIUM CLIMATE SOUND ALERTS CONTROL */}
+                        <div className="p-3 bg-[#0a0f1d] border-b border-slate-800/60 flex items-center justify-between text-xs font-sans">
+                          <div className="flex items-center gap-2">
+                            {soundAlertEnabled ? (
+                              <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
+                            ) : (
+                              <VolumeX className="w-4 h-4 text-slate-500" />
+                            )}
+                            <div>
+                              <span className="text-slate-300 font-bold block leading-tight text-start">Alerta Sonoro (Clima)</span>
+                              <span className="text-[9px] text-slate-500 block leading-none mt-0.5 text-start">Disparar em riscos graves/críticos</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                playClimateAlertSound();
+                              }}
+                              disabled={!soundAlertEnabled}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                soundAlertEnabled 
+                                  ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 cursor-pointer' 
+                                  : 'bg-slate-800/40 text-slate-600 cursor-not-allowed'
+                              }`}
+                              title="Testar som de alerta"
+                            >
+                              Testar
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newValue = !soundAlertEnabled;
+                                setSoundAlertEnabled(newValue);
+                                localStorage.setItem('simuboi_sound_alerts', String(newValue));
+                                showToast(newValue ? 'Alertas sonoros de clima ativados!' : 'Alertas sonoros desativados.', 'info');
+                              }}
+                              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                soundAlertEnabled ? 'bg-emerald-500/90' : 'bg-slate-700/80'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  soundAlertEnabled ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
                         </div>
 
                         <div className="max-h-80 overflow-y-auto divide-y divide-slate-850/65 custom-scrollbar text-left font-sans">
@@ -4275,7 +4451,7 @@ export default function App() {
 
               <button 
                 onClick={() => setIsPropertyModalOpen(true)}
-                className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                 title={`Propriedade: ${property.nome} em ${property.cidade}-${property.estado}. Clique para editar.`}
               >
                 <MapPin className="w-5 h-5 text-emerald-400" />
@@ -4284,52 +4460,33 @@ export default function App() {
 
               <button 
                 onClick={() => setIsHelpOpen(true)}
-                className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer"
                 title="Ajuda e Tutorial"
               >
                 <HelpCircle className="w-5 h-5" />
               </button>
               <button 
                 onClick={() => setIsSettingsOpen(true)}
-                className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer mr-1"
+                className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer mr-1"
                 title="Configurações"
               >
                 <Settings className="w-5 h-5" />
               </button>
 
-              {/* PERFIL / MODO DEMO STATUS */}
-              {currentUser ? (
-                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-xl block shrink-0">
-                  <User className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="hidden sm:inline text-[11px] font-semibold text-emerald-300 max-w-[120px] truncate" title={currentUser.email}>
-                    {currentUser.email.split('@')[0]}
-                  </span>
-                  <button 
-                    onClick={handleSignOut}
-                    className="p-1 text-slate-400 hover:text-red-400 transition-colors cursor-pointer rounded-lg hover:bg-red-500/10"
-                    title="Sair da Conta"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : isDemoMode ? (
-                <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/25 px-2.5 py-1.5 rounded-xl block shrink-0">
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  <span className="hidden sm:inline text-[11px] font-semibold text-amber-300">Modo Demo</span>
-                  <button 
-                    onClick={() => {
-                      setIsDemoMode(false);
-                      localStorage.removeItem('simuboi_demo_mode');
-                      setCurrentUser(null);
-                    }}
-                    className="px-1.5 py-0.5 text-[9px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-md transition-all font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1"
-                    title="Sair do Modo Demo e voltar para o Login"
-                  >
-                    Sair
-                    <LogOut className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-              ) : null}
+              {/* STATUS DE CONEXÃO MODO LOCAL */}
+              <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-xl block shrink-0">
+                <User className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline text-[11px] font-semibold text-emerald-300 max-w-[120px] truncate" title={currentUser?.email || 'Produtor'}>
+                  {currentUser?.email ? currentUser.email.split('@')[0] : 'Produtor'}
+                </span>
+                <button 
+                  onClick={handleSignOut}
+                  className="p-1 text-slate-400 hover:text-red-400 transition-colors cursor-pointer rounded-lg hover:bg-red-500/10 ml-1"
+                  title="Sair da Conta"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
           </div>
@@ -4337,11 +4494,12 @@ export default function App() {
         {/* Mobile Nav */}
         <div className="md:hidden flex justify-center pb-2 px-4">
           <nav className="flex gap-1 bg-gradient-to-r from-emerald-950/50 via-[#101726]/95 to-teal-950/50 p-1.5 rounded-2xl w-full overflow-x-auto custom-scrollbar border border-emerald-500/30 shadow-lg shadow-emerald-950/20">
-              {(['inputs', 'results', 'risk', 'diet', 'esg', 'market', 'property'] as const).map((tab, idx) => {
+              {(['property', 'inputs', 'results', 'risk', 'diet', 'esg', 'market', 'ultrasound'] as const).map((tab, idx) => {
                 const isDisabled = (tab === 'results') ? !results : (tab === 'risk') ? !results : false;
               return (
                 <React.Fragment key={tab}>
                   <button
+                    id={`tour-mobile-${tab}`}
                     onClick={() => !isDisabled && setActiveTab(tab)}
                     disabled={isDisabled}
                     className={`flex-1 min-w-[50px] px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
@@ -4352,7 +4510,7 @@ export default function App() {
                           : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    {tab === 'inputs' ? 'Parâm.' : tab === 'results' ? 'Det.' : tab === 'risk' ? 'Risco' : tab === 'diet' ? 'Dieta' : tab === 'esg' ? 'ESG' : tab === 'market' ? 'Mercado' : 'Prop.'}
+                    {tab === 'inputs' ? 'Parâm.' : tab === 'results' ? 'Det.' : tab === 'risk' ? 'Risco' : tab === 'diet' ? 'Dieta' : tab === 'esg' ? 'ESG' : tab === 'market' ? 'Mercado' : tab === 'ultrasound' ? 'Ultrassom' : 'Prop.'}
                     {tab === 'inputs' && Object.keys(errors).length > 0 && (
                       <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
                     )}
@@ -4366,7 +4524,258 @@ export default function App() {
 
       </header>
 
-      <main className={`${screenWidth === 'standard' ? 'max-w-7xl' : screenWidth === 'wide' ? 'max-w-[1600px]' : 'max-w-full'} mx-auto px-4 sm:px-6 lg:px-8 py-8`}>
+      <div className={`${screenWidth === 'standard' ? 'max-w-7xl' : screenWidth === 'wide' ? 'max-w-[1600px]' : 'max-w-full'} mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row gap-6`}>
+        {/* Sidebar Esquerdo para Desktop */}
+        <aside className="hidden md:block w-64 shrink-0 relative z-30">
+          <div className="sticky top-24 bg-[#0d121f]/95 backdrop-blur-md p-4 rounded-2xl border border-slate-850/80 shadow-2xl space-y-4 text-left z-30">
+            <div className="border-b border-slate-850 pb-3.5 space-y-2.5">
+              
+              {/* Active Project Indicator Box */}
+              <div className="p-2.5 bg-[#0a0f1d]/75 rounded-xl border border-slate-800/80 text-xs flex flex-col gap-1 shadow-inner">
+                <div className="flex items-center gap-1.5 text-slate-500 font-semibold text-[9px] uppercase tracking-wider">
+                  <FolderOpen className="w-3 h-3 text-emerald-500" />
+                  <span>Projeto Ativo</span>
+                </div>
+                <button
+                  onClick={() => setIsSavedSimsOpen(true)}
+                  className="text-emerald-400 font-bold hover:text-emerald-300 transition-colors cursor-pointer truncate text-left text-[11px] font-sans"
+                  title="Clique para gerenciar ou alternar projetos"
+                >
+                  {loadedSimulationId && savedSimulations.some(s => s.id === loadedSimulationId)
+                    ? savedSimulations.find(s => s.id === loadedSimulationId)?.name
+                    : "Cenário Atual (Não salvo)"
+                  }
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-0.5">
+                <button
+                  onClick={() => setIsSavedSimsOpen(true)}
+                  className="px-2 py-1.5 bg-[#111726]/40 hover:bg-slate-800 text-slate-300 hover:text-teal-400 rounded-xl border border-slate-800/60 hover:border-teal-500/20 transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer text-[11px] font-bold tracking-wide"
+                  title="Abrir Simulações Salvas"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Projetos</span>
+                </button>
+                <button
+                  onClick={handleOpenSaveModal}
+                  className="px-2 py-1.5 bg-[#111726]/40 hover:bg-slate-800 text-slate-300 hover:text-emerald-400 rounded-xl border border-slate-800/60 hover:border-emerald-500/20 transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer text-[11px] font-bold tracking-wide"
+                  title="Salvar Simulação Atual"
+                >
+                  <Save className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Salvar</span>
+                </button>
+              </div>
+            </div>
+
+            <nav className="space-y-1 select-none font-sans">
+              {/* Propriedade */}
+              <div className="relative group/side-prop hover:z-50">
+                <button
+                  id="tour-desktop-property"
+                  onClick={() => setActiveTab('property')}
+                  className={`w-full text-left px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2.5 cursor-pointer border ${
+                    activeTab === 'property' 
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10' 
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/30 border-transparent'
+                  }`}
+                >
+                  <MapPin className={`w-4 h-4 shrink-0 ${activeTab === 'property' ? 'text-white' : 'text-emerald-400'}`} />
+                  <span>Propriedade</span>
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-44 p-2 bg-[#0c1222] text-slate-200 text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/side-prop:opacity-100 transition-opacity duration-200 z-50 shadow-2xl border border-slate-800 text-center font-normal leading-normal">
+                  Cadastro da propriedade rural e monitoramento climático regional
+                </div>
+              </div>
+
+              {/* Parâmetros */}
+              <div className="relative group/side-inputs hover:z-50">
+                <button
+                  id="tour-desktop-inputs"
+                  onClick={() => setActiveTab('inputs')}
+                  className={`w-full text-left px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center justify-between cursor-pointer border ${
+                    activeTab === 'inputs' 
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10' 
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/30 border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Calculator className={`w-4 h-4 shrink-0 ${activeTab === 'inputs' ? 'text-white' : 'text-emerald-400'}`} />
+                    <span>Parâmetros</span>
+                  </div>
+                  {Object.keys(errors).length > 0 && (
+                    <span className="flex h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                  )}
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-44 p-2 bg-[#0c1222] text-slate-200 text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/side-inputs:opacity-100 transition-opacity duration-200 z-50 shadow-2xl border border-slate-800 text-center font-normal leading-normal">
+                  Configuração de animais, dietas, custos e simulação estocástica
+                </div>
+              </div>
+
+              {/* Dieta */}
+              <div className="relative group/side-diet hover:z-50">
+                <button
+                  id="tour-desktop-diet"
+                  onClick={() => setActiveTab('diet')}
+                  className={`w-full text-left px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2.5 cursor-pointer border ${
+                    activeTab === 'diet' 
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10' 
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/30 border-transparent'
+                  }`}
+                >
+                  <Activity className={`w-4 h-4 shrink-0 ${activeTab === 'diet' ? 'text-white' : 'text-purple-400'}`} />
+                  <span>Dieta</span>
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-44 p-2 bg-[#0c1222] text-slate-200 text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/side-diet:opacity-100 transition-opacity duration-200 z-50 shadow-2xl border border-slate-800 text-center font-normal leading-normal">
+                  Formulação, nutrição e custos dos ingredientes da dieta
+                </div>
+              </div>
+
+              {/* ESG */}
+              <div className="relative group/side-esg hover:z-50">
+                <button
+                  id="tour-desktop-esg"
+                  onClick={() => setActiveTab('esg')}
+                  className={`w-full text-left px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2.5 cursor-pointer border ${
+                    activeTab === 'esg' 
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10' 
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/30 border-transparent'
+                  }`}
+                >
+                  <Leaf className={`w-4 h-4 shrink-0 ${activeTab === 'esg' ? 'text-white' : 'text-emerald-400'}`} />
+                  <span>ESG</span>
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-44 p-2 bg-[#0c1222] text-slate-200 text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/side-esg:opacity-100 transition-opacity duration-200 z-50 shadow-2xl border border-slate-800 text-center font-normal leading-normal">
+                  Indicadores de sustentabilidade e bem-estar (ESG)
+                </div>
+              </div>
+
+              {/* Mercado */}
+              <div className="relative group/side-market hover:z-50">
+                <button
+                  id="tour-desktop-market"
+                  onClick={() => setActiveTab('market')}
+                  className={`w-full text-left px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2.5 cursor-pointer border ${
+                    activeTab === 'market' 
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10' 
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/30 border-transparent'
+                  }`}
+                >
+                  <TrendingUp className={`w-4 h-4 shrink-0 ${activeTab === 'market' ? 'text-white' : 'text-teal-400'}`} />
+                  <span>Mercado</span>
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-44 p-2 bg-[#0c1222] text-slate-200 text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/side-market:opacity-100 transition-opacity duration-200 z-50 shadow-2xl border border-slate-800 text-center font-normal leading-normal">
+                  Cotações estaduais e simulação de ágio regional
+                </div>
+              </div>
+
+              {/* Ultrassom & Abate */}
+              <div className="relative group/side-ultrasound hover:z-50">
+                <button
+                  id="tour-desktop-ultrasound"
+                  onClick={() => setActiveTab('ultrasound')}
+                  className={`w-full text-left px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2.5 cursor-pointer border ${
+                    activeTab === 'ultrasound' 
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10' 
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/30 border-transparent'
+                  }`}
+                >
+                  <Scale className={`w-4 h-4 shrink-0 ${activeTab === 'ultrasound' ? 'text-white' : 'text-emerald-400'}`} />
+                  <span>Ultrassom</span>
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 w-44 p-2 bg-[#0c1222] text-slate-200 text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/side-ultrasound:opacity-100 transition-opacity duration-200 z-50 shadow-2xl border border-slate-800 text-center font-normal leading-normal">
+                  Módulo de Ultrassom e Otimização do Abate (Determinístico & Probabilístico)
+                </div>
+
+                {/* ABAS DO MÓDULO NESTED IN SIDEBAR */}
+                {activeTab === 'ultrasound' && (
+                  <div className="mt-1 ml-4 pl-2.5 border-l border-emerald-500/30 flex flex-col gap-0.5 font-sans">
+                    {[
+                      { id: 'recommendations', label: 'Recomendações', icon: Sparkles },
+                      { id: 'manejo', label: 'Lote e Animais', icon: Database },
+                      { id: 'new_exam', label: 'Exame Ultrassom', icon: Plus },
+                      { id: 'animal', label: 'Curva do Animal', icon: Activity },
+                      { id: 'lote', label: 'Curva do Lote', icon: TrendingUp },
+                      { id: 'calibration', label: 'Calibração', icon: CheckCircle2 },
+                      { id: 'simulation', label: 'Config. LHS', icon: Settings },
+                    ].map(sub => {
+                      const Icon = sub.icon;
+                      const isSubActive = ultrasoundSubTab === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setUltrasoundSubTab(sub.id as any)}
+                          className={`w-full text-left px-2 py-1 rounded-lg text-[10px] font-bold tracking-wide transition-all flex items-center gap-2 cursor-pointer border ${
+                            isSubActive
+                              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-800/30 border-transparent'
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5 shrink-0 text-emerald-400/80" />
+                          <span>{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </nav>
+
+            <div className="border-t border-slate-850 pt-2">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1 font-sans">Resultados</span>
+              
+              <div className="space-y-1 font-sans">
+                {/* Análise Determinística */}
+                <button
+                  id="tour-desktop-results-det"
+                  onClick={() => {
+                    if (results) setActiveTab('results');
+                  }}
+                  disabled={!results}
+                  className={`w-full text-left px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2.5 border ${
+                    activeTab === 'results' 
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10' 
+                      : !results
+                        ? 'text-slate-600 cursor-not-allowed opacity-40 border-transparent'
+                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/30 border-transparent cursor-pointer'
+                  }`}
+                  title={!results ? "Execute a simulação para ver os resultados" : ""}
+                >
+                  <BarChart3 className={`w-4 h-4 shrink-0 ${activeTab === 'results' ? 'text-white' : 'text-blue-400'}`} />
+                  <div className="flex flex-col">
+                    <span>Determinística</span>
+                    <span className={`text-[9px] font-normal ${activeTab === 'results' ? 'text-emerald-200' : 'text-slate-500'}`}>Indicadores de lucro</span>
+                  </div>
+                </button>
+
+                {/* Análise de Risco */}
+                <button
+                  id="tour-desktop-results-risk"
+                  onClick={() => {
+                    if (lhsResults) setActiveTab('risk');
+                  }}
+                  disabled={!lhsResults}
+                  className={`w-full text-left px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2.5 border ${
+                    activeTab === 'risk' 
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10' 
+                      : !lhsResults
+                        ? 'text-slate-600 cursor-not-allowed opacity-40 border-transparent'
+                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/30 border-transparent cursor-pointer'
+                  }`}
+                  title={!lhsResults ? "Execute a análise de risco (LHS) para ver estes dados" : ""}
+                >
+                  <ShieldAlert className={`w-4 h-4 shrink-0 ${activeTab === 'risk' ? 'text-white' : 'text-red-400'}`} />
+                  <div className="flex flex-col">
+                    <span>Análise de Risco</span>
+                    <span className={`text-[9px] font-normal ${activeTab === 'risk' ? 'text-emerald-200' : 'text-slate-500'}`}>Simulação de Risco</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <main className="flex-1 min-w-0">
 
         <AnimatePresence mode="wait">
           {activeTab === 'inputs' && (
@@ -4398,20 +4807,20 @@ export default function App() {
                 {/* Left Column: Main Parameters */}
                 <div className="lg:col-span-8 space-y-6">
                   {/* Section: Animal & Desempenho */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300 relative">
-                    <div className="absolute top-0 right-0 p-8 opacity-[0.02] pointer-events-none">
-                      <Scale className="w-32 h-32 text-emerald-400" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 relative">
+                    <div className="absolute top-0 right-0 p-6 opacity-[0.015] pointer-events-none">
+                      <Scale className="w-24 h-24 text-emerald-400" />
                     </div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                        <Scale className="text-emerald-400 w-5 h-5 animate-pulse" />
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                        <Scale className="text-emerald-400 w-4 h-4" />
                       </div>
                       <div>
-                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Animal, Desempenho & Genética</h2>
-                        <p className="text-xs text-slate-400">Parâmetros produtivos, biológicos e genéticos do rebanho.</p>
+                        <h2 className="font-sans font-extrabold text-emerald-400 text-xs uppercase tracking-wider">Animal, Desempenho & Genética</h2>
+                        <p className="text-[10px] text-slate-400">Parâmetros produtivos, biológicos e genéticos do rebanho.</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
                       <InputGroup icon={Scale} label="Peso Inicial" name="pesoVivoInicial" value={inputs.pesoVivoInicial} unit="kg" onChange={handleInputChange} isInteger tooltipPlacement="left" tooltip={`Peso de entrada dos bovinos no confinamento. Crucial para determinar os custos de aquisição do boi magro e as exigências de manutenção na aba de Dieta. Na análise de resultados, define o capital empatado inicial (Estoque de Animais) e o ganho de peso total necessário. Utilizado nas projeções de fluxo de caixa, análises de sensibilidade do VPL e nos relatórios de Mercado para cálculo do ágio regional.`} error={errors.pesoVivoInicial} />
                       <InputGroup icon={Scale} label="Peso Final" name="pesoVivoFinal" value={inputs.pesoVivoFinal} unit="kg" onChange={handleInputChange} isInteger tooltipPlacement="center" tooltip={`Peso vivo médio projetado na saída do confinamento para abate. É utilizado nas projeções de receita bruta na aba de Mercado (faturamento de arrobas produzidas) e na análise de resultados para calcular o peso de carcaça limpa. Influencia a modelagem de resíduos e emissões de carbono na aba ESG, além de ser o parâmetro chave para determinação do tempo de confinamento.`} error={errors.pesoVivoFinal} />
                       <InputGroup icon={Activity} label="Ganho Médio Diário (GMD)" name="gmd" value={inputs.gmd} unit="kg/dia" onChange={handleInputChange} step={0.1} tooltipPlacement="right" tooltip={`Ganho médio diário de peso vivo esperado (kg/dia). É utilizado na aba Dieta para simular o nível de energia e proteína do trato, na aba de Resultados para determinar o tempo total de cocho necessário para atingir o peso de abate planejado, e no Mercado para balizar o custo da arroba produzida. Tem altíssimo impacto na análise de sensibilidade do VPL.`} error={errors.gmd} />
@@ -4422,18 +4831,18 @@ export default function App() {
                       <InputGroup icon={AlertCircle} label="Mortalidade" name="taxaMortalidade" value={inputs.taxaMortalidade} unit="%" onChange={handleInputChange} step={0.1} tooltipPlacement="center" tooltip="Taxa percentual esperada de óbitos do rebanho ao longo do período de engorda. Utilizado na análise de resultados para redistribuir os custos operacionais, alimentares e de aquisição dos animais perdidos entre os sobreviventes, influenciando o fluxo de caixa, a taxa de sobrevivência real e reduzindo a receita bruta final e o VPL do projeto." error={errors.taxaMortalidade} />
                     </div>
 
-                    <div className="h-px bg-slate-800/60 my-6" />
+                    <div className="h-px bg-slate-800/40 my-4" />
 
                     <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Genética & Frame</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+                      <h3 className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-3">Genética & Frame</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Raça / Genética</label>
+                          <label className="block text-[9px] font-bold text-slate-450 uppercase tracking-wider mb-1 font-sans">Raça / Genética</label>
                           <select 
                             name="raca"
                             value={inputs.raca}
                             onChange={handleInputChange}
-                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer font-sans"
+                            className="w-full bg-[#121826] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-100 outline-none hover:bg-[#161e30] transition-all cursor-pointer font-sans"
                           >
                             <option value="nelore" className="bg-[#0f172a]">Nelore (Zebuíno)</option>
                             <option value="cruzamento" className="bg-[#0f172a]">Cruzamento Industrial (Taurino x Zebu)</option>
@@ -4441,12 +4850,12 @@ export default function App() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Sexo</label>
+                          <label className="block text-[9px] font-bold text-slate-450 uppercase tracking-wider mb-1 font-sans">Sexo</label>
                           <select 
                             name="sexo"
                             value={inputs.sexo}
                             onChange={handleInputChange}
-                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer font-sans"
+                            className="w-full bg-[#121826] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-100 outline-none hover:bg-[#161e30] transition-all cursor-pointer font-sans"
                           >
                             <option value="macho" className="bg-[#0f172a]">Boi Castrado / Macho</option>
                             <option value="inteiro" className="bg-[#0f172a]">Boi Inteiro</option>
@@ -4454,12 +4863,12 @@ export default function App() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Frame Size (Estrutura)</label>
+                          <label className="block text-[9px] font-bold text-slate-450 uppercase tracking-wider mb-1 font-sans">Frame Size (Estrutura)</label>
                           <select 
                             name="frameSize"
                             value={inputs.frameSize}
                             onChange={handleInputChange}
-                            className="w-full bg-[#121826] border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-100 outline-none hover:bg-[#161e30] hover:border-slate-755 focus:bg-[#0c1220] focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500/80 transition-all cursor-pointer font-sans"
+                            className="w-full bg-[#121826] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-100 outline-none hover:bg-[#161e30] transition-all cursor-pointer font-sans"
                           >
                             <option value="pequeno" className="bg-[#0f172a]">Pequeno (Terminação Precoce)</option>
                             <option value="medio" className="bg-[#0f172a]">Médio (Padrão)</option>
@@ -4469,10 +4878,10 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="h-px bg-slate-800/60 my-6" />
+                    <div className="h-px bg-slate-800/40 my-4" />
 
                     <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Clima & Estresse Térmico</h3>
+                      <h3 className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-3">Clima & Estresse Térmico</h3>
                       <div className="bg-[#121826]/60 border border-slate-800 rounded-xl p-4">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                           <div>
@@ -4584,34 +4993,34 @@ export default function App() {
                   </div>
 
                   {/* Section: Área e terra */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl">
-                        <Map className="text-purple-400 w-5 h-5" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                        <Map className="text-purple-400 w-4 h-4" />
                       </div>
                       <div>
-                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Área e terra</h2>
-                        <p className="text-xs text-slate-400">Área e valor da terra.</p>
+                        <h2 className="font-sans font-extrabold text-purple-400 text-xs uppercase tracking-wider">Área e terra</h2>
+                        <p className="text-[10px] text-slate-400">Área e valor da terra.</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <InputGroup label="Lotação" name="animaisHa" value={inputs.animaisHa} unit="ani/ha" onChange={handleInputChange} isInteger tooltip="Densidade de cabeças por hectare (ha) na área física ocupada pelo confinamento. É utilizado na análise de resultados para dimensionar a área física necessária em hectares baseada na capacidade estática, e na aba ESG para estimar o impacto de pegada territorial e uso do solo por animal." error={errors.animaisHa} />
                       <InputGroup label="Valor Terra" name="valorTerraHa" value={inputs.valorTerraHa} unit="R$/ha" onChange={handleInputChange} isCurrency tooltip="Valor médio de mercado de um hectare de terra na região do confinamento (R$/ha). É utilizado na análise de resultados para quantificar os custos de oportunidade do capital imobiliário (arrendamento teórico sobre a área do empreendimento), afetando as despesas fixas de gestão e impactando a atratividade econômica real (VPL)." error={errors.valorTerraHa} />
                     </div>
                   </div>
  
                   {/* Section: Pesagens & Ultrassom */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl">
-                        <Monitor className="text-rose-400 w-5 h-5" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1.5 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+                        <Monitor className="text-rose-400 w-4 h-4" />
                       </div>
                       <div>
-                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Pesagens & Ultrassom</h2>
-                        <p className="text-xs text-slate-400">Acompanhamento biológico.</p>
+                        <h2 className="font-sans font-extrabold text-rose-400 text-xs uppercase tracking-wider">Pesagens & Ultrassom</h2>
+                        <p className="text-[10px] text-slate-400">Acompanhamento biológico.</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Pesagens Reais</h3>
@@ -4684,19 +5093,19 @@ export default function App() {
                   </div>
 
                   {/* Section: Operacional & Pessoal */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                          <Users className="text-emerald-400 w-6 h-6" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                          <Users className="text-emerald-400 w-4 h-4" />
                         </div>
                         <div>
-                          <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Operacional & Pessoal</h2>
-                          <p className="text-xs text-slate-400">Mão de obra e despesas fixas.</p>
+                          <h2 className="font-sans font-extrabold text-emerald-400 text-xs uppercase tracking-wider">Operacional & Pessoal</h2>
+                          <p className="text-[10px] text-slate-400">Mão de obra e despesas fixas.</p>
                         </div>
                       </div>
-                      <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
-                        <div className="w-full sm:w-48">
+                      <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                        <div className="w-full sm:w-40">
                           <InputGroup 
                             label="Capacidade Estática" 
                             name="capacidadeEstatica" 
@@ -4711,15 +5120,15 @@ export default function App() {
                         </div>
                         <button
                           onClick={applyProfessionalLabor}
-                          className="flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-teal-600 to-emerald-605 text-white rounded-xl text-xs font-bold hover:from-teal-550 hover:to-emerald-550 transition-all shadow-md shadow-emerald-950/20 w-full sm:w-auto mt-2 sm:mt-0"
+                          className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all w-full sm:w-auto cursor-pointer"
                         >
-                          <Wand2 className="w-4 h-4 text-emerald-300" />
-                          Sugerir Equipe Profissional
+                          <Wand2 className="w-3.5 h-3.5 text-emerald-100" />
+                          Sugerir Equipe
                         </button>
                       </div>
                     </div>
 
-                    <div className="h-px bg-slate-800/60 my-6" />
+                    <div className="h-px bg-slate-800/40 my-4" />
 
                     {showLaborSummary && (
                       <div className="mb-6 p-5 bg-[#131b2e] rounded-2xl border border-slate-800 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -4824,23 +5233,23 @@ export default function App() {
                   </div>
 
                   {/* Section: Financiamentos & Dívidas */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                          <CreditCard className="text-indigo-400 w-5 h-5" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
+                          <CreditCard className="text-indigo-400 w-4 h-4" />
                         </div>
                         <div>
-                          <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Financiamentos & Dívidas</h2>
-                          <p className="text-xs text-slate-400">Gestão de parcelas, juros e prazos.</p>
+                          <h2 className="font-sans font-extrabold text-indigo-400 text-xs uppercase tracking-wider">Financiamentos & Dívidas</h2>
+                          <p className="text-[10px] text-slate-400">Gestão de parcelas, juros e prazos.</p>
                         </div>
                       </div>
                       <button
                         onClick={addFinancingItem}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-bold rounded-xl hover:bg-indigo-500/20 transition-all shadow-sm w-full sm:w-auto justify-center"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[10px] font-bold rounded-lg hover:bg-indigo-500/20 transition-all shadow-sm w-full sm:w-auto justify-center cursor-pointer"
                         title="Adiciona um novo financiamento para cálculo automático da parcela mensal."
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-3 h-3" />
                         Adicionar Financiamento
                       </button>
                     </div>
@@ -4950,17 +5359,17 @@ export default function App() {
                 {/* Right Column: Financial & Nutrition */}
                 <div className="lg:col-span-4 space-y-6">
                   {/* Section: Mercado & Financeiro */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-                        <DollarSign className="text-amber-400 w-5 h-5" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                        <DollarSign className="text-amber-400 w-4 h-4" />
                       </div>
                       <div>
-                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Mercado & Finanças</h2>
-                        <p className="text-xs text-slate-400">Preços e taxas financeiras.</p>
+                        <h2 className="font-sans font-extrabold text-amber-400 text-xs uppercase tracking-wider">Mercado & Finanças</h2>
+                        <p className="text-[10px] text-slate-400">Preços e taxas financeiras.</p>
                       </div>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <InputGroup label="Boi Magro" name="precoBoiMagro" value={inputs.precoBoiMagro} unit="R$/ani" onChange={handleInputChange} isCurrency tooltipPlacement="right" tooltip={`Preço médio projetado de aquisição por cabeça de boi magro reposição. Principal elemento de saída de caixa. Utilizado na análise de resultados para calcular o Custo de Compra Inicial (capital de giro/estoque) e, no painel de Mercado, compõe a matriz de sensibilidade do VPL e o indicador ágio de reposição.`} extraInfo={`R$ ${(inputs.precoBoiMagro / inputs.pesoVivoInicial).toFixed(2)}/kg`} error={errors.precoBoiMagro} />
                       <InputGroup label="Boi Gordo" name="precoBoiGordo" value={inputs.precoBoiGordo} unit="R$/@" onChange={handleInputChange} step={0.01} isCurrency tooltipPlacement="right" tooltip={`Preço de venda planejado por arroba do boi gordo. Principal elemento de receita da atividade. Utilizado na aba de Mercado para estimar a receita bruta por lote/cabeça e, na análise de resultados, dita os fluxos de entradas de receita e os indicators de lucratividade líquida (Margem de Lucro e VPL).`} extraInfo={`R$ ${((inputs.rendimentoCarcaca / 100) * (inputs.precoBoiGordo / 15)).toFixed(2)}/kg`} error={errors.precoBoiGordo} />
                       <InputGroup label="Taxa Mínima de Atratividade (TMA) Anual" name="tmaAnual" value={inputs.tmaAnual} unit="%" onChange={handleInputChange} step={0.01} tooltipPlacement="right" tooltip="Taxa Mínima de Atratividade (%), representando a rentabilidade anual alternativa exigida para investimentos de mesmo risco. É utilizada na análise de resultados como a taxa de desconto oficial no cálculo do Valor Presente Líquido (VPL) e do fluxo de caixa descontado." error={errors.tmaAnual} />
@@ -4972,20 +5381,20 @@ export default function App() {
                   </div>
 
                   {/* Section: Nutrição & Dieta */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                          <Zap className="text-emerald-400 w-5 h-5" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                          <Zap className="text-emerald-400 w-4 h-4" />
                         </div>
                         <div>
-                          <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Nutrição & Dieta</h2>
-                          <p className="text-xs text-slate-400">Consumo e custos da dieta.</p>
+                          <h2 className="font-sans font-extrabold text-emerald-400 text-xs uppercase tracking-wider">Nutrição & Dieta</h2>
+                          <p className="text-[10px] text-slate-400">Consumo e custos da dieta.</p>
                         </div>
                       </div>
                     </div>
                     
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <InputGroup label="Consumo Volumoso" name="cmsVolumoso" value={inputs.cmsVolumoso} unit="kg MN" onChange={handleInputChange} step={0.01} tooltipPlacement="right" tooltip="Quantidade física diária em kg de Matéria Natural (MN) de volumoso (como silagem) disponibilizada por animal. É utilizada na aba de Dieta para balanço alimentar e na análise de resultados para calcular o custo direto de alimentação. Também é usada na aba ESG, pois níveis de volumoso calibram as emissões estipuladas de gás metano entérico." error={errors.cmsVolumoso} />
                         <InputGroup label="Consumo Concentrado" name="cmsConcentrado" value={inputs.cmsConcentrado} unit="kg MN" onChange={handleInputChange} step={0.01} tooltipPlacement="right" tooltip="Consumo físico diário em kg de Matéria Natural (MN) de rações e concentrados por cabeça. Constitui o principal insumo de rápido desembolso. É utilizado na aba de Dieta para o aporte de energia/núcleo e na análise de resultados na apuração do Custo Alimentar total por lote, bem como na aba ESG para calibrar a pegada ecológica da dieta por kg de carcaça." error={errors.cmsConcentrado} />
@@ -4999,17 +5408,17 @@ export default function App() {
                   </div>
 
                   {/* Section: ESG & Sustentabilidade */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                        <Leaf className="text-emerald-400 w-5 h-5" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                        <Leaf className="text-emerald-400 w-4 h-4" />
                       </div>
                       <div>
-                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">ESG & Sustentabilidade</h2>
-                        <p className="text-xs text-slate-400">Métricas socioambientais.</p>
+                        <h2 className="font-sans font-extrabold text-emerald-400 text-xs uppercase tracking-wider">ESG & Sustentabilidade</h2>
+                        <p className="text-[10px] text-slate-400">Métricas socioambientais.</p>
                       </div>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <InputGroup 
                         label="Investimento Social" 
                         name="investimentoSocialAnual" 
@@ -5043,22 +5452,33 @@ export default function App() {
                           tooltip="Métrica estipulada técnica de 0 a 10 que qualifica a adesão a rígidos padrões de acesso a água limpa, sombreamento mecânico e ausência de agressões físicas e sonoras na lida. Usado na aba ESG de forma a influenciar a avaliação integrada de responsabilidade animal."
                           error={errors.indiceBemEstarAnimal} 
                         />
+                        <InputGroup 
+                          label="Preço Crédito Carbono" 
+                          name="precoCreditoCarbono" 
+                          value={inputs.precoCreditoCarbono} 
+                          unit="R$/t" 
+                          onChange={handleInputChange} 
+                          isCurrency
+                          tooltipPlacement="right"
+                          tooltip="Preço esperado de venda de 1 tonelada de CO2e no mercado voluntário de créditos de carbono. Impacta diretamente a receita adicional por redução de metano se a emissão da dieta for menor que a linha base do rebanho."
+                          error={errors.precoCreditoCarbono} 
+                        />
                       </div>
                     </div>
                   </div>
 
                   {/* Section: Outros Custos */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2.5 bg-slate-500/10 border border-slate-500/20 rounded-xl">
-                        <MoreHorizontal className="text-slate-400 w-5 h-5" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                        <MoreHorizontal className="text-amber-400 w-4 h-4" />
                       </div>
                       <div>
-                        <h2 className="font-display font-bold text-slate-100 text-base tracking-tight">Outros Custos</h2>
-                        <p className="text-xs text-slate-400">Sanidade, frete e extras.</p>
+                        <h2 className="font-sans font-extrabold text-amber-400 text-xs uppercase tracking-wider">Outros Custos</h2>
+                        <p className="text-[10px] text-slate-400">Sanidade, frete e extras.</p>
                       </div>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div className="flex flex-col gap-2">
                         <InputGroup label="Sanidade" name="custoSanidadePorBoi" value={inputs.custoSanidadePorBoi} unit="R$/boi" onChange={handleInputChange} isCurrency tooltipPlacement="right" tooltip="Custo acumulado planejado por boi com vacinas, tratamentos clínicos e de rebanho. É utilizado na análise de resultados dentro do cálculo dos Custos Variáveis por ciclo, sendo chave na saúde preventiva para resguardar o GMD e conter as perdas por óbitos (Mortalidade)." error={errors.custoSanidadePorBoi} />
                         <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
@@ -5095,20 +5515,20 @@ export default function App() {
                 {/* Bottom Row: Section Infraestrutura & Depreciação */}
 
                 {/* Section: Infraestrutura & Depreciação */}
-                <div className="lg:col-span-12 bg-[#121826] p-6 rounded-3xl border border-slate-800 shadow-xl">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                        <Database className="text-indigo-400 w-5 h-5" />
+                <div className="lg:col-span-12 bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
+                        <Database className="text-indigo-400 w-4 h-4" />
                       </div>
                       <div>
-                        <h2 className="font-display font-bold text-slate-100 text-lg">Infraestrutura & Depreciação</h2>
-                        <p className="text-xs text-slate-400">Gestão de ativos e cálculo de depreciação do projeto.</p>
+                        <h2 className="font-sans font-extrabold text-indigo-400 text-xs uppercase tracking-wider">Infraestrutura & Depreciação</h2>
+                        <p className="text-[10px] text-slate-400">Gestão de ativos e cálculo de depreciação do projeto.</p>
                       </div>
                     </div>
                     <button
                       onClick={addDepreciationItem}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-indigo-950/20 border border-indigo-500/30 cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[10px] font-bold rounded-lg hover:bg-indigo-500/20 transition-all shadow-sm w-full sm:w-auto justify-center cursor-pointer"
                       title="Adiciona um novo item de infraestrutura ou equipamento para cálculo de depreciação."
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -5320,7 +5740,7 @@ export default function App() {
                 <button
                   onClick={handleRunLHS}
                   disabled={isSimulating}
-                  className="group relative flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white px-10 py-4 rounded-2xl font-bold shadow-xl shadow-emerald-600/20 transition-all disabled:opacity-50 overflow-hidden"
+                  className={`group relative flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white px-10 py-4 rounded-2xl font-bold shadow-xl shadow-emerald-600/20 transition-all disabled:opacity-50 overflow-hidden ${!isSimulating ? 'animate-pulse hover:animate-none' : ''}`}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                   {isSimulating ? (
@@ -5401,21 +5821,20 @@ export default function App() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.1 }}
               >
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-1 h-6 bg-blue-500 rounded-full" />
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest font-display">Desempenho Bioeconômico</h3>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-xs font-extrabold text-blue-400 uppercase tracking-wider font-sans">Desempenho Bioeconômico</h3>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shrink-0">
-                      <Scale className="w-5 h-5 text-emerald-400" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg shrink-0">
+                      <Scale className="w-4 h-4 text-emerald-400" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo kg Ganho</p>
+                        <p className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider">Custo kg Ganho</p>
                         <Info className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 transition-colors" />
                       </div>
-                      <p className="text-lg font-bold text-slate-100 font-mono">
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={results.custoKgGanho}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5433,16 +5852,16 @@ export default function App() {
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-[#0f172a]" />
                     </div>
                   </div>
-                   <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shrink-0">
-                      <Clock className="w-5 h-5 text-emerald-400" />
+                   <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg shrink-0">
+                      <Clock className="w-4 h-4 text-emerald-400" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo Total / Dia</p>
-                        <Info className="w-3 h-3 text-gray-300" />
+                        <p className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider">Custo Total / Dia</p>
+                        <Info className="w-3 h-3 text-gray-350" />
                       </div>
-                      <p className="text-lg font-bold text-slate-100 font-mono">
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={results.custoTotalPorAnimalDia}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5460,16 +5879,16 @@ export default function App() {
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                     </div>
                   </div>
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shrink-0">
-                      <Clock className="w-5 h-5 text-emerald-400" />
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg shrink-0">
+                      <Clock className="w-4 h-4 text-emerald-400" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo Operacional / Dia</p>
-                        <Info className="w-3 h-3 text-gray-300" />
+                        <p className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider">Custo Operacional / Dia</p>
+                        <Info className="w-3 h-3 text-gray-350" />
                       </div>
-                      <p className="text-lg font-bold text-slate-100">
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={results.custoTotalSemCompraDia}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5487,16 +5906,16 @@ export default function App() {
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                     </div>
                   </div>
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shrink-0">
-                      <TrendingUp className="w-5 h-5 text-emerald-400" />
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg shrink-0">
+                      <TrendingUp className="w-4 h-4 text-emerald-400" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo @ Produzida</p>
-                        <Info className="w-3 h-3 text-gray-300" />
+                        <p className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider">Custo @ Produzida</p>
+                        <Info className="w-3 h-3 text-gray-350" />
                       </div>
-                      <p className="text-lg font-bold text-slate-100">
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={results.custoArrobaGanho}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5514,17 +5933,17 @@ export default function App() {
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                     </div>
                   </div>
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-purple-50 rounded-xl">
-                      <DollarSign className="w-5 h-5 text-purple-600" />
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg shrink-0">
+                      <DollarSign className="w-4 h-4 text-purple-400" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Custo Total por @</p>
-                        <Info className="w-3 h-3 text-gray-300" />
+                        <p className="text-[10px] font-extrabold text-purple-400 uppercase tracking-wider">Custo Total por @</p>
+                        <Info className="w-3 h-3 text-gray-350" />
                       </div>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-lg font-bold text-slate-100">
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-base font-bold text-slate-100 font-mono">
                           <motion.span
                             key={results.custoPorArroba}
                             initial={{ opacity: 0.3, y: -2 }}
@@ -5535,7 +5954,7 @@ export default function App() {
                             {formatCurrency(results.custoPorArroba)}
                           </motion.span>
                         </p>
-                        <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 whitespace-nowrap" title="Ponto de Equilíbrio">
+                        <span className="text-[8px] font-bold text-amber-500 bg-amber-500/5 px-1 rounded border border-amber-500/15 whitespace-nowrap" title="Ponto de Equilíbrio">
                           PE: {formatCurrency(results.pontoEquilibrioPreco)}
                         </span>
                       </div>
@@ -5546,16 +5965,16 @@ export default function App() {
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                     </div>
                   </div>
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className={`p-3 rounded-xl ${results.agioDesagio > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
-                      <ArrowRightLeft className={`w-5 h-5 ${results.agioDesagio > 0 ? 'text-amber-600' : 'text-emerald-400'}`} />
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className={`p-1.5 rounded-lg border ${results.agioDesagio > 0 ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+                      <ArrowRightLeft className="w-4 h-4" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ágio/Deságio</p>
-                        <Info className="w-3 h-3 text-gray-300" />
+                        <p className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider">Ágio/Deságio</p>
+                        <Info className="w-3 h-3 text-gray-355" />
                       </div>
-                      <p className={`text-lg font-bold ${results.agioDesagio > 0 ? 'text-amber-600' : 'text-emerald-400'}`}>
+                      <p className={`text-base font-bold font-mono ${results.agioDesagio > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
                         <motion.span
                           key={results.agioDesagio}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5585,18 +6004,17 @@ export default function App() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.2 }}
               >
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-1 h-6 bg-amber-500 rounded-full" />
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Métricas Biológicas</h3>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider font-sans">Métricas Biológicas</h3>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl shrink-0">
-                      <Scale className="w-5 h-5 text-orange-600" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-orange-500/10 border border-orange-500/20 rounded-lg shrink-0">
+                      <Scale className="w-4 h-4 text-orange-400" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ganho Peso Total</p>
-                      <p className="text-lg font-bold text-slate-100 font-mono">
+                      <p className="text-[10px] font-extrabold text-orange-400 uppercase tracking-wider">Ganho Peso Total</p>
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={results.ganhoPesoTotal}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5609,17 +6027,17 @@ export default function App() {
                       </p>
                     </div>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
-                      Total de kg ganhos por animal durante todo o período de confinamento.
+                      Total de kg ganhos por animal during todo o período de confinamento.
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                     </div>
                   </div>
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl shrink-0">
-                      <TrendingUp className="w-5 h-5 text-indigo-400" />
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg shrink-0">
+                      <TrendingUp className="w-4 h-4 text-indigo-400" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">@ Produzidas</p>
-                      <p className="text-lg font-bold text-slate-100 font-mono">
+                      <p className="text-[10px] font-extrabold text-indigo-400 uppercase tracking-wider">@ Produzidas</p>
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={results.arrobasProduzidas}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5636,13 +6054,13 @@ export default function App() {
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                     </div>
                   </div>
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shrink-0">
-                      <Calculator className="w-5 h-5 text-cyan-600" />
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-cyan-500/10 border border-cyan-500/20 rounded-lg shrink-0">
+                      <Calculator className="w-4 h-4 text-cyan-400" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Eficiência Alimentar</p>
-                      <p className="text-lg font-bold text-slate-100 font-mono">
+                      <p className="text-[10px] font-extrabold text-cyan-400 uppercase tracking-wider">Eficiência Alimentar</p>
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={results.eficienciaAlimentar}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5660,13 +6078,13 @@ export default function App() {
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                     </div>
                   </div>
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-slate-500/10 border border-slate-500/20 rounded-xl shrink-0">
-                      <Clock className="w-5 h-5 text-slate-600" />
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-slate-500/10 border border-slate-500/20 rounded-lg shrink-0">
+                      <Clock className="w-4 h-4 text-slate-400" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tempo de Cocho</p>
-                      <p className="text-lg font-bold text-slate-100 font-mono">
+                      <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Tempo de Cocho</p>
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={inputs.tempoAlimentacao}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5683,13 +6101,13 @@ export default function App() {
                       <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                     </div>
                   </div>
-                  <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800/80 shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4 group relative text-left">
-                    <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl shrink-0">
-                      <AlertCircle className="w-5 h-5 text-red-600" />
+                  <div className="bg-[#0d121f] p-3 rounded-xl border border-slate-850 shadow-sm hover:border-slate-800 transition-all duration-300 flex items-center gap-3 group relative text-left">
+                    <div className="p-1.5 bg-rose-500/10 border border-rose-500/20 rounded-lg shrink-0">
+                      <AlertCircle className="w-4 h-4 text-rose-400" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sobrecusto Dieta</p>
-                      <p className="text-lg font-bold text-slate-100 font-mono">
+                      <p className="text-[10px] font-extrabold text-rose-400 uppercase tracking-wider">Sobrecusto Dieta</p>
+                      <p className="text-base font-bold text-slate-100 font-mono">
                         <motion.span
                           key={results.sobrecustoDieta}
                           initial={{ opacity: 0.3, y: -2 }}
@@ -5832,71 +6250,71 @@ export default function App() {
               )}
 
               {/* 4. Detalhamento de Custos e Viabilidade */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <motion.div 
                   initial={{ opacity: 0, x: -20 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: 0.3 }}
-                  className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left"
+                  className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 text-left"
                 >
-                  <h3 className="font-semibold text-slate-200 mb-6 flex items-center gap-2">
-                    <Info className="w-4 h-4 text-emerald-400" />
-                    Composição de Custos (Matsunaga et al.)
-                    <span className="text-[10px] font-normal text-slate-400 ml-auto bg-gray-50 px-2 py-1 rounded-full border border-gray-100 italic">
+                  <h3 className="text-xs font-extrabold text-blue-400 uppercase tracking-wider font-sans mb-4 flex items-center gap-2">
+                    <Info className="w-3.5 h-3.5 text-blue-400" />
+                    Composição de Custos
+                    <span className="text-[9px] font-mono text-slate-400 ml-auto bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800/80 italic">
                       Valores por animal no período total
                     </span>
                   </h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1.5 rounded-lg uppercase tracking-widest mb-1">
-                      <h4 className="text-[10px] font-bold">Custos Variáveis</h4>
-                      <div className="flex gap-2 items-center">
-                        <span className="text-[10px] font-bold">{formatCurrency(results.custoVariavel)}</span>
-                        <span className="text-[10px] font-medium opacity-70">{formatPerc((results.custoVariavel / results.custoTotal) * 100)}</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded uppercase tracking-wider mb-1">
+                      <h4 className="text-[9px] font-bold">Custos Variáveis</h4>
+                      <div className="flex gap-1.5 items-center">
+                        <span className="text-[9px] font-mono font-bold">{formatCurrency(results.custoVariavel)}</span>
+                        <span className="text-[9px] font-mono font-medium opacity-70">{formatPerc((results.custoVariavel / results.custoTotal) * 100)}</span>
                       </div>
                     </div>
-                    <ResultRow label="Compra Animal Magro" value={formatCurrency(results.custoCompraAnimal)} dotColor="bg-emerald-500" tooltip="Custo de aquisição do animal magro para início do confinamento (por animal)." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoCompraAnimal / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Alimentação" value={formatCurrency(results.custoAlimentacao)} dotColor="bg-blue-500" tooltip="Custo total com volumoso e concentrado durante todo o período de trato (por animal)." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoAlimentacao / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Compra Animal Magro" value={formatCurrency(results.custoCompraAnimal)} dotColor="bg-emerald-500" tooltip="Custo de aquisição do animal magro para início do confinamento (por animal)." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoCompraAnimal / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Alimentação" value={formatCurrency(results.custoAlimentacao)} dotColor="bg-blue-500" tooltip="Custo total com volumoso e concentrado durante todo o período de trato (por animal)." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoAlimentacao / results.custoTotal) * 100)}</span>} />
                     <ResultRow 
                       label="Sobrecusto da Dieta" 
                       value={formatCurrency(results.sobrecustoDieta)} 
                       dotColor="bg-red-400" 
                       tooltip={`Ineficiência alimentar total. Composição: Sobras (${formatCurrency(results.sobrecustoSobras)}) + Preço (${formatCurrency(results.sobrecustoPreco)}). Cenário técnico: 1% sobras e -5% no preço dos insumos.`} 
-                      extra={<span className="text-[10px] text-red-400 font-medium">{formatPerc((results.sobrecustoDieta / results.custoAlimentacao) * 100)}</span>} 
+                      extra={<span className="text-[10px] font-mono text-red-400 font-medium">{formatPerc((results.sobrecustoDieta / results.custoAlimentacao) * 100)}</span>} 
                     />
-                    <ResultRow label="Sanidade" value={formatCurrency(results.custoSanidade)} dotColor="bg-amber-500" tooltip="Custos com medicamentos, vacinas e manejo sanitário no período total (por animal)." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoSanidade / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Mão de Obra" value={formatCurrency(results.custoMaoDeObra)} dotColor="bg-red-500" tooltip="Custos com pessoal e encargos trabalhistas rateados por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoMaoDeObra / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Combustível (Diesel)" value={formatCurrency(results.custoDiesel)} dotColor="bg-orange-500" tooltip="Custo com diesel para trato e distribuição de ração no período total (por animal)." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoDiesel / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Frete & Taxas" value={formatCurrency(results.custoFrete)} dotColor="bg-purple-500" tooltip="Custos de transporte, guia e rastreabilidade (por animal)." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoFrete / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Comissões (C/V)" value={formatCurrency(results.custoComissoes)} dotColor="bg-indigo-500" tooltip="Comissões de compra e venda (corretagem) por animal." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoComissoes / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Oportunidade Capital" value={formatCurrency(results.custoOportunidadeCapital)} dotColor="bg-pink-500" tooltip="Remuneração que o capital investido teria em uma aplicação alternativa durante o período de confinamento (por animal)." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoOportunidadeCapital / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Sanidade" value={formatCurrency(results.custoSanidade)} dotColor="bg-amber-500" tooltip="Custos com medicamentos, vacinas e manejo sanitário no período total (por animal)." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoSanidade / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Mão de Obra" value={formatCurrency(results.custoMaoDeObra)} dotColor="bg-red-500" tooltip="Custos com pessoal e encargos trabalhistas rateados por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoMaoDeObra / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Combustível (Diesel)" value={formatCurrency(results.custoDiesel)} dotColor="bg-orange-500" tooltip="Custo com diesel para trato e distribuição de ração no período total (por animal)." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoDiesel / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Frete & Taxas" value={formatCurrency(results.custoFrete)} dotColor="bg-purple-500" tooltip="Custos de transporte, guia e rastreabilidade (por animal)." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoFrete / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Comissões (C/V)" value={formatCurrency(results.custoComissoes)} dotColor="bg-indigo-500" tooltip="Comissões de compra e venda (corretagem) por animal." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoComissoes / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Oportunidade Capital" value={formatCurrency(results.custoOportunidadeCapital)} dotColor="bg-pink-500" tooltip="Remuneração que o capital investido teria em uma aplicação alternativa durante o período de confinamento (por animal)." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoOportunidadeCapital / results.custoTotal) * 100)}</span>} />
                     
-                    <div className="flex justify-between items-center text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg uppercase tracking-widest mt-4 mb-1">
-                      <h4 className="text-[10px] font-bold">Custos Fixos</h4>
-                      <div className="flex gap-2 items-center">
-                        <span className="text-[10px] font-bold">{formatCurrency(results.custoFixo)}</span>
-                        <span className="text-[10px] font-medium opacity-70">{formatPerc((results.custoFixo / results.custoTotal) * 100)}</span>
+                    <div className="flex justify-between items-center text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded uppercase tracking-wider mt-3 mb-1">
+                      <h4 className="text-[9px] font-bold">Custos Fixos</h4>
+                      <div className="flex gap-1.5 items-center">
+                        <span className="text-[9px] font-mono font-bold">{formatCurrency(results.custoFixo)}</span>
+                        <span className="text-[9px] font-mono font-medium opacity-70">{formatPerc((results.custoFixo / results.custoTotal) * 100)}</span>
                       </div>
                     </div>
-                    <ResultRow label="Assistência Técnica" value={formatCurrency(results.custoAssistenciaTecnica)} dotColor="bg-slate-400" tooltip="Custo com consultoria e suporte técnico rateado por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoAssistenciaTecnica / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Pró-labore" value={formatCurrency(results.custoProLabore)} dotColor="bg-gray-400" tooltip="Remuneração do proprietário/gestor rateada por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoProLabore / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Energia Elétrica" value={formatCurrency(results.custoEnergia)} dotColor="bg-yellow-400" tooltip="Custos com energia rateados por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoEnergia / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Reparos & Manutenção" value={formatCurrency(results.custoReparos)} dotColor="bg-orange-400" tooltip="Custo com reparos e manutenção rateado por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoReparos / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Seguros" value={formatCurrency(results.custoSeguros)} dotColor="bg-blue-300" tooltip="Custo com seguros patrimoniais rateado por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoSeguros / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Financiamento" value={formatCurrency(results.custoFinanciamento)} dotColor="bg-indigo-300" tooltip="Custo com financiamentos rateado por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoFinanciamento / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="ITR" value={formatCurrency(results.custoITR)} dotColor="bg-orange-400" tooltip="Imposto sobre a Propriedade Territorial Rural rateado por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoITR / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Assistência Técnica" value={formatCurrency(results.custoAssistenciaTecnica)} dotColor="bg-slate-400" tooltip="Custo com consultoria e suporte técnico rateado por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoAssistenciaTecnica / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Pró-labore" value={formatCurrency(results.custoProLabore)} dotColor="bg-gray-400" tooltip="Remuneração do proprietário/gestor rateada por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoProLabore / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Energia Elétrica" value={formatCurrency(results.custoEnergia)} dotColor="bg-yellow-400" tooltip="Custos com energia rateados por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoEnergia / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Reparos & Manutenção" value={formatCurrency(results.custoReparos)} dotColor="bg-orange-400" tooltip="Custo com reparos e manutenção rateado por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoReparos / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Seguros" value={formatCurrency(results.custoSeguros)} dotColor="bg-blue-300" tooltip="Custo com seguros patrimoniais rateado por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoSeguros / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Financiamento" value={formatCurrency(results.custoFinanciamento)} dotColor="bg-indigo-300" tooltip="Custo com financiamentos rateado por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoFinanciamento / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="ITR" value={formatCurrency(results.custoITR)} dotColor="bg-orange-400" tooltip="Imposto sobre a Propriedade Territorial Rural rateado por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoITR / results.custoTotal) * 100)}</span>} />
                       <ResultRow 
                         label="Depreciação" 
                         value={formatCurrency(results.custoDepreciacao)} 
                         dotColor="bg-cyan-400" 
                         tooltip={`Reserva para reposição de ativos rateada por animal no período total de ${inputs.tempoAlimentacao} dias. (Equivalente a ${formatCurrency(results.custoDepreciacao / (inputs.tempoAlimentacao / 30.4167))}/mês por animal). Valores de vida útil e residual baseados na metodologia Conab (2010).`} 
-                        extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoDepreciacao / results.custoTotal) * 100)}</span>} 
+                        extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoDepreciacao / results.custoTotal) * 100)}</span>} 
                       />
-                    <ResultRow label="Oportunidade Máquinas" value={formatCurrency(results.custoOportunidadeMaquinas)} dotColor="bg-indigo-400" tooltip="Remuneração do capital imobilizado em máquinas rateada por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoOportunidadeMaquinas / results.custoTotal) * 100)}</span>} />
-                    <ResultRow label="Oportunidade Terra" value={formatCurrency(results.custoOportunidadeTerra)} dotColor="bg-teal-400" tooltip="Remuneração do capital terra rateada por animal no período total." extra={<span className="text-[10px] text-slate-400 font-medium">{formatPerc((results.custoOportunidadeTerra / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Oportunidade Máquinas" value={formatCurrency(results.custoOportunidadeMaquinas)} dotColor="bg-indigo-400" tooltip="Remuneração do capital imobilizado em máquinas rateada por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoOportunidadeMaquinas / results.custoTotal) * 100)}</span>} />
+                    <ResultRow label="Oportunidade Terra" value={formatCurrency(results.custoOportunidadeTerra)} dotColor="bg-teal-400" tooltip="Remuneração do capital terra rateada por animal no período total." extra={<span className="text-[10px] font-mono text-slate-450 font-medium">{formatPerc((results.custoOportunidadeTerra / results.custoTotal) * 100)}</span>} />
                   </div>
 
-                  <div className="pt-2 border-t border-slate-800/60">
+                  <div className="pt-2 mt-2 border-t border-slate-800/60">
                       <ResultRow label="Custo Operacional Efetivo (COE)" value={formatCurrency(results.custoOperacionalEfetivo)} bold tooltip="Soma dos custos variáveis (exceto oportunidade de capital)." />
                       <ResultRow label="Custo Operacional Total (COT)" value={formatCurrency(results.custoOperacionalTotal)} bold tooltip="COE + Custos Fixos (exceto oportunidades)." />
                       <ResultRow label="Custo Total (COT + Oportunidades)" value={formatCurrency(results.custoTotal)} bold tooltip="Considera todos os custos, inclusive todas as oportunidades." />
@@ -5904,22 +6322,23 @@ export default function App() {
                     </div>
                 </motion.div>
 
-                <div className="space-y-6">
+                <div className="space-y-4">
                   <motion.div 
                     initial={{ opacity: 0, x: 20 }}
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.5, delay: 0.4 }}
-                    className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left"
+                    className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 text-left"
                   >
-                    <h3 className="font-semibold text-slate-200 mb-6 flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-xs font-extrabold text-emerald-400 uppercase tracking-wider font-sans mb-4 flex items-center gap-2">
+                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
                       Composição de Receitas
                     </h3>
-                    <div className="space-y-3">
-                      <div className="space-y-2 mb-4 p-3 bg-[#070a13] rounded-xl border border-slate-800/60">
+                    <div className="space-y-2">
+                      <div className="space-y-1.5 p-2 bg-[#070a13] rounded-lg border border-slate-800/40">
                         <ResultRow label="Venda do Animal" value={formatCurrency(results.receitaVenda)} tooltip="Receita bruta obtida com a venda do animal gordo." />
                         <ResultRow label="Bonificação Carcaça" value={formatCurrency(results.receitaBonificacao)} tooltip="Receita adicional por qualidade de carcaça ou programas de incentivo." />
+                        <ResultRow label="Crédito de Carbono" value={formatCurrency(results.receitaCreditoCarbono || 0)} tooltip="Receita financeira obtida pelo balanço auditado de mitigação de emissões de GEE (Protocolo de Carbono Voluntário)." />
                         <ResultRow label="Chorume/Esterco" value={formatCurrency(results.receitaEsterco)} tooltip="Receita obtida com a venda ou aproveitamento do esterco produzido." />
                         <ResultRow label="Valor Residual" value={formatCurrency(results.valorResidual)} tooltip="Valor de revenda de ativos ao final do projeto (se houver)." />
                         <div className="pt-2 border-t border-slate-800/60">
@@ -5935,22 +6354,22 @@ export default function App() {
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.5, delay: 0.5 }}
-                    className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left"
+                    className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 text-left"
                   >
-                    <h3 className="font-semibold text-slate-200 mb-6 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider font-sans mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
                       Análise de Viabilidade Determinística
                     </h3>
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       <ResultRow label="Margem Bruta" value={formatCurrency(results.margemBruta)} tooltip="Receita - COE. Sugere continuidade no curto prazo." />
                       <ResultRow label="Margem Líquida" value={formatCurrency(results.margemLiquida)} tooltip="Receita - COT. Sugere continuidade no médio/longo prazo." />
-                      <div className="pt-2 border-t border-slate-800/60">
+                      <div className="pt-1.5 border-t border-slate-800/60">
                         <ResultRow label="Lucro por Animal" value={formatCurrency(results.lucroPorBoi)} bold tooltip="Lucro real por animal no ciclo." />
                         <ResultRow label="Lucro por Hectare" value={`${formatCurrency(results.lucroPorHa)}/ha`} tooltip="Lucro real total projetado por hectare de área de confinamento." />
                         <ResultRow label="Giro Anual (Lotes/ano)" value={`${results.giroAnual.toFixed(2)} lotes`} tooltip="Número de ciclos (lotes) que podem ser realizados por ano com base no tempo de cocho." />
                         <ResultRow label="Lucro Real Total" value={formatCurrency(results.lucro)} bold tooltip="Receita - Custo Total. Considera todos os custos, inclusive oportunidade." />
                       </div>
-                      <div className="pt-2 border-t border-slate-800/60">
+                      <div className="pt-1.5 border-t border-slate-800/60">
                         <ResultRow 
                           label="VPL (Valor Presente Líquido)" 
                           value={formatCurrency(results.vpl)} 
@@ -5965,7 +6384,7 @@ export default function App() {
                       <ResultRow label="Custo por @" value={`${formatCurrency(results.custoPorArroba)}/@`} tooltip={`Custo total por animal dividido pelo peso final em arrobas. Preço de venda atual: ${formatCurrency(inputs.precoBoiGordo)}/@`} />
                       <ResultRow label="Custo Total por Animal/Dia" value={`${formatCurrency(results.custoTotalPorAnimalDia)}/dia`} tooltip="Custo total dividido pelo tempo de alimentação (dias)." />
                       <ResultRow label="Ponto de Equilíbrio" value={`${formatCurrency(results.pontoEquilibrioPreco)}/@`} tooltip="Preço de venda necessário (R$/@) para cobrir todos os custos totais (VPL zero)." />
-                      <div className="mt-6">
+                      <div className="mt-4">
                         <TechnicalParecer 
                           title="Parecer Técnico - Viabilidade Econômica"
                           type={results.lucro > 0 ? 'success' : results.margemLiquida > 0 ? 'warning' : 'warning'}
@@ -5982,39 +6401,39 @@ export default function App() {
               </div>
 
               {/* Fluxo de Caixa Detalhado */}
-              <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 overflow-hidden text-left">
-                <h3 className="font-semibold text-slate-200 mb-6 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-emerald-400" />
+              <div className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 overflow-hidden text-left">
+                <h3 className="text-xs font-extrabold text-indigo-400 uppercase tracking-wider font-sans mb-4 flex items-center gap-2">
+                  <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
                   Fluxo de Caixa Detalhado (Financeiro por Animal)
                 </h3>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-slate-350 uppercase bg-slate-900/60 border-b border-slate-800">
+                  <table className="w-full text-xs text-left">
+                    <thead className="text-[10px] text-slate-400 font-bold uppercase bg-slate-900/40 border-b border-slate-800">
                       <tr>
-                        <th className="px-4 py-3 rounded-l-lg">Mês</th>
-                        <th className="px-4 py-3">Descrição</th>
-                        <th className="px-4 py-3 text-right">Entradas</th>
-                        <th className="px-4 py-3 text-right">Saídas</th>
-                        <th className="px-4 py-3 text-right">Saldo</th>
-                        <th className="px-4 py-3 text-right rounded-r-lg">Acumulado</th>
+                        <th className="px-3 py-2 rounded-l-lg">Mês</th>
+                        <th className="px-3 py-2">Descrição</th>
+                        <th className="px-3 py-2 text-right">Entradas</th>
+                        <th className="px-3 py-2 text-right">Saídas</th>
+                        <th className="px-3 py-2 text-right">Saldo</th>
+                        <th className="px-3 py-2 text-right rounded-r-lg">Acumulado</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/40">
+                    <tbody className="divide-y divide-slate-800/30">
                       {results.fluxoCaixa.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-slate-800/20 transition-colors">
-                          <td className="px-4 py-3 font-medium text-slate-100">{item.mes}</td>
-                          <td className="px-4 py-3 text-slate-400">{item.descricao}</td>
-                          <td className="px-4 py-3 text-right text-emerald-400 font-medium">
+                        <tr key={idx} className="hover:bg-slate-800/15 transition-colors">
+                          <td className="px-3 py-2 font-medium text-slate-100">{item.mes}</td>
+                          <td className="px-3 py-2 text-slate-400">{item.descricao}</td>
+                          <td className="px-3 py-2 text-right text-emerald-400 font-mono font-medium">
                             {item.entradas > 0 ? formatCurrency(item.entradas) : '-'}
                           </td>
-                          <td className="px-4 py-3 text-right text-red-500 font-medium">
+                          <td className="px-3 py-2 text-right text-red-400 font-mono font-medium">
                             {item.saidas > 0 ? formatCurrency(item.saidas) : '-'}
                           </td>
-                          <td className={`px-4 py-3 text-right font-bold ${item.saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          <td className={`px-3 py-2 text-right font-mono font-bold ${item.saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {formatCurrency(item.saldo)}
                           </td>
-                          <td className={`px-4 py-3 text-right font-bold ${item.acumulado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          <td className={`px-3 py-2 text-right font-mono font-bold ${item.acumulado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {formatCurrency(item.acumulado)}
                           </td>
                         </tr>
@@ -6025,24 +6444,24 @@ export default function App() {
               </div>
 
               {/* Projeção de Lucro Estimado por Animal */}
-              <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left mt-8">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+              <div className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 text-left mt-6">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4">
                   <div>
-                    <h3 className="font-semibold text-slate-200 flex items-center gap-2 text-base font-display">
-                      <DollarSign className="w-5 h-5 text-emerald-400" />
+                    <h3 className="text-xs font-extrabold text-emerald-400 uppercase tracking-wider font-sans flex items-center gap-2">
+                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
                       Projeção Dinâmica de Lucro por Animal no Confinamento
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-[10px] text-slate-450 mt-1">
                       Acompanhamento do resultado líquido estimado por cabeça com o passar dos dias, ponderando o ganho de carcaça e o acúmulo de custos.
                     </p>
                   </div>
-                  <div className="shrink-0 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-1.5 text-xs text-emerald-400 font-bold">
+                  <div className="shrink-0 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-2 py-0.5 text-[9px] font-mono text-emerald-400 font-bold">
                     Cenário Determinístico Ativo
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-stretch">
-                  <div className="lg:col-span-3 h-[350px] w-full">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-stretch">
+                  <div className="lg:col-span-3 h-[320px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={results.evolucao} margin={{ top: 15, right: 30, left: 20, bottom: 25 }}>
                         <defs>
@@ -6090,18 +6509,18 @@ export default function App() {
                     </ResponsiveContainer>
                   </div>
 
-                  <div className="lg:col-span-1 flex flex-col justify-between bg-[#070a13] p-4 rounded-xl border border-slate-800/60 divide-y divide-slate-800">
-                    <div className="pb-4">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Informações Chave do Lote</p>
+                  <div className="lg:col-span-1 flex flex-col justify-between bg-[#070a13] p-3 rounded-lg border border-slate-850/50 divide-y divide-slate-800/50">
+                    <div className="pb-3">
+                      <p className="text-[9px] font-mono font-bold text-slate-455 uppercase tracking-wider">Informações Chave do Lote</p>
                       
-                      <div className="mt-4 space-y-4">
-                        <div className="group relative cursor-help pb-1.5 border-b border-slate-800/10 last:border-b-0 last:pb-0">
-                          <div className="flex items-center gap-1.5">
+                      <div className="mt-3 space-y-3">
+                        <div className="group relative cursor-help pb-1 border-b border-slate-800/10 last:border-b-0 last:pb-0">
+                          <div className="flex items-center gap-1">
                             <span className="text-[10px] text-slate-400 block font-medium">Lucro Planejado Final (Dia {inputs.tempoAlimentacao})</span>
-                            <Info className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                            <Info className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 transition-colors" />
                           </div>
-                          <span className={`text-lg font-bold font-mono block mt-0.5 ${results.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {formatCurrency(results.lucro)} <span className="text-xs font-normal text-slate-500">/ animal</span>
+                          <span className={`text-base font-bold font-mono block mt-0.5 ${results.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {formatCurrency(results.lucro)} <span className="text-[10px] font-sans font-normal text-slate-500">/ animal</span>
                           </span>
                           
                           {/* Tooltip */}
@@ -6112,16 +6531,16 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="group relative cursor-help pb-1.5 border-b border-slate-800/10 last:border-b-0 last:pb-0">
-                          <div className="flex items-center gap-1.5">
+                        <div className="group relative cursor-help pb-1 border-b border-slate-800/10 last:border-b-0 last:pb-0">
+                          <div className="flex items-center gap-1">
                             <span className="text-[10px] text-slate-400 block font-medium">Máximo Retorno Econômico</span>
-                            <Info className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                            <Info className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 transition-colors" />
                           </div>
                           {(() => {
                             const maxPoint = results.evolucao.reduce((max, point) => ((point.lucroEstimado ?? 0) > (max.lucroEstimado ?? -Infinity) ? point : max), results.evolucao[0] || { dia: 0, lucroEstimado: 0 });
                             return (
                               <span className="text-sm font-bold text-slate-250 font-mono block mt-0.5">
-                                {formatCurrency(maxPoint.lucroEstimado || 0)} <span className="text-xs text-blue-400 font-sans font-normal">no Dia {maxPoint.dia}</span>
+                                {formatCurrency(maxPoint.lucroEstimado || 0)} <span className="text-[10px] text-blue-400 font-sans font-normal">no Dia {maxPoint.dia}</span>
                               </span>
                             );
                           })()}
@@ -6134,10 +6553,10 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="group relative cursor-help pb-1.5 border-b border-slate-800/10 last:border-b-0 last:pb-0">
-                          <div className="flex items-center gap-1.5">
+                        <div className="group relative cursor-help pb-1 border-b border-slate-800/10 last:border-b-0 last:pb-0">
+                          <div className="flex items-center gap-1">
                             <span className="text-[10px] text-slate-400 block font-medium">Ponto de Equilíbrio Temporal</span>
-                            <Info className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                            <Info className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 transition-colors" />
                           </div>
                           {(() => {
                             const breakEvenPoint = results.evolucao.find(p => (p.lucroEstimado ?? 0) >= 0);
@@ -6158,7 +6577,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="pt-4 text-[11px] text-slate-400 space-y-2 leading-relaxed">
+                    <div className="pt-3 text-[10px] text-slate-450 space-y-1.5 leading-relaxed">
                       <p>
                         💡 <strong>Análise de Otimização:</strong> 
                       </p>
@@ -6174,13 +6593,13 @@ export default function App() {
               </div>
 
               {/* Evolução de Peso e Gordura */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-                <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left">
-                  <h3 className="font-semibold text-slate-200 mb-6 flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-blue-400" />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+                <div className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 text-left">
+                  <h3 className="text-xs font-extrabold text-blue-400 uppercase tracking-wider font-sans mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-3.5 h-3.5 text-blue-400" />
                     Evolução de Peso (Estimado vs Real)
                   </h3>
-                  <div className="h-[350px] w-full">
+                  <div className="h-[320px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={results.evolucao} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
@@ -6214,12 +6633,12 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left">
-                  <h3 className="font-semibold text-slate-200 mb-6 flex items-center gap-2">
-                    <Monitor className="w-4 h-4 text-rose-400" />
+                <div className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 text-left">
+                  <h3 className="text-xs font-extrabold text-rose-400 uppercase tracking-wider font-sans mb-4 flex items-center gap-2">
+                    <Monitor className="w-3.5 h-3.5 text-rose-400" />
                     Deposição de Gordura (EGS) - Padrão MAPA
                   </h3>
-                  <div className="h-[350px] w-full">
+                  <div className="h-[320px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={results.evolucao} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
@@ -6265,26 +6684,26 @@ export default function App() {
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="mt-4 p-3 bg-[#070a13] rounded-xl border border-slate-850/50">
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Classificação de Acabamento (MAPA)</h4>
-                    <div className="grid grid-cols-5 gap-1 text-[9px] text-center">
-                      <div className="p-1 rounded bg-[#0f172a] border border-slate-800/80 text-slate-300">Ausente<br/>0mm</div>
-                      <div className="p-1 rounded bg-[#0f172a] border border-slate-800/80 text-slate-300">Escassa<br/>1-3mm</div>
+                  <div className="mt-3 p-2 bg-[#070a13] rounded-lg border border-slate-850/40">
+                    <h4 className="text-[10px] font-bold text-slate-455 uppercase tracking-wider mb-2">Classificação de Acabamento (MAPA)</h4>
+                    <div className="grid grid-cols-5 gap-1 text-[9px] text-center font-sans">
+                      <div className="p-1 rounded bg-[#0d121f] border border-slate-850 text-slate-300">Ausente<br/>0mm</div>
+                      <div className="p-1 rounded bg-[#0d121f] border border-slate-850 text-slate-300">Escassa<br/>1-3mm</div>
                       <div className="p-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold">Mediana<br/>3-6mm</div>
-                      <div className="p-1 rounded bg-[#0f172a] border border-slate-800/80 text-slate-300">Uniforme<br/>6-10mm</div>
-                      <div className="p-1 rounded bg-[#0f172a] border border-slate-800/80 text-slate-300">Excessiva<br/>&gt;10mm</div>
+                      <div className="p-1 rounded bg-[#0d121f] border border-slate-850 text-slate-300">Uniforme<br/>6-10mm</div>
+                      <div className="p-1 rounded bg-[#0d121f] border border-slate-850 text-slate-300">Excessiva<br/>&gt;10mm</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
                   {/* Chart: Custo por kg Ganho */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left">
-                    <h3 className="font-semibold text-slate-200 mb-6 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-teal-400" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 text-left">
+                    <h3 className="text-xs font-extrabold text-teal-400 uppercase tracking-wider font-sans mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-3.5 h-3.5 text-teal-400" />
                       Eficiência: Custo por kg Ganho
                     </h3>
-                    <div className="h-[300px] w-full">
+                    <div className="h-[260px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={results.evolucao} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
                           <defs>
@@ -6315,27 +6734,27 @@ export default function App() {
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
-                    <div className="mt-6 p-4 bg-[#070a13] rounded-2xl border border-slate-800/60 space-y-2 text-xs text-slate-300 italic">
-                      <div className="flex items-center gap-2 text-slate-200 font-bold mb-1">
-                        <TrendingUp className="w-3 h-3 text-teal-400" />
+                    <div className="mt-4 p-3 bg-[#070a13] rounded-lg border border-slate-850/40 space-y-1 text-[11px] text-slate-400 leading-relaxed font-sans">
+                      <div className="flex items-center gap-1.5 text-slate-200 font-bold mb-1 text-xs">
+                        <TrendingUp className="w-3.5 h-3.5 text-teal-400" />
                         Custo / kg Ganho
                       </div>
                       <p>
                         Reflete o <strong>custo operacional efetivo</strong> (excluindo a compra do animal) dividido pelo ganho total de peso vivo acumulado.
                       </p>
-                      <p className="mt-2">
+                      <p className="mt-1.5">
                         Este indicador permite avaliar a eficiência da dieta e o impacto dos custos fixos sobre o desempenho biológico real do lote ao longo do ciclo.
                       </p>
                     </div>
                   </div>
 
                   {/* Chart: Custo por mm EGS */}
-                  <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left">
-                    <h3 className="font-semibold text-slate-200 mb-6 flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-indigo-400" />
+                  <div className="bg-[#0d121f] p-4 rounded-xl shadow-sm border border-slate-850 text-left">
+                    <h3 className="text-xs font-extrabold text-indigo-400 uppercase tracking-wider font-sans mb-4 flex items-center gap-2">
+                      <Zap className="w-3.5 h-3.5 text-indigo-400" />
                       Eficiência: Custo por mm EGS
                     </h3>
-                    <div className="h-[300px] w-full">
+                    <div className="h-[260px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={results.evolucao} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
                           <defs>
@@ -6366,16 +6785,16 @@ export default function App() {
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
-                    <div className="mt-6 p-4 bg-[#070a13] rounded-2xl border border-slate-800/60 space-y-2 text-xs text-slate-300 italic">
-                      <div className="flex items-center gap-2 text-slate-200 font-bold mb-1">
-                        <Zap className="w-3 h-3 text-indigo-400" />
+                    <div className="mt-4 p-3 bg-[#070a13] rounded-lg border border-slate-850/40 space-y-1 text-[11px] text-slate-400 leading-relaxed font-sans">
+                      <div className="flex items-center gap-1.5 text-slate-200 font-bold mb-1 text-xs">
+                        <Zap className="w-3.5 h-3.5 text-indigo-400" />
                         Custo / mm EGS
                       </div>
                       <p>
                         Mostra o custo efetivo para depositar cada milímetro de gordura subcutânea. 
                         A faixa ideal de <strong>3 a 6 mm (Mediana)</strong> é o ponto de equilíbrio para a indústria:
                       </p>
-                      <ul className="list-disc list-inside space-y-1 ml-1 font-sans">
+                      <ul className="list-disc list-inside space-y-0.5 ml-1 font-sans">
                         <li><strong>Proteção:</strong> Essencial contra o resfriamento.</li>
                         <li><strong>Qualidade:</strong> Garante suculência e maciez.</li>
                         <li><strong>Comercialização:</strong> Evita penalizações no frigorífico.</li>
@@ -6391,32 +6810,32 @@ export default function App() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.1 }}
-                className="pt-8 border-t border-slate-800/60"
+                className="pt-6 border-t border-slate-800/60"
               >
-                <div className="flex items-center gap-3 mb-6 text-left">
-                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-                    <AlertTriangle className="w-5 h-5 text-amber-400" />
+                <div className="flex items-center gap-2 mb-4 text-left">
+                  <div className="p-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-slate-100 font-display">Testes de Estresse (Stress Testing)</h2>
-                    <p className="text-xs text-slate-400">Cenários determinísticos extremos para avaliação de resiliência do projeto.</p>
+                    <h2 className="text-sm font-extrabold text-amber-400 uppercase tracking-wider font-sans">Testes de Estresse (Stress Testing)</h2>
+                    <p className="text-[10px] text-slate-450">Cenários determinísticos extremos para avaliação de resiliência do projeto.</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {stressResults.map((scenario) => {
                     const colorStyles = {
                       amber: "border-amber-500/25 bg-amber-500/5 text-amber-400",
                       red: "border-rose-500/25 bg-rose-500/5 text-rose-450",
                       orange: "border-orange-500/25 bg-orange-500/5 text-orange-400"
-                    }[scenario.color as 'amber' | 'red' | 'orange'] || "border-slate-800 bg-[#121826]/80 text-slate-300";
+                    }[scenario.color as 'amber' | 'red' | 'orange'] || "border-slate-850 bg-[#121826]/80 text-slate-300";
                     
                     const isCustom = customStressScenarios.some(cs => cs.id === scenario.id);
 
                     return (
                       <div 
                         key={scenario.id}
-                        className={`bg-[#0f172a] p-6 rounded-2xl border transition-all duration-300 relative overflow-hidden group/card ${colorStyles.split(' ').slice(0, 2).join(' ')}`}
+                        className={`bg-[#0d121f] p-4 rounded-xl border transition-all duration-300 relative overflow-hidden group/card ${colorStyles.split(' ').slice(0, 2).join(' ')}`}
                       >
                         {isCustom && (
                           <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity z-20">
@@ -6434,76 +6853,76 @@ export default function App() {
                                   setIsAddingStress(true);
                                 }
                               }}
-                              className="p-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 rounded-lg transition-all cursor-pointer"
+                              className="p-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/20 rounded-md transition-all cursor-pointer"
                               title="Editar Cenário"
                             >
-                              <Pencil className="w-3.5 h-3.5" />
+                              <Pencil className="w-3 h-3" />
                             </button>
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setCustomStressScenarios(prev => prev.filter(cs => cs.id !== scenario.id));
                               }}
-                              className="p-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg transition-all cursor-pointer"
+                              className="p-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/20 rounded-md transition-all cursor-pointer"
                               title="Excluir Cenário"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
                         )}
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover/card:opacity-10 transition-opacity">
-                          <AlertTriangle className="w-16 h-16 text-slate-400" />
+                        <div className="absolute top-0 right-0 p-3 opacity-5 group-hover/card:opacity-10 transition-opacity">
+                          <AlertTriangle className="w-12 h-12 text-slate-400" />
                         </div>
                         
                         <div className="relative z-10 text-left">
-                          <h3 className="font-bold text-lg text-slate-100 mb-1">{scenario.name}</h3>
+                          <h3 className="font-extrabold text-xs text-slate-100 uppercase tracking-wider mb-2 font-sans">{scenario.name}</h3>
                           {scenario.changes && scenario.changes.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5 mb-6">
+                            <div className="flex flex-wrap gap-1 mb-4">
                               {scenario.changes.map((c: any, i: number) => (
-                                <span key={i} className="px-2 py-0.5 bg-[#070a13] border border-slate-800 text-[9px] font-black text-slate-400 rounded-md uppercase tracking-tighter">
+                                <span key={i} className="px-1.5 py-0.5 bg-[#070a13] border border-slate-850 text-[8px] font-black font-mono text-slate-455 rounded-md uppercase tracking-wider">
                                   {STRESS_INPUTS[c.inputKey]} {c.changePerc > 0 ? '+' : ''}{c.changePerc}%
                                 </span>
                               ))}
                             </div>
                           ) : (
-                            <p className="text-xs text-slate-400 mb-6 leading-relaxed bg-[#0c1222]/50 p-2.5 rounded-xl border border-slate-850/60">{scenario.description}</p>
+                            <p className="text-[11px] text-slate-400 mb-4 leading-relaxed bg-[#0c1222]/50 p-2 rounded-lg border border-slate-850/40">{scenario.description}</p>
                           )}
                           
-                          <div className="space-y-4">
+                          <div className="space-y-3">
                             <div>
                               <div className="flex justify-between items-end mb-1">
-                                <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">VPL do Cenário</p>
-                                <p className={`text-sm font-bold font-mono ${scenario.vpl >= 0 ? 'text-emerald-400' : 'text-red-500'}`}>
+                                <p className="text-[9px] font-mono font-bold text-slate-455 uppercase tracking-wider">VPL do Cenário</p>
+                                <p className={`text-xs font-bold font-mono ${scenario.vpl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                   {formatCurrency(scenario.vpl)}
                                 </p>
                               </div>
-                              <div className="w-full bg-[#070a13] h-1.5 rounded-full overflow-hidden border border-slate-800">
+                              <div className="w-full bg-[#070a13] h-1 rounded-full overflow-hidden border border-slate-850/50">
                                 <motion.div 
                                   initial={{ width: 0 }}
                                   animate={{ width: `${Math.min(100, Math.max(0, (scenario.vpl / (results?.vpl || 1)) * 100))}%` }}
-                                  className={`h-full ${scenario.vpl >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                  className={`h-full ${scenario.vpl >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
                                 />
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-800/40">
+                            <div className="grid grid-cols-2 gap-3 pt-1.5 border-t border-slate-800/30">
                               <div>
-                                <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1">Impacto no VPL</p>
-                                <p className={`text-sm font-bold font-mono ${scenario.vplDiff >= 0 ? 'text-emerald-400' : 'text-red-500'}`}>
+                                <p className="text-[9px] font-mono font-bold text-slate-455 uppercase tracking-wider mb-0.5">Impacto no VPL</p>
+                                <p className={`text-xs font-bold font-mono ${scenario.vplDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                   {scenario.vplDiffPerc > 0 ? '+' : ''}{scenario.vplDiffPerc.toFixed(1)}%
                                 </p>
                               </div>
                               <div>
-                                <p className="text-[10px] font-bold text-slate-455 uppercase tracking-wider mb-1">TIR Mensal</p>
-                                <p className={`text-sm font-bold font-mono ${scenario.tir >= (inputs.tmaAnual / 100) ? 'text-emerald-400' : 'text-red-500'}`}>
+                                <p className="text-[9px] font-mono font-bold text-slate-455 uppercase tracking-wider mb-0.5">TIR Mensal</p>
+                                <p className={`text-xs font-bold font-mono ${scenario.tir >= (inputs.tmaAnual / 100) ? 'text-emerald-400' : 'text-rose-400'}`}>
                                   {formatPerc(scenario.tir)}
                                 </p>
                               </div>
                             </div>
 
-                            <div className="pt-2 border-t border-slate-800/40">
-                              <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1 font-sans">Lucro por Animal</p>
-                              <p className="text-sm font-bold font-mono text-slate-200">{formatCurrency(scenario.lucro)}</p>
+                            <div className="pt-1.5 border-t border-slate-800/30 flex justify-between items-center">
+                              <p className="text-[9px] font-mono font-bold text-slate-455 uppercase tracking-wider">Lucro por Animal</p>
+                              <p className="text-xs font-bold font-mono text-slate-200">{formatCurrency(scenario.lucro)}</p>
                             </div>
                           </div>
                         </div>
@@ -6518,14 +6937,14 @@ export default function App() {
                       setNewStress({ name: '', changes: [], color: 'amber' });
                       setIsAddingStress(true);
                     }}
-                    className="bg-slate-900/30 p-6 rounded-2xl border-2 border-dashed border-slate-800/60 flex flex-col items-center justify-center gap-4 hover:bg-slate-900/60 hover:border-emerald-500/35 transition-all cursor-pointer group min-h-[300px]"
+                    className="bg-slate-900/15 p-4 rounded-xl border border-dashed border-slate-800/40 flex flex-col items-center justify-center gap-3 hover:bg-slate-900/30 hover:border-emerald-500/35 transition-all cursor-pointer group min-h-[220px]"
                   >
-                    <div className="p-4 bg-slate-950 border border-slate-800 rounded-full shadow-sm group-hover:scale-110 transition-all group-hover:text-emerald-400">
-                      <Plus className="w-8 h-8 text-slate-500 group-hover:text-emerald-400" />
+                    <div className="p-2.5 bg-slate-950 border border-slate-850 rounded-full shadow-sm group-hover:scale-110 transition-all group-hover:text-emerald-400">
+                      <Plus className="w-5 h-5 text-slate-500 group-hover:text-emerald-400" />
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-bold text-slate-300 group-hover:text-slate-100">Novo Cenário</p>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-wide mt-1">Personalizar Estresse</p>
+                      <p className="text-xs font-bold text-slate-300 group-hover:text-slate-100">Novo Cenário</p>
+                      <p className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mt-0.5">Personalizar Estresse</p>
                     </div>
                   </div>
                 </div>
@@ -6546,18 +6965,18 @@ export default function App() {
               className="space-y-6"
             >
               {/* Configurações da Cópula */}
-              <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left">
+              <div className="bg-[#0f172a] p-4 rounded-xl shadow-md border border-slate-800 text-left">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                      <ShieldAlert className="w-5 h-5 text-indigo-400" />
+                    <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
+                      <ShieldAlert className="w-4 h-4 text-indigo-400" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-slate-100">Configurações de Simulação</h3>
-                      <p className="text-xs text-slate-400">Defina o modelo de dependência entre variáveis.</p>
+                      <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Configurações de Simulação</h3>
+                      <p className="text-[11px] text-slate-400 font-sans">Defina o modelo de dependência entre variáveis.</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Modelo de Dependência</label>
@@ -6571,7 +6990,7 @@ export default function App() {
                       <select 
                         value={inputs.copulaType}
                         onChange={(e) => setInputs(prev => ({ ...prev, copulaType: e.target.value as any }))}
-                        className="bg-slate-900 border border-slate-800 text-slate-100 rounded-xl px-3 py-2 text-xs font-semibold focus:border-indigo-500 hover:border-slate-700 transition-colors outline-none cursor-pointer"
+                        className="bg-slate-900 border border-slate-800 text-slate-100 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold focus:border-indigo-500 hover:border-slate-700 transition-colors outline-none cursor-pointer"
                       >
                         <option value="gaussian" className="bg-slate-900">Correlação Linear (Cópula Gaussiana)</option>
                         <option value="spearman" className="bg-slate-900">Correlação de Postos (Spearman)</option>
@@ -6585,7 +7004,7 @@ export default function App() {
                       <select 
                         value={mcIterations}
                         onChange={(e) => setMcIterations(parseInt(e.target.value))}
-                        className="bg-slate-900 border border-slate-800 text-slate-100 rounded-xl px-3 py-2 text-xs font-semibold focus:border-indigo-500 hover:border-slate-700 transition-colors outline-none font-sans cursor-pointer"
+                        className="bg-slate-900 border border-slate-800 text-slate-100 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold focus:border-indigo-500 hover:border-slate-700 transition-colors outline-none font-sans cursor-pointer"
                       >
                         <option value={2000} className="bg-slate-900">2.000 iterações (Ultra Rápido)</option>
                         <option value={5000} className="bg-slate-900">5.000 iterações (Recomendado)</option>
@@ -6596,14 +7015,14 @@ export default function App() {
                     <button
                       onClick={handleRunLHS}
                       disabled={isSimulating}
-                      className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-950/20 disabled:opacity-50"
+                      className="bg-[#4f46e5] text-white px-4 py-1.5 rounded-lg font-bold text-[11px] hover:bg-indigo-500 transition-all shadow-md shadow-indigo-950/20 disabled:opacity-50 mt-4 self-end"
                     >
                       {isSimulating ? 'Simulando...' : 'Recalcular'}
                     </button>
                   </div>
                 </div>
-                <div className="mt-4 p-4 bg-slate-900 border border-slate-800/85 rounded-xl">
-                  <p className="text-[10.5px] text-slate-300 leading-relaxed">
+                <div className="mt-3 p-3 bg-slate-900 border border-slate-800 rounded-lg">
+                  <p className="text-[10px] text-slate-300 leading-relaxed font-sans">
                     {inputs.copulaType === 'gaussian' && (
                       <>
                         <span className="font-bold">Correlação Linear (Gaussiana):</span> Utiliza a decomposição de Cholesky para impor a estrutura de correlação linear especificada. Ideal para capturar a dependência média histórica entre preços.
@@ -6648,25 +7067,47 @@ export default function App() {
               ) : (
                 <>
                   {/* Barra de Sub-abas da Análise de Risco */}
-                  <div className="flex flex-wrap gap-2 p-1.5 bg-[#0c1222]/90 border border-slate-800/80 rounded-2xl">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pb-2">
                     {[
-                      { id: 'risco', label: 'Estatísticas de Risco', icon: <ShieldAlert className="w-4 h-4" /> },
-                      { id: 'cenarios', label: 'Cenários Probabilísticos', icon: <BarChart3 className="w-4 h-4" /> },
-                      { id: 'impacto', label: 'Estimador de Impacto (What-if)', icon: <Calculator className="w-4 h-4" /> },
-                      { id: 'dominancia', label: 'Dominância Estocástica', icon: <TrendingUp className="w-4 h-4" /> }
+                      { 
+                        id: 'risco', 
+                        label: 'Estatísticas de Risco', 
+                        icon: <ShieldAlert className="w-4 h-4" />,
+                        activeStyle: 'bg-rose-950/40 text-rose-300 border-rose-500/40 shadow-rose-950/20',
+                        inactiveStyle: 'text-slate-400 hover:text-rose-400 hover:bg-rose-950/10 border-slate-800/80'
+                      },
+                      { 
+                        id: 'cenarios', 
+                        label: 'Cenários Probabilísticos', 
+                        icon: <BarChart3 className="w-4 h-4" />,
+                        activeStyle: 'bg-indigo-950/40 text-indigo-300 border-indigo-500/40 shadow-indigo-950/20',
+                        inactiveStyle: 'text-slate-400 hover:text-indigo-400 hover:bg-indigo-950/10 border-slate-800/80'
+                      },
+                      { 
+                        id: 'impacto', 
+                        label: 'Estimador de Impacto (What-if)', 
+                        icon: <Calculator className="w-4 h-4" />,
+                        activeStyle: 'bg-sky-950/40 text-sky-300 border-sky-500/40 shadow-sky-950/20',
+                        inactiveStyle: 'text-slate-400 hover:text-sky-400 hover:bg-sky-950/10 border-slate-800/80'
+                      },
+                      { 
+                        id: 'dominancia', 
+                        label: 'Dominância Estocástica', 
+                        icon: <TrendingUp className="w-4 h-4" />,
+                        activeStyle: 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40 shadow-emerald-950/20',
+                        inactiveStyle: 'text-slate-400 hover:text-emerald-400 hover:bg-emerald-950/10 border-slate-800/80'
+                      }
                     ].map((item) => (
                       <button
                         key={item.id}
                         type="button"
                         onClick={() => setRiskSubTab(item.id as any)}
-                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all cursor-pointer ${
-                          riskSubTab === item.id
-                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/20'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                        className={`flex items-center gap-2 px-3.5 py-3 rounded-xl font-bold text-[11px] md:text-xs tracking-wide border transition-all duration-200 shadow-md cursor-pointer ${
+                          riskSubTab === item.id ? item.activeStyle : item.inactiveStyle
                         }`}
                       >
-                        {item.icon}
-                        {item.label}
+                        <div className="shrink-0">{item.icon}</div>
+                        <span>{item.label}</span>
                       </button>
                     ))}
                   </div>
@@ -6677,47 +7118,31 @@ export default function App() {
                         <motion.div 
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className={`p-6 rounded-2xl border text-left ${
-                            lhsResults.parecerTecnico.nivelRisco === 'alto' ? 'bg-red-500/5 border-red-500/20 text-rose-300' :
-                            lhsResults.parecerTecnico.nivelRisco === 'baixo' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-300' :
-                            'bg-slate-900/60 border-slate-800 text-slate-350'
-                          }`}
+                          className="w-full"
                         >
-                          <div className="flex items-start gap-4">
-                            <div className={`p-3 rounded-xl ${
-                              lhsResults.parecerTecnico.nivelRisco === 'alto' ? 'bg-red-500/10 text-red-400' :
-                              lhsResults.parecerTecnico.nivelRisco === 'baixo' ? 'bg-emerald-500/10 text-emerald-400' :
-                              'bg-slate-800 text-slate-400'
-                            }`}>
-                              <FileText className="w-6 h-6" />
-                            </div>
-                            <div>
-                              <h3 className={`text-sm font-bold uppercase tracking-wider mb-1 ${
-                                lhsResults.parecerTecnico.nivelRisco === 'alto' ? 'text-rose-455' :
-                                lhsResults.parecerTecnico.nivelRisco === 'baixo' ? 'text-emerald-400' :
-                                'text-slate-200'
-                              }`}>
-                                {lhsResults.parecerTecnico.titulo}
-                              </h3>
-                              <p className="text-xs leading-relaxed text-slate-300">
-                                {lhsResults.parecerTecnico.texto}
-                              </p>
-                            </div>
-                          </div>
+                          <TechnicalParecer 
+                            title={lhsResults.parecerTecnico.titulo}
+                            content={lhsResults.parecerTecnico.texto}
+                            type={
+                              lhsResults.parecerTecnico.nivelRisco === 'alto' ? 'danger' :
+                              lhsResults.parecerTecnico.nivelRisco === 'baixo' ? 'success' :
+                              'warning'
+                            }
+                          />
                         </motion.div>
                       )}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.1 }}
-                      className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left group relative"
+                      className="bg-red-500/5 hover:bg-red-500/10 p-4 rounded-xl shadow-md border border-red-500/20 hover:border-red-500/40 text-left group relative transition-all duration-200"
                     >
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Risco de VPL Negativo</p>
-                      <p className={`text-3xl font-bold ${lhsResults.probabilidadeVplNegativo > 20 ? 'text-red-600' : 'text-emerald-400'}`}>
+                      <p className="text-[11px] font-bold text-red-400 uppercase tracking-wider mb-1.5 font-sans">Risco de VPL Negativo</p>
+                      <p className={`text-2xl font-black font-mono ${lhsResults.probabilidadeVplNegativo > 20 ? 'text-red-500' : 'text-emerald-400'}`}>
                         {lhsResults.probabilidadeVplNegativo.toFixed(1)}%
                       </p>
-                      <p className="text-xs text-slate-400 mt-2">Probabilidade do VPL ser menor que zero.</p>
+                      <p className="text-[10.5px] text-slate-400 mt-1.5 font-sans">Probabilidade do VPL ser menor que zero.</p>
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                         Chance de o VPL ser menor que zero com base nas {mcIterations.toLocaleString()} simulações. Indica a probabilidade de o projeto não atingir a TMA.
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
@@ -6727,14 +7152,14 @@ export default function App() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.2 }}
-                      className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left group relative"
+                      className="bg-indigo-500/5 hover:bg-indigo-500/10 p-4 rounded-xl shadow-md border border-indigo-500/20 hover:border-indigo-500/40 text-left group relative transition-all duration-200"
                     >
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">VPL Médio Simulado</p>
-                      <p className="text-3xl font-bold text-slate-100">{formatCurrency(lhsResults.vplMedio)}</p>
-                      <p className="text-xs text-slate-400 mt-2">Média de {mcIterations.toLocaleString()} iterações aleatórias.</p>
+                      <p className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider mb-1.5 font-sans">VPL Médio Simulado</p>
+                      <p className="text-2xl font-black font-mono text-slate-100">{formatCurrency(lhsResults.vplMedio)}</p>
+                      <p className="text-[10.5px] text-slate-400 mt-1.5 font-sans">Média de {mcIterations.toLocaleString()} iterações aleatórias.</p>
                       {results && (
-                        <p className="text-[10px] text-indigo-400 mt-1 font-medium">
-                          VPL Determinístico: {formatCurrency(results.vpl)}
+                        <p className="text-[10px] text-indigo-400 mt-1 font-medium font-sans">
+                          VPL Determinístico: <span className="font-mono">{formatCurrency(results.vpl)}</span>
                         </p>
                       )}
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
@@ -6746,29 +7171,32 @@ export default function App() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.3 }}
-                      className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left group relative"
+                      className="bg-teal-500/5 hover:bg-teal-500/10 p-4 rounded-xl shadow-md border border-teal-500/20 hover:border-teal-500/40 text-left group relative transition-all duration-200"
                     >
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Amplitude de VPL</p>
-                      <p className="text-sm font-medium text-slate-350">Min: <span className="font-mono text-slate-100">{formatCurrency(lhsResults.vplMinimo)}</span></p>
-                      <p className="text-sm font-medium text-slate-350">Max: <span className="font-mono text-slate-100">{formatCurrency(lhsResults.vplMaximo)}</span></p>
-                      <p className="text-xs text-slate-400 mt-2">Piores e melhores cenários simulados.</p>
+                      <p className="text-[11px] font-bold text-teal-400 uppercase tracking-wider mb-1.5 font-sans flex items-center gap-1 cursor-help">
+                        <span>Intervalo Realista (P10 a P90)</span>
+                        <Info className="w-3.5 h-3.5 text-teal-400/80" />
+                      </p>
+                      <p className="text-xs font-medium text-slate-400 font-sans">P10 (Pessimista): <span className="font-mono text-slate-100">{formatCurrency(lhsResults.vplP10 ?? lhsResults.vplMinimo)}</span></p>
+                      <p className="text-xs font-medium text-slate-400 font-sans">P90 (Otimista): <span className="font-mono text-slate-100">{formatCurrency(lhsResults.vplP90 ?? lhsResults.vplMaximo)}</span></p>
+                      <p className="text-[10px] text-slate-550 mt-1.5 font-sans">Min/Max Absoluto: <span className="font-mono text-slate-400">{formatCurrency(lhsResults.vplMinimo)} / {formatCurrency(lhsResults.vplMaximo)}</span></p>
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
-                        Faixa de variação entre o pior (mínimo) e o melhor (máximo) resultado de VPL encontrado nas simulações.
+                        Intervalo de VPL que descarta os 10% piores e 10% melhores cenários (outliers improváveis). Representa a faixa mais provável de ocorrência prática (80% de confiança central).
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
                       </div>
                     </motion.div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.4 }}
-                      className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left group relative"
+                      className="bg-emerald-500/5 hover:bg-emerald-500/10 p-4 rounded-xl shadow-md border border-emerald-500/20 hover:border-emerald-500/40 text-left group relative transition-all duration-200"
                     >
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Lucro Médio Simulado</p>
-                      <p className="text-2xl font-bold text-slate-100">{formatCurrency(lhsResults.lucroMedio)}</p>
-                      <p className="text-xs text-slate-400 mt-1">Média do lucro real nas iterações.</p>
+                      <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-1.5 font-sans">Lucro Médio Simulado</p>
+                      <p className="text-xl font-black font-mono text-slate-100">{formatCurrency(lhsResults.lucroMedio)}</p>
+                      <p className="text-[10.5px] text-slate-400 mt-1 font-sans">Média do lucro real nas iterações.</p>
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                         Média do lucro real por animal em todas as simulações, considerando as variações de preços e desempenho.
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
@@ -6778,11 +7206,11 @@ export default function App() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.5 }}
-                      className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left group relative"
+                      className="bg-violet-500/5 hover:bg-violet-500/10 p-4 rounded-xl shadow-md border border-violet-500/20 hover:border-violet-500/40 text-left group relative transition-all duration-200"
                     >
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">TIR Média Simulada</p>
-                      <p className="text-2xl font-bold text-slate-100">{formatPerc(lhsResults.tirMedia)}</p>
-                      <p className="text-xs text-slate-400 mt-1">Média da rentabilidade mensal.</p>
+                      <p className="text-[11px] font-bold text-violet-400 uppercase tracking-wider mb-1.5 font-sans">TIR Média Simulada</p>
+                      <p className="text-xl font-black font-mono text-slate-100">{formatPerc(lhsResults.tirMedia)}</p>
+                      <p className="text-[10.5px] text-slate-400 mt-1 font-sans">Média da rentabilidade mensal.</p>
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
                         Média da Taxa Interna de Retorno mensal em todas as simulações. Representa a rentabilidade média esperada.
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" />
@@ -6794,49 +7222,49 @@ export default function App() {
 
               {/* Probabilistic Scenarios Section */}
               {riskSubTab === 'cenarios' && lhsResults && (
-                <div className="space-y-6 pt-6 text-left">
+                <div className="space-y-6 mt-4 p-6 bg-indigo-950/10 border border-indigo-500/20 rounded-2xl text-left shadow-xl shadow-indigo-950/10">
                       <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 bg-emerald-500/10 rounded-lg">
-                          <BarChart3 className="w-6 h-6 text-emerald-400" />
+                        <div className="p-2 bg-indigo-500/15 rounded-lg border border-indigo-500/30">
+                          <BarChart3 className="w-6 h-6 text-indigo-400 animate-pulse" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-slate-100">Cenários Probabilísticos</h2>
-                          <p className="text-sm text-slate-400">Resultados chave em diferentes níveis de probabilidade.</p>
+                          <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-300 to-indigo-100 bg-clip-text text-transparent">Cenários Probabilísticos</h2>
+                          <p className="text-xs text-slate-400">Resultados chave em diferentes níveis de probabilidade.</p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Pessimistic Scenario */}
-                        <div className="bg-[#121826]/80 p-8 rounded-2xl shadow-lg border border-red-950/40 hover:border-red-500/20 relative overflow-hidden transition-all">
-                          <div className="absolute top-0 right-0 p-4 opacity-5">
-                            <TrendingUp className="w-24 h-24 text-red-600 transform rotate-180" />
+                        <div className="bg-[#121826]/80 p-5 rounded-xl shadow-md border border-[#131c2e] hover:border-red-500/20 relative overflow-hidden transition-all">
+                          <div className="absolute top-0 right-0 p-3 opacity-5">
+                            <TrendingUp className="w-16 h-16 text-red-600 transform rotate-180" />
                           </div>
                           <div className="relative z-10 text-left">
-                            <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center gap-2">
-                                <div className="p-2 bg-red-500/10 rounded-lg">
-                                  <AlertCircle className="w-5 h-5 text-red-400" />
+                                <div className="p-1.5 bg-red-500/10 rounded-lg">
+                                  <AlertCircle className="w-4 h-4 text-red-400" />
                                 </div>
-                                <h3 className="font-bold text-xl text-red-400">Pessimista</h3>
+                                <h3 className="font-bold text-xs text-red-400 tracking-tight">Pessimista</h3>
                               </div>
-                              <div className="flex items-center gap-2 bg-red-950/40 px-2 py-1 rounded-lg">
-                                <span className="text-[10px] font-bold text-rose-450 uppercase">P</span>
+                              <div className="flex items-center gap-1.5 bg-red-950/40 px-2 py-0.5 rounded-md">
+                                <span className="text-[9px] font-black text-rose-450 uppercase">P</span>
                                 <input 
                                   type="number" 
                                   min="1" 
                                   max="99" 
                                   value={scenarioPercentiles.pessimistic}
                                   onChange={(e) => setScenarioPercentiles(prev => ({ ...prev, pessimistic: Number(e.target.value) }))}
-                                  className="w-10 bg-transparent text-sm font-bold text-rose-400 focus:outline-none font-mono"
+                                  className="w-8 bg-transparent text-xs font-bold text-rose-400 focus:outline-none font-mono"
                                 />
                               </div>
                             </div>
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                               <div>
-                                <p className="text-xs font-bold text-slate-450 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-0.5 font-sans">
                                   VPL
                                 </p>
-                                <p className="text-2xl font-black text-red-400 font-mono">
+                                <p className="text-lg font-bold text-red-400 font-mono tracking-tight">
                                   {formatCurrency(
                                     (() => {
                                       const vpls = lhsResults.iteracoes.map(i => i.vpl).sort((a, b) => a - b);
@@ -6847,10 +7275,10 @@ export default function App() {
                                 </p>
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-slate-450 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-0.5 font-sans">
                                   Lucro por Animal
                                 </p>
-                                <p className="text-2xl font-black text-red-400 font-mono">
+                                <p className="text-lg font-bold text-red-400 font-mono tracking-tight">
                                   {formatCurrency(
                                     (() => {
                                       const lucros = lhsResults.iteracoes.map(i => i.lucro).sort((a, b) => a - b);
@@ -6861,10 +7289,10 @@ export default function App() {
                                 </p>
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-slate-450 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-455 uppercase tracking-wider mb-0.5 font-sans">
                                   TIR Mensal
                                 </p>
-                                <p className="text-2xl font-black text-red-400 font-mono">
+                                <p className="text-lg font-bold text-red-400 font-mono tracking-tight">
                                   {formatPerc(
                                     (() => {
                                       const tirs = lhsResults.iteracoes.map(i => i.tir).sort((a, b) => a - b);
@@ -6875,43 +7303,43 @@ export default function App() {
                                 </p>
                               </div>
                             </div>
-                            <p className="mt-8 text-xs text-slate-400 italic">
+                            <p className="mt-4 text-[10px] text-slate-400 font-sans leading-relaxed">
                               Cenário com {100 - scenarioPercentiles.pessimistic}% de probabilidade de ser superado.
                             </p>
                           </div>
                         </div>
 
                         {/* Expected Scenario */}
-                        <div className="bg-[#121826]/80 p-8 rounded-2xl shadow-lg border border-slate-800 hover:border-slate-650/40 relative overflow-hidden transition-all">
-                          <div className="absolute top-0 right-0 p-4 opacity-5">
-                            <ArrowRightLeft className="w-24 h-24 text-slate-400" />
+                        <div className="bg-[#121826]/80 p-5 rounded-xl shadow-md border border-[#131c2e] hover:border-indigo-500/20 relative overflow-hidden transition-all">
+                          <div className="absolute top-0 right-0 p-3 opacity-5">
+                            <ArrowRightLeft className="w-16 h-16 text-indigo-400" />
                           </div>
                           <div className="relative z-10 text-left">
-                            <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center gap-2">
-                                <div className="p-2 bg-slate-805 bg-slate-800 rounded-lg">
-                                  <CheckCircle2 className="w-5 h-5 text-slate-300" />
+                                <div className="p-1.5 bg-indigo-500/10 rounded-lg">
+                                  <CheckCircle2 className="w-4 h-4 text-indigo-400" />
                                 </div>
-                                <h3 className="font-bold text-xl text-slate-200">Esperado</h3>
+                                <h3 className="font-bold text-xs text-indigo-400 tracking-tight">Esperado</h3>
                               </div>
-                              <div className="flex items-center gap-2 bg-slate-900/60 px-2 py-1 rounded-lg">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase">P</span>
+                              <div className="flex items-center gap-1.5 bg-slate-900/60 px-2 py-0.5 rounded-md">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">P</span>
                                 <input 
                                   type="number" 
                                   min="1" 
                                   max="99" 
                                   value={scenarioPercentiles.expected}
                                   onChange={(e) => setScenarioPercentiles(prev => ({ ...prev, expected: Number(e.target.value) }))}
-                                  className="w-10 bg-transparent text-sm font-bold text-slate-200 focus:outline-none font-mono"
+                                  className="w-8 bg-transparent text-xs font-bold text-slate-200 focus:outline-none font-mono"
                                 />
                               </div>
                             </div>
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                               <div>
-                                <p className="text-xs font-bold text-slate-450 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-0.5 font-sans">
                                   VPL
                                 </p>
-                                <p className="text-2xl font-black text-slate-100 font-mono">
+                                <p className="text-lg font-bold text-slate-100 font-mono tracking-tight">
                                   {formatCurrency(
                                     (() => {
                                       const vpls = lhsResults.iteracoes.map(i => i.vpl).sort((a, b) => a - b);
@@ -6922,10 +7350,10 @@ export default function App() {
                                 </p>
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-slate-450 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-0.5 font-sans">
                                   Lucro por Animal
                                 </p>
-                                <p className="text-2xl font-black text-slate-100 font-mono">
+                                <p className="text-lg font-bold text-slate-100 font-mono tracking-tight">
                                   {formatCurrency(
                                     (() => {
                                       const lucros = lhsResults.iteracoes.map(i => i.lucro).sort((a, b) => a - b);
@@ -6936,10 +7364,10 @@ export default function App() {
                                 </p>
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-slate-450 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-455 uppercase tracking-wider mb-0.5 font-sans">
                                   TIR Mensal
                                 </p>
-                                <p className="text-2xl font-black text-slate-100 font-mono">
+                                <p className="text-lg font-bold text-slate-100 font-mono tracking-tight">
                                   {formatPerc(
                                     (() => {
                                       const tirs = lhsResults.iteracoes.map(i => i.tir).sort((a, b) => a - b);
@@ -6950,43 +7378,43 @@ export default function App() {
                                 </p>
                               </div>
                             </div>
-                            <p className="mt-8 text-xs text-slate-400 italic">
+                            <p className="mt-4 text-[10px] text-slate-400 font-sans leading-relaxed">
                               Cenário central da simulação ({scenarioPercentiles.expected}º percentil).
                             </p>
                           </div>
                         </div>
 
                         {/* Optimistic Scenario */}
-                        <div className="bg-[#121826]/80 p-8 rounded-2xl shadow-lg border border-emerald-950/40 hover:border-emerald-500/20 relative overflow-hidden transition-all">
-                          <div className="absolute top-0 right-0 p-4 opacity-5">
-                            <TrendingUp className="w-24 h-24 text-emerald-400" />
+                        <div className="bg-[#121826]/80 p-5 rounded-xl shadow-md border border-[#131c2e] hover:border-emerald-500/20 relative overflow-hidden transition-all">
+                          <div className="absolute top-0 right-0 p-3 opacity-5">
+                            <TrendingUp className="w-16 h-16 text-emerald-400" />
                           </div>
                           <div className="relative z-10 text-left">
-                            <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center gap-2">
-                                <div className="p-2 bg-emerald-500/10 rounded-lg">
-                                  <TrendingUp className="w-5 h-5 text-emerald-400" />
+                                <div className="p-1.5 bg-emerald-500/10 rounded-lg">
+                                  <TrendingUp className="w-4 h-4 text-emerald-400" />
                                 </div>
-                                <h3 className="font-bold text-xl text-emerald-400">Otimista</h3>
+                                <h3 className="font-bold text-xs text-emerald-400 tracking-tight">Otimista</h3>
                               </div>
-                              <div className="flex items-center gap-2 bg-emerald-950/40 px-2 py-1 rounded-lg">
-                                <span className="text-[10px] font-bold text-emerald-400 uppercase">P</span>
+                              <div className="flex items-center gap-1.5 bg-emerald-950/40 px-2 py-0.5 rounded-md">
+                                <span className="text-[9px] font-bold text-emerald-400 uppercase">P</span>
                                 <input 
                                   type="number" 
                                   min="1" 
                                   max="99" 
                                   value={scenarioPercentiles.optimistic}
                                   onChange={(e) => setScenarioPercentiles(prev => ({ ...prev, optimistic: Number(e.target.value) }))}
-                                  className="w-10 bg-transparent text-sm font-bold text-emerald-400 focus:outline-none font-mono"
+                                  className="w-8 bg-transparent text-xs font-bold text-emerald-400 focus:outline-none font-mono"
                                 />
                               </div>
                             </div>
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                               <div>
-                                <p className="text-xs font-bold text-slate-450 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-0.5 font-sans">
                                   VPL
                                 </p>
-                                <p className="text-2xl font-black text-emerald-400 font-mono">
+                                <p className="text-lg font-bold text-emerald-400 font-mono tracking-tight">
                                   {formatCurrency(
                                     (() => {
                                       const vpls = lhsResults.iteracoes.map(i => i.vpl).sort((a, b) => a - b);
@@ -6997,10 +7425,10 @@ export default function App() {
                                 </p>
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-slate-450 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-0.5 font-sans">
                                   Lucro por Animal
                                 </p>
-                                <p className="text-2xl font-black text-emerald-400 font-mono">
+                                <p className="text-lg font-bold text-emerald-400 font-mono tracking-tight">
                                   {formatCurrency(
                                     (() => {
                                       const lucros = lhsResults.iteracoes.map(i => i.lucro).sort((a, b) => a - b);
@@ -7011,10 +7439,10 @@ export default function App() {
                                 </p>
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-slate-455 uppercase tracking-wider mb-1">
+                                <p className="text-[10px] font-bold text-slate-455 uppercase tracking-wider mb-0.5 font-sans">
                                   TIR Mensal
                                 </p>
-                                <p className="text-2xl font-black text-emerald-400 font-mono">
+                                <p className="text-lg font-bold text-emerald-400 font-mono tracking-tight">
                                   {formatPerc(
                                     (() => {
                                       const tirs = lhsResults.iteracoes.map(i => i.tir).sort((a, b) => a - b);
@@ -7025,7 +7453,7 @@ export default function App() {
                                 </p>
                               </div>
                             </div>
-                            <p className="mt-8 text-xs text-slate-400 italic">
+                            <p className="mt-4 text-[10px] text-slate-400 font-sans leading-relaxed">
                               Cenário com apenas {100 - scenarioPercentiles.optimistic}% de probabilidade de ser superado.
                             </p>
                           </div>
@@ -7065,26 +7493,52 @@ export default function App() {
                           <TrendingUp className="w-4 h-4 text-emerald-400" />
                           Distribuição de VPL (Área)
                         </h3>
-                        <div className="flex items-center gap-1">
-                          <button 
-                            onClick={handleDownloadHistogramPNG}
-                            className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-50 rounded-lg transition-all"
-                            title="Baixar PNG"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => setIsHistogramInfoOpen(true)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-50 rounded-lg transition-all"
-                            title="Como interpretar"
-                          >
-                            <Info className="w-4 h-4" />
-                          </button>
+                        <div className="flex items-center gap-3">
+                          {/* Segmented Range Selector */}
+                          <div className="flex bg-[#0b0f19] p-0.5 rounded-lg border border-slate-800">
+                            <button
+                              onClick={() => setVplChartRange('full')}
+                              className={`px-2 py-1 rounded text-[9.5px] font-bold tracking-wide transition-all cursor-pointer ${
+                                vplChartRange === 'full' 
+                                  ? 'bg-indigo-600 text-white shadow' 
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              Completa
+                            </button>
+                            <button
+                              onClick={() => setVplChartRange('p10_p90')}
+                              className={`px-2 py-1 rounded text-[9.5px] font-bold tracking-wide transition-all cursor-pointer ${
+                                vplChartRange === 'p10_p90' 
+                                  ? 'bg-indigo-600 text-white shadow' 
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              P10-P90
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={handleDownloadHistogramPNG}
+                              className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-all"
+                              title="Baixar PNG"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => setIsHistogramInfoOpen(true)}
+                              className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-all"
+                              title="Como interpretar"
+                            >
+                              <Info className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                       <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={lhsResults.histograma}>
+                          <AreaChart data={histogramData}>
                             <defs>
                               <linearGradient id="colorFreq" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
@@ -7239,143 +7693,47 @@ export default function App() {
                           <Info className="w-4 h-4" />
                         </button>
                       </div>
-                      <div className="h-[600px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart
-                            data={lhsResults.sensibilidade}
-                            layout="vertical"
-                            margin={{ top: 5, right: 100, left: 100, bottom: 5 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                            <XAxis type="number" domain={[-1.1, 1.1]} axisLine={false} tickLine={false} />
-                            <YAxis 
-                              dataKey="nome" 
-                              type="category" 
-                              axisLine={false} 
-                              tickLine={false} 
-                              width={180}
-                              tick={{fontSize: 10}}
-                            />
-                            <Tooltip 
-                              formatter={(value: number) => [value.toFixed(3), 'Coef. Correlação']}
-                              cursor={{fill: '#f8fafc'}}
-                            />
-                            <Bar 
-                              dataKey="impacto" 
-                              radius={[0, 4, 4, 0]}
-                            >
-                              {lhsResults.sensibilidade.map((entry, index) => (
-                                <Cell 
-                                  key={`cell-${index}`} 
-                                  fill={entry.impacto > 0 ? '#10b981' : '#ef4444'} 
-                                />
-                              ))}
-                              <LabelList 
-                                dataKey="impacto" 
-                                position="right" 
-                                content={(props: any) => {
-                                  const { x, y, width, height, value } = props;
-                                  if (value === undefined || value === null) return null;
-                                  const isPositive = value >= 0;
-                                  const posX = isPositive ? x + width + 12 : x - 12;
-                                  const textAnchor = isPositive ? "start" : "end";
+                      <div className="border border-slate-850 rounded-xl overflow-hidden bg-[#0d121f] mt-4">
+                        <div className="overflow-x-auto max-h-[520px] scrollbar-thin scrollbar-thumb-slate-800">
+                          <table className="w-full border-collapse text-left text-[11px]">
+                            <thead className="bg-[#0b0e17] text-[10px] font-bold text-slate-450 uppercase tracking-wider border-b border-slate-850 sticky top-0 backdrop-blur-sm z-10">
+                              <tr>
+                                <th className="py-2.5 px-4 font-sans text-left">
+                                  <span className="cursor-help border-b border-dashed border-slate-700 hover:border-slate-500 pb-0.5" title="Nome do parâmetro físico ou de mercado analisado">
+                                    Variável / Parâmetro
+                                  </span>
+                                </th>
+                                <th className="py-2.5 px-4 font-sans text-right w-36">
+                                  <span className="cursor-help border-b border-dashed border-slate-700 hover:border-slate-500 pb-0.5" title="Coeficiente de correlação de postos de Pearson (r). Varia de -1.0 a +1.0">
+                                    Correlação (r)
+                                  </span>
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-850/50">
+                              {[...lhsResults.sensibilidade]
+                                .sort((a, b) => Math.abs(b.impacto) - Math.abs(a.impacto))
+                                .map((entry, index) => {
+                                  const isPositive = entry.impacto >= 0;
                                   return (
-                                    <text 
-                                      x={posX} 
-                                      y={y + height / 2} 
-                                      fill={isPositive ? '#059669' : '#dc2626'} 
-                                      fontSize={11} 
-                                      fontWeight="bold"
-                                      textAnchor={textAnchor}
-                                      dominantBaseline="middle"
-                                      stroke="#fff"
-                                      strokeWidth={3}
-                                      paintOrder="stroke"
-                                    >
-                                      {value.toFixed(3)}
-                                    </text>
+                                    <tr key={index} className="hover:bg-slate-900/20 transition-colors">
+                                      <td className="py-2 px-4 font-medium text-slate-300">
+                                        {entry.nome}
+                                      </td>
+                                      <td className={`py-2 px-4 text-right font-mono font-bold ${
+                                        isPositive ? 'text-emerald-400' : 'text-red-400'
+                                      }`}>
+                                        {isPositive ? '+' : ''}{entry.impacto.toFixed(3)}
+                                      </td>
+                                    </tr>
                                   );
-                                }}
-                              />
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
+                                })}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                       <p className="text-[10px] text-slate-400 mt-4 text-center italic">
                         * Coeficientes de correlação indicam a força e direção da influência de cada input no VPL.
-                      </p>
-                    </motion.div>
-
-                    {/* Curva S */}
-                    <motion.div 
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      whileInView={{ opacity: 1, scale: 1 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.5, delay: 0.2 }}
-                      className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left"
-                    >
-                      <h3 className="font-bold text-lg text-slate-200 mb-6 flex items-center gap-2">
-                        <ShieldAlert className="w-5 h-5 text-emerald-400" />
-                        Curva de Probabilidade Acumulada (VPL)
-                      </h3>
-                      <div className="h-80">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart
-                            data={(() => {
-                              // Generate S-Curve data from histogram
-                              let cumulative = 0;
-                              const total = lhsResults.histograma.reduce((acc, h) => acc + h.frequencia, 0);
-                              return lhsResults.histograma.map(h => {
-                                cumulative += h.frequencia;
-                                return {
-                                  valor: h.valor,
-                                  probabilidade: (cumulative / total) * 100
-                                };
-                              });
-                            })()}
-                            margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                            <XAxis 
-                              dataKey="valor" 
-                              type="number" 
-                              domain={['auto', 'auto']} 
-                              tickFormatter={(val) => `R$ ${Math.round(val/1000)}k`}
-                              tick={{fontSize: 10}}
-                            />
-                            <YAxis 
-                              domain={[0, 100]} 
-                              tickFormatter={(val) => `${val}%`}
-                              tick={{fontSize: 10}}
-                            />
-                            <Tooltip 
-                              formatter={(value: number, name: string, props: any) => [
-                                `${value.toFixed(1)}%`, 
-                                `Prob. Acumulada (VPL ≤ ${formatCurrency(props.payload.valor)})`
-                              ]} 
-                            />
-                            <ReferenceLine x={0} stroke="#ef4444" strokeWidth={2} label={{ value: 'Risco', position: 'top', fill: '#ef4444', fontSize: 10 }} />
-                            {results && (
-                              <ReferenceLine 
-                                x={results.vpl} 
-                                stroke="#10b981" 
-                                strokeDasharray="5 5" 
-                                label={{ value: 'VPL Determinístico', position: 'top', fill: '#10b981', fontSize: 10 }} 
-                              />
-                            )}
-                            <Area 
-                              type="monotone" 
-                              dataKey="probabilidade" 
-                              stroke="#6366f1" 
-                              strokeWidth={3}
-                              fill="#6366f1" 
-                              fillOpacity={0.1} 
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <p className="mt-4 text-[10px] text-slate-400 italic text-center">
-                        A Curva S indica a probabilidade de o VPL ser menor ou igual a um valor. O cruzamento com R$ 0 é a probabilidade de prejuízo.
                       </p>
                     </motion.div>
 
@@ -7385,86 +7743,191 @@ export default function App() {
                       whileInView={{ opacity: 1, scale: 1 }}
                       viewport={{ once: true }}
                       transition={{ duration: 0.5, delay: 0.3 }}
-                      className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left"
+                      className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left lg:col-span-2"
                     >
                       <div className="flex items-center justify-between mb-6">
-                        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                        <h3 className="font-semibold text-slate-100 flex items-center gap-2">
                           <Calculator className="w-4 h-4 text-emerald-400" />
                           Análise de Sensibilidade por Regressão Múltipla (Standard Betas)
                         </h3>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-400">R² = {lhsResults.r2.toFixed(3)}</span>
+                          <span className="text-xs font-bold text-slate-450 bg-slate-900/60 px-2 py-1 rounded-md border border-slate-800">R² = {lhsResults.r2.toFixed(3)}</span>
                           <button 
                             onClick={() => setIsRegressionInfoOpen(true)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-50 rounded-lg transition-all"
+                            className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/80 rounded-lg transition-all"
                             title="Como interpretar"
                           >
                             <Info className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                      <div className="h-[600px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart
-                            data={lhsResults.regressao}
-                            layout="vertical"
-                            margin={{ top: 5, right: 100, left: 100, bottom: 5 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                            <XAxis type="number" domain={['auto', 'auto']} axisLine={false} tickLine={false} />
-                            <YAxis 
-                              dataKey="nome" 
-                              type="category" 
-                              axisLine={false} 
-                              tickLine={false} 
-                              width={180}
-                              tick={{fontSize: 10}}
-                            />
-                            <Tooltip 
-                              formatter={(value: number) => [value.toFixed(3), 'Standard Beta']}
-                              cursor={{fill: '#f8fafc'}}
-                            />
-                            <Bar 
-                              dataKey="beta" 
-                              radius={[0, 4, 4, 0]}
-                            >
-                              {lhsResults.regressao.map((entry, index) => (
-                                <Cell 
-                                  key={`cell-${index}`} 
-                                  fill={entry.beta > 0 ? '#6366f1' : '#ef4444'} 
+
+                      {(() => {
+                        // Ordenar por maior impacto absoluto
+                        const sortedRegressao = [...lhsResults.regressao].sort((a, b) => Math.abs(b.beta) - Math.abs(a.beta));
+                        
+                        // Filtrar pela busca
+                        const filteredRegression = sortedRegressao.filter(item => 
+                          item.nome.toLowerCase().includes(regressionSearch.toLowerCase()) || 
+                          item.key.toLowerCase().includes(regressionSearch.toLowerCase())
+                        );
+
+                        // Limitar se não mostrar todas
+                        const displayedRegression = showAllRegression 
+                          ? filteredRegression 
+                          : filteredRegression.slice(0, 10);
+
+                        const maxAbsoluteBeta = Math.max(...lhsResults.regressao.map(r => Math.abs(r.beta)), 0.001);
+
+                        return (
+                          <div className="space-y-4">
+                            {/* Controles da Tabela: busca e filtro */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800/50">
+                              <div className="relative flex-1">
+                                <input
+                                  type="text"
+                                  placeholder="Buscar variável ou parâmetro..."
+                                  value={regressionSearch}
+                                  onChange={(e) => setRegressionSearch(e.target.value)}
+                                  className="w-full pl-9 pr-4 py-1.5 bg-slate-950 text-xs text-slate-100 rounded-lg border border-slate-800 focus:outline-none focus:border-emerald-500/85 transition-all placeholder-slate-500"
                                 />
-                              ))}
-                              <LabelList 
-                                dataKey="beta" 
-                                position="right" 
-                                content={(props: any) => {
-                                  const { x, y, width, height, value } = props;
-                                  if (value === undefined || value === null) return null;
-                                  const isPositive = value >= 0;
-                                  const posX = isPositive ? x + width + 12 : x - 12;
-                                  const textAnchor = isPositive ? "start" : "end";
-                                  return (
-                                    <text 
-                                      x={posX} 
-                                      y={y + height / 2} 
-                                      fill={isPositive ? '#4f46e5' : '#dc2626'} 
-                                      fontSize={11} 
-                                      fontWeight="bold"
-                                      textAnchor={textAnchor}
-                                      dominantBaseline="middle"
-                                      stroke="#fff"
-                                      strokeWidth={3}
-                                      paintOrder="stroke"
-                                    >
-                                      {value.toFixed(3)}
-                                    </text>
-                                  );
-                                }}
-                              />
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
+                                <div className="absolute left-3 top-2.5 text-slate-500">
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                  </svg>
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 self-end sm:self-auto">
+                                <button
+                                  onClick={() => setShowAllRegression(!showAllRegression)}
+                                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg transition-all border border-slate-700/50"
+                                >
+                                  {showAllRegression ? "Mostrar Top 10" : "Mostrar Todas"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Tabela Principal */}
+                            <div className="border border-slate-850 rounded-xl overflow-hidden bg-[#0d121f]">
+                              <div className="overflow-x-auto max-h-[480px] scrollbar-thin scrollbar-thumb-slate-800">
+                                <table className="w-full border-collapse text-left text-[11px]">
+                                  <thead className="bg-[#0b0e17] text-[10px] font-bold text-slate-450 uppercase tracking-wider border-b border-slate-850 sticky top-0 backdrop-blur-sm z-10">
+                                    <tr>
+                                      <th className="py-2.5 px-4 font-sans text-left">
+                                        <span className="cursor-help border-b border-dashed border-slate-700 hover:border-slate-500 pb-0.5" title="Nome da variável de entrada ou efeito de interação combinado">
+                                          Variável / Parâmetro
+                                        </span>
+                                      </th>
+                                      <th className="py-2.5 px-4 font-sans text-center">
+                                        <span className="cursor-help border-b border-dashed border-slate-700 hover:border-slate-500 pb-0.5" title="Tipo do efeito: Principal (isolado), Interação (conjunto) ou Quadrático (não-linear)">
+                                          Tipo
+                                        </span>
+                                      </th>
+                                      <th className="py-2.5 px-4 font-sans text-right w-28">
+                                        <span className="cursor-help border-b border-dashed border-slate-700 hover:border-slate-500 pb-0.5" title="Standardized Beta Coefficient (β): Mede o impacto em desvios-padrão no VPL por desvio-padrão da variável, isolando as demais">
+                                          Beta (β)
+                                        </span>
+                                      </th>
+                                      <th className="py-2.5 px-4 font-sans text-left w-40">
+                                        <span className="cursor-help border-b border-dashed border-slate-700 hover:border-slate-500 pb-0.5" title="Grau de importância em relação à variável de maior impacto na simulação">
+                                          Impacto Relativo
+                                        </span>
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-850/50">
+                                    {displayedRegression.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={4} className="py-8 text-center text-slate-500 italic">
+                                          Nenhuma variável encontrada para os critérios de busca.
+                                        </td>
+                                      </tr>
+                                    ) : (
+                                      displayedRegression.map((entry, index) => {
+                                        const absBeta = Math.abs(entry.beta);
+                                        const percentage = (absBeta / maxAbsoluteBeta) * 100;
+                                        const isPositive = entry.beta >= 0;
+                                        const isInteraction = entry.key.includes(':');
+                                        const isNonLinear = entry.key.includes('^2');
+                                        
+                                        return (
+                                          <tr 
+                                            key={entry.key || index} 
+                                            className="hover:bg-slate-900/20 transition-colors"
+                                          >
+                                            <td className="py-2 px-4 font-medium text-slate-300">
+                                              {isInteraction ? (
+                                                <span className="flex flex-col" title={`Interação entre duas variáveis: ${entry.nome}`}>
+                                                  <span className="text-slate-300 font-medium">{entry.nome}</span>
+                                                  <span className="text-[9.5px] text-slate-500 italic font-mono mt-0.5">Efeito Combinado (Sinergismo/Antagonismo)</span>
+                                                </span>
+                                              ) : isNonLinear ? (
+                                                <span className="flex flex-col" title={`Comportamento quadrático não-linear de ${entry.nome}`}>
+                                                  <span className="text-slate-300 font-medium">{entry.nome}</span>
+                                                  <span className="text-[9.5px] text-slate-500 italic font-mono mt-0.5">Efeito Não-Linear / Curvatura de Resposta</span>
+                                                </span>
+                                              ) : (
+                                                <span className="text-slate-300 font-medium" title={`Variável de entrada direta: ${entry.nome}`}>{entry.nome}</span>
+                                              )}
+                                            </td>
+                                            <td className="py-2 px-4 text-center">
+                                              {isInteraction ? (
+                                                <span 
+                                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/10 cursor-help"
+                                                  title="Interação: Indica que as duas variáveis influenciam o VPL de forma conjunta de maneira diferente de suas ações isoladas"
+                                                >
+                                                  Interação
+                                                </span>
+                                              ) : isNonLinear ? (
+                                                <span 
+                                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/10 cursor-help"
+                                                  title="Quadrático: Indica relação não-linear (efeito acelerado ou desacelerado de acordo com a escala do parâmetro)"
+                                                >
+                                                  Quadrático
+                                                </span>
+                                              ) : (
+                                                <span 
+                                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-800 text-slate-300 border border-slate-700 cursor-help"
+                                                  title="Principal: Impacto linear direto e individual deste parâmetro isolado no VPL"
+                                                >
+                                                  Principal
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td 
+                                              className={`py-2 px-4 text-right font-mono font-bold cursor-help ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}
+                                              title={`Standard Beta de ${entry.beta.toFixed(4)}. Um aumento de 1 desvio-padrão nesta variável resulta em um deslocamento de ${entry.beta.toFixed(4)} desvios-padrão no VPL.`}
+                                            >
+                                              {isPositive ? '+' : ''}{entry.beta.toFixed(4)}
+                                            </td>
+                                            <td className="py-2 px-4">
+                                              <div 
+                                                className="flex items-center gap-2 cursor-help"
+                                                title={`Representa ${percentage.toFixed(1)}% do impacto da variável mais crítica (${sortedRegressao[0]?.nome || ''}).`}
+                                              >
+                                                <div className="flex-1 h-1.5 bg-slate-800/80 rounded-full overflow-hidden">
+                                                  <div 
+                                                    className={`h-full rounded-full ${isPositive ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                                    style={{ width: `${percentage}%` }}
+                                                  />
+                                                </div>
+                                                <span className="text-[10px] text-slate-400 font-mono w-8 text-right">
+                                                  {percentage.toFixed(0)}%
+                                                </span>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       <p className="text-[10px] text-slate-400 mt-4 text-center italic">
                         * Betas padronizados mostram o impacto direto de cada variável no VPL, isolando as demais.
                       </p>
@@ -7477,49 +7940,49 @@ export default function App() {
                         whileInView={{ opacity: 1, scale: 1 }}
                         viewport={{ once: true }}
                         transition={{ duration: 0.5, delay: 0.4 }}
-                        className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left"
+                        className="bg-[#0f172a] p-4 rounded-xl shadow-md border border-slate-800 text-left font-sans"
                       >
-                        <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center justify-between mb-4">
                           <div className="flex flex-col">
-                            <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                              <Activity className="w-4 h-4 text-emerald-400" />
+                            <h3 className="text-xs font-bold text-indigo-400 flex items-center gap-2 uppercase tracking-wider">
+                              <Activity className="w-4 h-4 text-indigo-400" />
                               Análise de Interações (Morris OAT)
                             </h3>
-                            <p className="text-[10px] text-slate-400">Impacto Global (μ*) vs. Interações/Não-linearidade (σ)</p>
+                            <p className="text-[10px] text-slate-450 mt-0.5 font-sans">Impacto Global (μ*) vs. Interações/Não-linearidade (σ)</p>
                           </div>
                           <button 
                             onClick={() => setIsMorrisInfoOpen(true)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-50 rounded-lg transition-all"
+                            className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800/80 rounded-lg transition-all"
                             title="Como interpretar"
                           >
                             <Info className="w-4 h-4" />
                           </button>
                         </div>
                         
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                          <div className="lg:col-span-2 h-[500px]">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                          <div className="lg:col-span-2 h-[340px]">
                             <ResponsiveContainer width="100%" height="100%">
-                              <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                              <ScatterChart margin={{ top: 15, right: 20, bottom: 15, left: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                                 <XAxis 
                                   type="number" 
                                   dataKey="muStar" 
                                   name="Importância (μ*)" 
-                                  label={{ value: 'Importância Média (μ*)', position: 'bottom', fontSize: 10, offset: -10, fill: '#94a3b8' }}
-                                  tick={{fontSize: 10, fill: '#94a3b8'}}
-                                  axisLine={{ stroke: '#e2e8f0' }}
+                                  label={{ value: 'Importância Média (μ*)', position: 'bottom', fontSize: 9, offset: -5, fill: '#64748b' }}
+                                  tick={{fontSize: 9, fill: '#64748b'}}
+                                  axisLine={{ stroke: '#1e293b' }}
                                 />
                                 <YAxis 
                                   type="number" 
                                   dataKey="sigma" 
                                   name="Interação (σ)" 
-                                  label={{ value: 'Interação (σ)', angle: -90, position: 'left', fontSize: 10, offset: 10, fill: '#94a3b8' }}
-                                  tick={{fontSize: 10, fill: '#94a3b8'}}
-                                  axisLine={{ stroke: '#e2e8f0' }}
+                                  label={{ value: 'Interação (σ)', angle: -90, position: 'left', fontSize: 9, offset: 0, fill: '#64748b' }}
+                                  tick={{fontSize: 9, fill: '#64748b'}}
+                                  axisLine={{ stroke: '#1e293b' }}
                                 />
-                                <ZAxis type="number" range={[60, 400]} />
+                                <ZAxis type="number" range={[40, 250]} />
                                 <Tooltip 
-                                  cursor={{ strokeDasharray: '3 3', stroke: '#cbd5e1' }}
+                                  cursor={{ strokeDasharray: '3 3', stroke: '#334155' }}
                                   content={({ active, payload }) => {
                                     if (active && payload && payload.length) {
                                       const data = payload[0].payload;
@@ -7527,19 +7990,19 @@ export default function App() {
                                       const isHighSigma = data.sigma > (morrisStats?.avgSigma || 0);
                                       
                                       return (
-                                        <div className="bg-[#0f172a] p-3 border border-slate-800 shadow-xl rounded-xl min-w-[180px] text-left">
-                                          <p className="font-bold text-slate-100 mb-2 border-b border-slate-800 pb-1">{data.nome}</p>
-                                          <div className="space-y-1.5">
+                                        <div className="bg-[#0f172a] p-2.5 border border-slate-800 shadow-xl rounded-lg min-w-[160px] text-left font-sans">
+                                          <p className="font-bold text-slate-100 mb-1.5 border-b border-slate-800 pb-1 text-xs">{data.nome}</p>
+                                          <div className="space-y-1">
                                             <div className="flex justify-between items-center gap-4">
-                                              <span className="text-[10px] text-slate-400 uppercase font-bold">Importância (μ*)</span>
+                                              <span className="text-[9px] text-slate-400 uppercase font-bold">Importância (μ*)</span>
                                               <span className="text-xs font-mono font-bold text-slate-200">{data.muStar.toFixed(2)}</span>
                                             </div>
                                             <div className="flex justify-between items-center gap-4">
-                                              <span className="text-[10px] text-slate-400 uppercase font-bold">Interação (σ)</span>
+                                              <span className="text-[9px] text-slate-400 uppercase font-bold">Interação (σ)</span>
                                               <span className="text-xs font-mono font-bold text-slate-200">{data.sigma.toFixed(2)}</span>
                                             </div>
-                                            <div className="mt-2 pt-2 border-t border-slate-800">
-                                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                            <div className="mt-1.5 pt-1.5 border-t border-slate-800">
+                                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
                                                 isHighMu && isHighSigma ? 'bg-red-500/10 border border-red-500/20 text-red-400' :
                                                 isHighMu ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' :
                                                 isHighSigma ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400' :
@@ -7560,8 +8023,8 @@ export default function App() {
                                 />
                                 {morrisStats && (
                                   <>
-                                    <ReferenceLine x={morrisStats.avgMuStar} stroke="#cbd5e1" strokeDasharray="5 5" />
-                                    <ReferenceLine y={morrisStats.avgSigma} stroke="#cbd5e1" strokeDasharray="5 5" />
+                                    <ReferenceLine x={morrisStats.avgMuStar} stroke="#334155" strokeDasharray="5 5" />
+                                    <ReferenceLine y={morrisStats.avgSigma} stroke="#334155" strokeDasharray="5 5" />
                                   </>
                                 )}
                                 <Scatter name="Variáveis" data={lhsResults.morris}>
@@ -7578,68 +8041,68 @@ export default function App() {
                                         key={`cell-${index}`} 
                                         fill={color}
                                         stroke={index < 3 ? '#fff' : 'transparent'}
-                                        strokeWidth={2}
+                                        strokeWidth={1.5}
                                       />
                                     );
                                   })}
                                   <LabelList 
                                     dataKey="nome" 
                                     position="top" 
-                                    style={{ fontSize: '9px', fill: '#64748b', fontWeight: '500' }} 
-                                    offset={10}
+                                    style={{ fontSize: '8px', fill: '#64748b', fontWeight: '500' }} 
+                                    offset={6}
                                   />
                                 </Scatter>
                               </ScatterChart>
                             </ResponsiveContainer>
                           </div>
                           
-                          <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Variáveis Críticas</h4>
-                            <div className="space-y-2">
+                          <div className="space-y-3 font-sans">
+                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">Variáveis Críticas</h4>
+                            <div className="space-y-1.5">
                               {lhsResults.morris
                                 .filter(m => m.muStar > (morrisStats?.avgMuStar || 0) && m.sigma > (morrisStats?.avgSigma || 0))
                                 .sort((a, b) => b.muStar - a.muStar)
                                 .map(m => (
-                                  <div key={m.nome} className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl shrink-0 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
+                                  <div key={m.nome} className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg shrink-0 flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
                                       <AlertCircle className="w-3 h-3 text-red-400" />
-                                      <span className="text-xs font-bold text-slate-200">{m.nome}</span>
+                                      <span className="text-[11px] font-bold text-slate-200">{m.nome}</span>
                                     </div>
                                     <div className="text-right font-mono">
-                                      <p className="text-[10px] text-red-400 font-bold">μ*: {m.muStar.toFixed(1)}</p>
-                                      <p className="text-[10px] text-slate-400">σ: {m.sigma.toFixed(1)}</p>
+                                      <p className="text-[9px] text-red-400 font-bold">μ*: {m.muStar.toFixed(1)}</p>
+                                      <p className="text-[9px] text-slate-400 font-normal">σ: {m.sigma.toFixed(1)}</p>
                                     </div>
                                   </div>
                                 ))}
                               {lhsResults.morris.filter(m => m.muStar > (morrisStats?.avgMuStar || 0) && m.sigma > (morrisStats?.avgSigma || 0)).length === 0 && (
-                                <p className="text-xs text-slate-400 italic">Nenhuma variável crítica identificada.</p>
+                                <p className="text-[10px] text-slate-500 italic">Nenhuma variável crítica identificada.</p>
                               )}
                             </div>
                             
-                            <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl">
-                              <p className="text-[10px] text-slate-400 leading-relaxed">
+                            <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-lg">
+                              <p className="text-[9px] text-slate-400 leading-relaxed font-sans">
                                 <strong>Dica:</strong> Variáveis críticas têm alto impacto e comportamento complexo. Mudanças nelas podem causar variações imprevisíveis no VPL.
                               </p>
                             </div>
                           </div>
                         </div>
 
-                        <div className="mt-8 flex flex-wrap justify-center gap-4 border-t border-slate-800 pt-4">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-red-500" />
-                            <span className="text-[10px] text-slate-400 font-medium">Crítica (Impacto + Interação)</span>
+                        <div className="mt-4 flex flex-wrap justify-center gap-3 border-t border-slate-800 pt-3 font-sans">
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                            <span className="text-[9px] text-slate-450 font-medium">Crítica (Impacto + Interação)</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                            <span className="text-[10px] text-slate-400 font-medium">Importante (Impacto Linear)</span>
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span className="text-[9px] text-slate-450 font-medium">Importante (Impacto Linear)</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-amber-500" />
-                            <span className="text-[10px] text-slate-400 font-medium">Complexa (Baixo Impacto)</span>
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            <span className="text-[9px] text-slate-450 font-medium">Complexa (Baixo Impacto)</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-slate-400" />
-                            <span className="text-[10px] text-slate-400 font-medium">Pouco Relevante</span>
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                            <span className="text-[9px] text-slate-450 font-medium">Pouco Relevante</span>
                           </div>
                         </div>
                       </motion.div>
@@ -7652,11 +8115,11 @@ export default function App() {
                         whileInView={{ opacity: 1, scale: 1 }}
                         viewport={{ once: true }}
                         transition={{ duration: 0.5, delay: 0.5 }}
-                        className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left"
+                        className="bg-[#0f172a] p-4 rounded-xl shadow-md border border-slate-800 text-left font-sans"
                       >
-                        <div className="flex items-center justify-between mb-6">
-                          <h3 className="font-semibold text-slate-250 flex items-center gap-2">
-                            <Zap className="w-4 h-4 text-emerald-400" />
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-xs font-bold text-teal-400 flex items-center gap-2 uppercase tracking-wider">
+                            <Zap className="w-4 h-4 text-teal-400" />
                             Índices de Sobol (Variância)
                           </h3>
                           <button 
@@ -7667,34 +8130,35 @@ export default function App() {
                             <Info className="w-4 h-4" />
                           </button>
                         </div>
-                        <div className="h-[400px]">
+                        <div className="h-[280px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart
                               data={lhsResults.sobol.slice(0, 8)}
                               layout="vertical"
-                              margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                              margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
                             >
-                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                              <XAxis type="number" domain={[0, 1]} axisLine={false} tickLine={false} />
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
+                              <XAxis type="number" domain={[0, 1]} axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#64748b'}} />
                               <YAxis 
                                 dataKey="nome" 
                                 type="category" 
                                 axisLine={false} 
                                 tickLine={false} 
-                                width={180}
-                                tick={{fontSize: 10}}
+                                width={110}
+                                tick={{fontSize: 9, fill: '#94a3b8'}}
                               />
                               <Tooltip 
+                                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f1f5f9', fontSize: 11 }}
                                 formatter={(value: number) => [value.toFixed(3), 'Índice']}
-                                cursor={{fill: '#f8fafc'}}
+                                cursor={{fill: '#1e293b', opacity: 0.3}}
                               />
-                              <Legend wrapperStyle={{ fontSize: '10px' }} />
+                              <Legend wrapperStyle={{ fontSize: '9px', fontFamily: 'Inter' }} />
                               <Bar dataKey="s1" name="Efeito Direto (S1)" fill="#10b981" stackId="a" radius={[0, 0, 0, 0]} />
                               <Bar dataKey="interaction" name="Interações" fill="#f59e0b" stackId="a" radius={[0, 4, 4, 0]} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-4 text-center italic">
+                        <p className="text-[10px] text-slate-500 mt-2 text-center italic font-sans">
                           * S1 mostra a contribuição direta; a soma com interações resulta no Índice Total (ST).
                         </p>
                       </motion.div>
@@ -7704,62 +8168,96 @@ export default function App() {
 
               {/* Estimador de Impacto (What-if) */}
               {riskSubTab === 'impacto' && lhsResults && (
-                <>
+                <div className="space-y-6 mt-4 p-6 bg-sky-950/10 border border-sky-500/20 rounded-2xl text-left shadow-xl shadow-sky-950/10 font-sans">
                   <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 15 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
-                    transition={{ duration: 0.5 }}
-                    className="mt-6 bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left"
+                    transition={{ duration: 0.4 }}
+                    className="bg-[#0a0f1d]/80 p-5 rounded-xl border border-sky-500/10 text-left space-y-4 shadow-lg"
                   >
-                    <div className="flex items-center gap-2 mb-6">
-                      <div className="p-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                        <Calculator className="w-5 h-5 text-emerald-400" />
+                    {/* Header */}
+                    <div className="flex items-center gap-2 pb-3 border-b border-slate-800/50">
+                      <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                        <Calculator className="w-4 h-4 text-emerald-400" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-slate-100">Estimador de Impacto (What-if)</h3>
-                        <p className="text-xs text-slate-450">Simule mudanças individuais baseadas na regressão</p>
+                        <h3 className="font-sans font-bold text-xs text-emerald-400 uppercase tracking-wide">Estimador de Impacto (What-if)</h3>
+                        <p className="text-[10px] text-slate-400 font-sans">Simulador de sensibilidade isolada via coeficientes de regressão estatística.</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Variável de Entrada</label>
-                        <select 
-                          value={whatIfInput}
-                          onChange={(e) => setWhatIfInput(e.target.value)}
-                          className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                        >
-                          <option value="">Selecione uma variável...</option>
-                          {lhsResults.regressao.map(r => (
-                            <option key={r.nome} value={r.nome}>{r.nome}</option>
-                          ))}
-                        </select>
-                      </div>
+                    {/* Content Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+                      
+                      {/* Configuration Card */}
+                      <div className="lg:col-span-5 bg-[#0d1324] p-3.5 rounded-lg border border-slate-800 flex flex-col justify-between space-y-4">
+                        <div>
+                          <h4 className="font-sans font-bold text-[10.5px] text-sky-400 uppercase tracking-wider mb-2.5">
+                            Cenário de Variação
+                          </h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-[9.5px] font-bold text-slate-400 uppercase mb-1 font-sans">Variável de Entrada</label>
+                              <select 
+                                value={whatIfInput}
+                                onChange={(e) => setWhatIfInput(e.target.value)}
+                                className="w-full bg-[#0a0f1d] border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all font-sans"
+                              >
+                                <option value="" className="text-slate-400">Selecione uma variável...</option>
+                                {lhsResults.regressao.map(r => (
+                                  <option key={r.nome} value={r.nome} className="text-slate-200">{r.nome}</option>
+                                ))}
+                              </select>
+                            </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Mudança Desejada (%)</label>
-                        <div className="flex items-center gap-3">
-                          <input 
-                            type="range"
-                            min="-50"
-                            max="50"
-                            step="1"
-                            value={whatIfChange}
-                            onChange={(e) => setWhatIfChange(Number(e.target.value))}
-                            className="flex-1 accent-emerald-500 bg-slate-950 rounded-lg h-1.5 appearance-none"
-                          />
-                          <span className={`text-sm font-bold w-12 text-center ${whatIfChange >= 0 ? 'text-emerald-400' : 'text-red-500'}`}>
-                            {whatIfChange > 0 ? '+' : ''}{whatIfChange}%
-                          </span>
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <label className="text-[9.5px] font-bold text-slate-400 uppercase font-sans">Mudança Desejada</label>
+                                <span className={`text-[10.5px] font-bold font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 ${whatIfChange >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                                  {whatIfChange > 0 ? '+' : ''}{whatIfChange}%
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-mono text-slate-500">-50%</span>
+                                <input 
+                                  type="range"
+                                  min="-50"
+                                  max="50"
+                                  step="1"
+                                  value={whatIfChange}
+                                  onChange={(e) => setWhatIfChange(Number(e.target.value))}
+                                  className="flex-1 accent-emerald-500 bg-slate-950 rounded-lg h-1 appearance-none cursor-pointer"
+                                />
+                                <span className="text-[9px] font-mono text-slate-500">+50%</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-800/40 flex items-center gap-2">
+                          <Info className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                          <p className="text-[9.5px] text-slate-400 font-sans leading-relaxed">
+                            Mantenha os outros fatores constantes para estimar o impacto líquido no VPL.
+                          </p>
                         </div>
                       </div>
 
-                      <div className="p-5 bg-emerald-500/5 rounded-2xl border border-emerald-500/15">
-                        <p className="text-[10px] font-bold text-emerald-400 uppercase mb-1">Impacto Estimado no VPL</p>
+                      {/* Results Card */}
+                      <div className="lg:col-span-7 bg-[#0d1324] p-3.5 rounded-lg border border-slate-800 flex flex-col justify-between">
                         {(() => {
                           const reg = lhsResults.regressao.find(r => r.nome === whatIfInput);
-                          if (!reg) return <div className="text-xl font-black text-slate-500">---</div>;
+                          if (!reg) {
+                            return (
+                              <div className="flex flex-col items-center justify-center h-full text-center py-6">
+                                <Calculator className="w-8 h-8 text-slate-600 mb-2 opacity-40" />
+                                <h4 className="font-sans font-semibold text-xs text-slate-300">Aguardando Seleção</h4>
+                                <p className="text-[10px] text-slate-500 font-sans mt-1 max-w-[240px]">
+                                  Escolha uma variável na caixa ao lado para estimar o impacto imediato no resultado.
+                                </p>
+                              </div>
+                            );
+                          }
                           
                           const nomesAmigaveis: Record<string, string> = {
                             precoBoiMagro: 'Preço Boi Magro (R$/animal)',
@@ -7780,14 +8278,13 @@ export default function App() {
                             outrosDespesasValor: 'Outras Despesas (R$)'
                           };
                           const internalKey = Object.keys(nomesAmigaveis).find(k => nomesAmigaveis[k] === whatIfInput);
-                          if (!internalKey) return <div className="text-xl font-black text-slate-500">---</div>;
+                          if (!internalKey) return <div className="text-xs font-mono text-slate-500 p-4 font-sans">Erro de mapeamento de variável.</div>;
 
                           const stdX = lhsResults.desviosPadraoInputs[internalKey];
                           const meanX = (inputs as any)[internalKey];
-                          if (!stdX || !meanX) return <div className="text-xl font-black text-slate-500">---</div>;
+                          if (!stdX || !meanX) return <div className="text-xs font-mono text-slate-500 p-4 font-sans">Dados insuficientes para regressão.</div>;
 
                           const deltaX = (whatIfChange / 100) * meanX;
-                          // deltaY = Beta_std * (deltaX / stdX) * stdVPL
                           const deltaY = reg.beta * (deltaX / stdX) * lhsResults.desvioPadrao;
                           const vplFinal = lhsResults.vplMedio + deltaY;
 
@@ -7803,103 +8300,120 @@ export default function App() {
                                 : '1%';
 
                           return (
-                            <>
-                              <div className="flex items-baseline gap-2">
-                                <span className={`text-xl font-black ${deltaY >= 0 ? 'text-emerald-400' : 'text-red-550'}`}>
-                                  {deltaY >= 0 ? '+' : ''}{formatCurrency(deltaY)}
-                                </span>
+                            <div className="space-y-3.5 h-full flex flex-col justify-between">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {/* Delta Y */}
+                                <div className="bg-[#0a0f1d] p-3 rounded border border-slate-800">
+                                  <h5 className="font-sans font-bold text-[9.5px] text-emerald-400 uppercase tracking-wider mb-1">
+                                    Impacto Líquido Estimado
+                                  </h5>
+                                  <p className={`text-base font-black font-mono tracking-tight ${deltaY >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                                    {deltaY >= 0 ? '+' : ''}{formatCurrency(deltaY)}
+                                  </p>
+                                  <p className="text-[9px] text-slate-450 font-sans mt-0.5">Variação projetada no VPL</p>
+                                </div>
+
+                                {/* VPL Final */}
+                                <div className="bg-[#0a0f1d] p-3 rounded border border-slate-800">
+                                  <h5 className="font-sans font-bold text-[9.5px] text-violet-400 uppercase tracking-wider mb-1">
+                                    VPL Final Projetado
+                                  </h5>
+                                  <p className="text-base font-black font-mono tracking-tight text-slate-200">
+                                    {formatCurrency(vplFinal)}
+                                  </p>
+                                  <p className="text-[9px] text-slate-450 font-sans mt-0.5">Novo VPL após impacto</p>
+                                </div>
                               </div>
-                              <div className="mt-2 space-y-1.5 pt-2 border-t border-emerald-500/10">
-                                <div className="flex justify-between items-center">
-                                  <p className="text-[10px] font-bold text-slate-450 uppercase">VPL Final Estimado</p>
-                                  <p className="text-sm font-bold text-emerald-400">{formatCurrency(vplFinal)}</p>
+
+                              {/* Technical Metadata Table */}
+                              <div className="bg-[#0a0f1d] rounded-lg border border-slate-800 overflow-hidden text-[10px]">
+                                <div className="bg-slate-900/40 px-3 py-1.5 border-b border-slate-800 flex justify-between items-center">
+                                  <span className="font-sans font-bold text-[9px] text-amber-400 uppercase tracking-wider">Decomposição Estatística</span>
+                                  <span className="font-mono text-[9px] text-slate-500">Regressão OLS</span>
                                 </div>
-                                <div className="flex justify-between items-center text-[9px] text-slate-450">
-                                  <span>Beta Padronizado:</span>
-                                  <span className="font-mono font-bold text-slate-300">{reg.beta.toFixed(3)}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-[9px] text-slate-450">
-                                  <span>Sensibilidade:</span>
-                                  <span className="font-bold text-slate-300">~ {formatCurrency(unitSensitivity)} / {unitLabel}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-[9px] text-slate-450">
-                                  <span>Mudança Absoluta:</span>
-                                  <span className="font-bold text-slate-300">{deltaX > 0 ? '+' : ''}{internalKey.includes('preco') || internalKey === 'valorTerraHa' ? formatCurrency(deltaX) : deltaX.toFixed(2)} {unitLabel.split(' ')[1] || ''}</span>
+                                <div className="divide-y divide-slate-800 font-sans">
+                                  <div className="flex justify-between items-center px-3 py-1.5">
+                                    <span className="text-slate-400 text-[10px]">Beta Padronizado (Peso do Risco):</span>
+                                    <span className="font-mono font-bold text-slate-200">{reg.beta.toFixed(4)}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center px-3 py-1.5">
+                                    <span className="text-slate-400 text-[10px]">Sensibilidade Marginal:</span>
+                                    <span className="font-mono font-bold text-slate-200">{formatCurrency(unitSensitivity)} por {unitLabel}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center px-3 py-1.5">
+                                    <span className="text-slate-400 text-[10px]">Variação Física Aplicada:</span>
+                                    <span className="font-mono font-bold text-slate-200">
+                                      {deltaX > 0 ? '+' : ''}{internalKey.includes('preco') || internalKey === 'valorTerraHa' ? formatCurrency(deltaX) : deltaX.toFixed(2)} {unitLabel.split(' ')[1] || ''}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                            </>
+                            </div>
                           );
                         })()}
                       </div>
+
                     </div>
                   </motion.div>
 
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    className="mt-4 p-3 bg-slate-500/5 border border-slate-800 rounded-xl shrink-0 flex items-start gap-3"
-                  >
-                    <Info className="w-4 h-4 text-slate-500 mt-0.5" />
-                    <p className="text-[10px] text-slate-400 leading-relaxed font-sans text-left">
-                      Este estimador utiliza os coeficientes da regressão múltipla para prever como o VPL médio mudaria se você alterasse apenas uma variável, mantendo todas as outras constantes. Útil para planejamento de metas e análise de sensibilidade rápida.
-                    </p>
-                  </motion.div>
-                </>
+                  <p className="text-[9px] text-slate-500 font-sans text-left mt-2 pl-1 leading-relaxed">
+                    * Este estimador calcula coeficientes parciais de regressão linear para isolar a sensibilidade. Variações físicas são proporcionais aos desvios-padrão observados na amostragem.
+                  </p>
+                </div>
               )}
 
               {/* Stochastic Dominance Section */}
               {riskSubTab === 'dominancia' && lhsResults && (
-                <div className="space-y-6 pt-6 text-left">
-                  <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                        <ShieldAlert className="w-5 h-5 text-emerald-400" />
+                <div className="space-y-6 mt-4 p-6 bg-emerald-950/10 border border-emerald-500/20 rounded-2xl text-left shadow-xl shadow-emerald-950/10 font-sans">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-emerald-500/15 border border-emerald-500/30 rounded-lg">
+                        <ShieldAlert className="w-4 h-4 text-emerald-400 animate-pulse" />
                       </div>
                       <div>
-                        <h2 className="text-2xl font-bold text-slate-100 font-display">Dominância Estocástica</h2>
-                        <p className="text-xs text-slate-450">Compare até 10 simulações para identificar a melhor opção sob risco.</p>
+                        <h2 className="text-sm sm:text-base font-extrabold bg-gradient-to-r from-emerald-300 to-emerald-100 bg-clip-text text-transparent uppercase tracking-wider">Dominância Estocástica</h2>
+                        <p className="text-[10px] text-slate-400 mt-0.5 font-sans">Compare até 10 simulações para identificar a melhor opção sob risco</p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={handleRunDominance}
                       disabled={selectedSimsForDominance.length < 2 || isCalculatingDominance}
-                      className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all cursor-pointer ${
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-bold text-[10px] tracking-wider uppercase transition-all cursor-pointer ${
                         selectedSimsForDominance.length < 2 || isCalculatingDominance
                           ? 'bg-slate-800 text-slate-500 opacity-50 cursor-not-allowed'
-                          : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-950/20 active:scale-95'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-md active:scale-[0.98]'
                       }`}
                     >
                       {isCalculatingDominance ? (
                         <>
-                          <RotateCcw className="w-4 h-4 animate-spin" />
+                          <RotateCcw className="w-3.5 h-3.5 animate-spin" />
                           Analisando...
                         </>
                       ) : (
                         <>
-                          <PlayCircle className="w-4 h-4" />
+                          <PlayCircle className="w-3.5 h-3.5" />
                           Analisar Dominância
                         </>
                       )}
                     </button>
                   </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
                       {/* Selection Sidebar */}
-                      <div className="lg:col-span-1 space-y-4">
-                        <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left">
-                          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Selecionar Simulações</h3>
-                          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      <div className="lg:col-span-1 space-y-3">
+                        <div className="bg-[#0f172a] p-4 rounded-xl shadow-md border border-slate-800 text-left">
+                          <h3 className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-3">Selecionar Simulações</h3>
+                          <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1.5 custom-scrollbar">
                             {savedSimulations.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic">Nenhuma simulação salva encontrada.</p>
+                              <p className="text-[10px] text-slate-500 italic">Nenhuma simulação salva encontrada.</p>
                             ) : (
                               savedSimulations.map(sim => (
                                 <label 
                                   key={sim.id}
-                                  className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
+                                  className={`flex items-center gap-2.5 p-2 rounded-lg border transition-all cursor-pointer ${
                                     selectedSimsForDominance.includes(sim.id)
-                                      ? 'border-indigo-500 bg-indigo-500/10 text-slate-150'
+                                      ? 'border-indigo-500 bg-indigo-500/5 text-slate-150'
                                       : 'border-slate-800 bg-[#0c1222] hover:border-slate-700/80 text-slate-300'
                                   }`}
                                 >
@@ -7917,41 +8431,66 @@ export default function App() {
                                       }
                                     }}
                                   />
-                                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
+                                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
                                     selectedSimsForDominance.includes(sim.id)
                                       ? 'bg-indigo-500 border-indigo-500'
                                       : 'bg-[#121826] border-slate-700'
                                   }`}>
-                                    {selectedSimsForDominance.includes(sim.id) && <CheckCircle2 className="w-3 h-3 text-white" />}
+                                    {selectedSimsForDominance.includes(sim.id) && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-slate-100 truncate">{sim.name}</p>
-                                    <p className="text-[10px] text-slate-400">{new Date(sim.date).toLocaleDateString()}</p>
+                                    <p className="text-xs font-bold text-slate-100 truncate">{sim.name}</p>
+                                    <p className="text-[9px] text-slate-400">{new Date(sim.date).toLocaleDateString()}</p>
                                   </div>
                                 </label>
                               ))
                             )}
                           </div>
-                          <p className="mt-4 text-[10px] text-slate-400 italic">
+                          <p className="mt-3 text-[9px] text-slate-500 italic">
                             * Selecione entre 2 e 10 simulações para comparar as curvas S.
                           </p>
                         </div>
                       </div>
 
                       {/* Results Area */}
-                      <div className="lg:col-span-3 space-y-6">
+                      <div className="lg:col-span-3 space-y-4">
                         {dominanceResults.length > 0 ? (
                           <>
                             {/* S-Curve Chart */}
-                            <div className="bg-[#0f172a] p-8 rounded-3xl shadow-lg border border-slate-800/80">
-                              <h3 className="text-lg font-bold text-slate-150 mb-6 flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-indigo-400" />
-                                Curvas de Probabilidade Acumulada (S-Curves)
-                              </h3>
-                              <div className="h-[400px] w-full">
+                            <div className="bg-[#0f172a] p-4 rounded-xl shadow-md border border-slate-800">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xs font-bold text-indigo-400 flex items-center gap-2 uppercase tracking-wider">
+                                  <Activity className="w-4 h-4 text-indigo-400" />
+                                  Curvas de Probabilidade Acumulada (S-Curves)
+                                </h3>
+                                {/* Segmented Range Selector */}
+                                <div className="flex bg-[#0b0f19] p-0.5 rounded-lg border border-slate-800">
+                                  <button
+                                    onClick={() => setVplChartRange('full')}
+                                    className={`px-2 py-1 rounded text-[9.5px] font-bold tracking-wide transition-all cursor-pointer ${
+                                      vplChartRange === 'full' 
+                                        ? 'bg-indigo-600 text-white shadow' 
+                                        : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    Completa
+                                  </button>
+                                  <button
+                                    onClick={() => setVplChartRange('p10_p90')}
+                                    className={`px-2 py-1 rounded text-[9.5px] font-bold tracking-wide transition-all cursor-pointer ${
+                                      vplChartRange === 'p10_p90' 
+                                        ? 'bg-indigo-600 text-white shadow' 
+                                        : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    P10-P90
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="h-[280px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
                                   <LineChart
-                                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                                    margin={{ top: 10, right: 10, left: 20, bottom: 35 }}
                                   >
                                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                                     <XAxis 
@@ -7959,25 +8498,25 @@ export default function App() {
                                       type="number" 
                                       domain={['auto', 'auto']}
                                       tickFormatter={(val) => `R$ ${Math.round(val/1000)}k`}
-                                      label={{ value: 'VPL (R$)', position: 'insideBottom', offset: -5, fontSize: 12, fill: '#94a3b8' }}
-                                      tick={{ fill: '#94a3b8', fontSize: 10 }}
+                                      label={{ value: 'VPL (R$)', position: 'insideBottom', offset: -10, fontSize: 10, fill: '#64748b' }}
+                                      tick={{ fill: '#64748b', fontSize: 9 }}
                                     />
                                     <YAxis 
-                                      domain={[0, 100]}
+                                      domain={vplChartRange === 'p10_p90' ? [10, 90] : [0, 100]}
                                       tickFormatter={(val) => `${val}%`}
-                                      label={{ value: 'Probabilidade Acumulada', angle: -90, position: 'insideLeft', fontSize: 12, fill: '#94a3b8' }}
-                                      tick={{ fill: '#94a3b8', fontSize: 10 }}
+                                      label={{ value: 'Probabilidade Acumulada', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' }, fontSize: 10, fill: '#64748b' }}
+                                      tick={{ fill: '#64748b', fontSize: 9 }}
                                     />
                                     <Tooltip 
-                                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f1f5f9' }}
+                                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f1f5f9', fontSize: 11 }}
                                       formatter={(value: any) => [`${value}%`, 'Probabilidade']}
                                       labelFormatter={(label) => `VPL: ${formatCurrency(label)}`}
                                     />
-                                    <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '11px' }} />
+                                    <Legend wrapperStyle={{ color: '#64748b', fontSize: '9px', fontFamily: 'Inter', paddingTop: '25px' }} />
                                     {dominanceResults.map((sim, idx) => (
                                       <Line
                                         key={sim.id}
-                                        data={sim.cdfPoints}
+                                        data={vplChartRange === 'p10_p90' ? sim.cdfPoints.filter((p: any) => p.prob >= 10 && p.prob <= 90) : sim.cdfPoints}
                                         type="monotone"
                                         dataKey="prob"
                                         name={sim.name}
@@ -7993,16 +8532,16 @@ export default function App() {
                                           '#3b82f6', // blue
                                           '#64748b'  // slate
                                         ][idx]}
-                                        strokeWidth={3}
+                                        strokeWidth={2}
                                         dot={false}
-                                        activeDot={{ r: 6 }}
+                                        activeDot={{ r: 4 }}
                                       />
                                     ))}
                                   </LineChart>
                                 </ResponsiveContainer>
                               </div>
-                              <div className="mt-6 p-4 bg-slate-900/50 rounded-2xl border border-slate-800">
-                                <p className="text-xs text-slate-400 leading-relaxed text-left">
+                              <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-800">
+                                <p className="text-[9px] text-slate-400 leading-normal text-left font-sans">
                                   <strong>Como interpretar:</strong> Quanto mais à direita estiver a curva, melhor o cenário. 
                                   Se uma curva nunca cruza outra e está sempre à direita, ela possui <strong>Dominância de Primeira Ordem</strong>. 
                                   Se as curvas se cruzam, a análise de <strong>Segunda Ordem</strong> avalia qual cenário oferece menor risco para investidores avessos ao risco.
@@ -8011,47 +8550,55 @@ export default function App() {
                             </div>
 
                             {/* Statistical Comparison Table */}
-                            <div className="bg-[#0f172a] rounded-3xl shadow-lg border border-slate-800/80 overflow-hidden">
-                              <div className="p-6 border-b border-slate-800/80 flex items-center justify-between">
-                                <h3 className="font-bold text-slate-100">Comparativo Estatístico</h3>
-                                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <div className="bg-[#0f172a] rounded-xl shadow-md border border-slate-800 overflow-hidden font-sans">
+                              <div className="p-3 border-b border-slate-800 flex items-center justify-between">
+                                <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Comparativo Estatístico</h3>
+                                <div className="flex items-center gap-1.5 text-[9px] text-slate-400">
                                   <Info className="w-3 h-3 text-indigo-400" />
                                   <span>Baseado em {mcIterations.toLocaleString()} iterações por cenário</span>
                                 </div>
                               </div>
                               <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                  <thead className="text-xs text-slate-350 uppercase bg-slate-900/60 border-b border-slate-800">
+                                <table className="w-full text-xs text-left">
+                                  <thead className="text-[9px] text-slate-450 uppercase bg-slate-900/60 border-b border-slate-800">
                                     <tr>
-                                      <th className="px-6 py-4">Simulação</th>
-                                      <th className="px-6 py-4 text-right">VPL Médio</th>
-                                      <th className="px-6 py-4 text-right">Risco (VPL &lt; 0)</th>
-                                      <th className="px-6 py-4 text-right">Desvio Padrão</th>
-                                      <th className="px-6 py-4 text-right">Amplitude</th>
+                                      <th className="px-4 py-2">Simulação</th>
+                                      <th className="px-4 py-2 text-right">VPL Médio</th>
+                                      <th className="px-4 py-2 text-right">Risco (VPL &lt; 0)</th>
+                                      <th className="px-4 py-2 text-right">Desvio Padrão</th>
+                                      <th className="px-4 py-2 text-right">
+                                        <span 
+                                          className="cursor-help border-b border-dashed border-slate-700 hover:border-slate-500 pb-0.5 inline-flex items-center gap-1 justify-end select-none"
+                                          title="Intervalo de VPL que descarta os 10% piores e 10% melhores cenários (outliers improváveis). Representa a faixa mais provável de ocorrência prática (80% de confiança central)."
+                                        >
+                                          Faixa P10-P90
+                                          <Info className="w-3 h-3 text-slate-500" />
+                                        </span>
+                                      </th>
                                     </tr>
                                   </thead>
-                                  <tbody className="divide-y divide-slate-800/40">
+                                  <tbody className="divide-y divide-slate-800/40 text-[11px]">
                                     {dominanceResults.map((sim, idx) => (
-                                      <tr key={sim.id} className="hover:bg-slate-850/20 transition-colors">
-                                        <td className="px-6 py-4">
-                                          <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: [
+                                      <tr key={sim.id} className="hover:bg-slate-850/10 transition-colors">
+                                        <td className="px-4 py-2">
+                                          <div className="flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: [
                                               '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4', '#6366f1', '#64748b'
                                             ][idx] }} />
-                                            <span className="font-bold text-slate-100">{sim.name}</span>
+                                            <span className="font-bold text-slate-150">{sim.name}</span>
                                           </div>
                                         </td>
-                                        <td className="px-6 py-4 text-right font-medium text-slate-100">
+                                        <td className="px-4 py-2 text-right font-medium text-slate-100 font-mono">
                                           {formatCurrency(sim.stats.vplMedio)}
                                         </td>
-                                        <td className={`px-6 py-4 text-right font-bold ${sim.stats.probPrejuizo > 20 ? 'text-red-600' : 'text-emerald-400'}`}>
+                                        <td className={`px-4 py-2 text-right font-bold font-mono ${sim.stats.probPrejuizo > 20 ? 'text-red-500' : 'text-emerald-400'}`}>
                                           {sim.stats.probPrejuizo.toFixed(1)}%
                                         </td>
-                                        <td className="px-6 py-4 text-right text-slate-400">
+                                        <td className="px-4 py-2 text-right text-slate-400 font-mono">
                                           {formatCurrency(sim.stats.desvioPadrao)}
                                         </td>
-                                        <td className="px-6 py-4 text-right text-slate-400">
-                                          {formatCurrency(sim.stats.vplMaximo - sim.stats.vplMinimo)}
+                                        <td className="px-4 py-2 text-right text-slate-400 font-mono" title={`P10: ${formatCurrency(sim.stats.vplP10 ?? sim.stats.vplMinimo)} a P90: ${formatCurrency(sim.stats.vplP90 ?? sim.stats.vplMaximo)}`}>
+                                          {formatCurrency((sim.stats.vplP90 ?? sim.stats.vplMaximo) - (sim.stats.vplP10 ?? sim.stats.vplMinimo))}
                                         </td>
                                       </tr>
                                     ))}
@@ -8062,58 +8609,58 @@ export default function App() {
 
                             {/* KS Test Results */}
                             {dominanceResults[0]?.ksTests && dominanceResults[0].ksTests.length > 0 && (
-                              <div className="bg-[#0f172a] rounded-3xl shadow-lg border border-slate-800/80 overflow-hidden">
-                                <div className="p-6 border-b border-slate-800/80 text-left">
-                                  <h3 className="font-bold text-slate-100 flex items-center gap-2">
-                                    <Scale className="w-5 h-5 text-emerald-400" />
+                              <div className="bg-[#0f172a] rounded-xl shadow-md border border-slate-800 overflow-hidden font-sans">
+                                <div className="p-3 border-b border-slate-800 text-left">
+                                  <h3 className="text-xs font-bold text-indigo-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                    <Scale className="w-4 h-4 text-emerald-400" />
                                     Teste de Kolmogorov-Smirnov (K-S)
                                   </h3>
-                                  <p className="text-xs text-slate-400 mt-1">
+                                  <p className="text-[10px] text-slate-400 mt-0.5">
                                     Avalia se as distribuições de VPL são estatisticamente diferentes entre si.
                                   </p>
                                 </div>
                                 <div className="overflow-x-auto">
-                                  <table className="w-full text-sm text-left">
-                                    <thead className="text-xs text-slate-350 uppercase bg-slate-900/60 border-b border-slate-800">
+                                  <table className="w-full text-xs text-left">
+                                    <thead className="text-[9px] text-slate-450 uppercase bg-slate-900/60 border-b border-slate-800">
                                       <tr>
-                                        <th className="px-6 py-4">Comparação</th>
-                                        <th className="px-6 py-4 text-center">Estatística D</th>
-                                        <th className="px-6 py-4 text-center">p-valor</th>
-                                        <th className="px-6 py-4 text-center">Significância</th>
-                                        <th className="px-6 py-4 text-right">Dominância</th>
+                                        <th className="px-4 py-2">Comparação</th>
+                                        <th className="px-4 py-2 text-center">Estatística D</th>
+                                        <th className="px-4 py-2 text-center">p-valor</th>
+                                        <th className="px-4 py-2 text-center">Significância</th>
+                                        <th className="px-4 py-2 text-right">Dominância</th>
                                       </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-800/40">
+                                    <tbody className="divide-y divide-slate-800/40 text-[11px]">
                                       {dominanceResults[0].ksTests.map((test: any, idx: number) => (
-                                        <tr key={idx} className="hover:bg-slate-850/20 transition-colors">
-                                          <td className="px-6 py-4 font-medium text-slate-200">
-                                            {test.sim1} <span className="text-slate-400 mx-1">vs</span> {test.sim2}
+                                        <tr key={idx} className="hover:bg-slate-850/10 transition-colors">
+                                          <td className="px-4 py-2 font-bold text-slate-200">
+                                            {test.sim1} <span className="text-slate-400 font-normal mx-0.5">vs</span> {test.sim2}
                                           </td>
-                                          <td className="px-6 py-4 text-center font-mono text-xs text-slate-300">
+                                          <td className="px-4 py-2 text-center font-mono text-[10px] text-slate-300">
                                             {test.dStatistic.toFixed(4)}
                                           </td>
-                                          <td className="px-6 py-4 text-center font-mono text-xs text-slate-300">
+                                          <td className="px-4 py-2 text-center font-mono text-[10px] text-slate-300">
                                             {test.pValue < 0.001 ? '< 0.001' : test.pValue.toFixed(4)}
                                           </td>
-                                          <td className="px-6 py-4 text-center">
+                                          <td className="px-4 py-2 text-center">
                                             {test.significant ? (
-                                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-bold">
+                                              <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[8px] font-bold">
                                                 SIGNIFICATIVO
                                               </span>
                                             ) : (
-                                              <span className="px-2 py-0.5 bg-slate-800 text-slate-450 border border-slate-700/30 rounded-full text-[10px] font-bold">
+                                              <span className="px-1.5 py-0.5 bg-slate-800 text-slate-450 border border-slate-700/30 rounded-full text-[8px] font-bold">
                                                 NÃO SIGNIF.
                                               </span>
                                             )}
                                           </td>
-                                          <td className="px-6 py-4 text-right">
+                                          <td className="px-4 py-2 text-right">
                                             {(() => {
                                               const s1 = dominanceResults.find(r => r.name === test.sim1);
                                               const s2 = dominanceResults.find(r => r.name === test.sim2);
                                               if (!s1 || !s2) return '-';
                                               
                                               // Check for First Order Stochastic Dominance
-                                              if (!test.significant) return <span className="text-slate-400 italic">Equivalentes</span>;
+                                              if (!test.significant) return <span className="text-slate-500 italic">Equivalentes</span>;
                                               
                                               return s1.stats.vplMedio > s2.stats.vplMedio ? (
                                                 <span className="text-emerald-400 font-bold">{test.sim1} &gt; {test.sim2}</span>
@@ -8127,8 +8674,8 @@ export default function App() {
                                     </tbody>
                                   </table>
                                 </div>
-                                <div className="p-4 bg-slate-900/50 border-t border-slate-800">
-                                  <p className="text-[10px] text-slate-400 leading-tight">
+                                <div className="p-3 bg-slate-900/50 border-t border-slate-800">
+                                  <p className="text-[9px] text-slate-400 leading-tight">
                                     <strong>Nota Técnica:</strong> O teste K-S quantifica a distância entre as funções de distribuição acumulada. 
                                     Um p-valor &lt; 0,05 indica que as diferenças observadas entre as simulações não são fruto do acaso, 
                                     confirmando a superioridade estatística de um cenário sobre o outro.
@@ -8138,59 +8685,73 @@ export default function App() {
                             )}
 
                             {/* Dominance Analysis Result */}
-                            <div className="bg-emerald-900 text-white p-8 rounded-3xl shadow-xl relative overflow-hidden">
-                              <div className="absolute top-0 right-0 p-8 opacity-10">
-                                <ShieldAlert className="w-32 h-32" />
-                              </div>
-                              <div className="relative z-10">
-                                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-                                  Conclusão da Análise
-                                </h3>
-                                <div className="space-y-4">
-                                  {(() => {
-                                    // Simple dominance check
-                                    const bestByMean = [...dominanceResults].sort((a, b) => b.stats.vplMedio - a.stats.vplMedio)[0];
-                                    const bestByRisk = [...dominanceResults].sort((a, b) => a.stats.probPrejuizo - b.stats.probPrejuizo)[0];
-                                    
-                                    // Check if the difference between the top two is significant
-                                    const sortedByMean = [...dominanceResults].sort((a, b) => b.stats.vplMedio - a.stats.vplMedio);
-                                    const topTwoTest = dominanceResults[0].ksTests.find((t: any) => 
-                                      (t.sim1 === sortedByMean[0].name && t.sim2 === sortedByMean[1].name) ||
-                                      (t.sim1 === sortedByMean[1].name && t.sim2 === sortedByMean[0].name)
-                                    );
-                                    const isSignificant = topTwoTest?.significant;
+                            <div className="space-y-4">
+                              {(() => {
+                                // Simple dominance check
+                                const bestByMean = [...dominanceResults].sort((a, b) => b.stats.vplMedio - a.stats.vplMedio)[0];
+                                const bestByRisk = [...dominanceResults].sort((a, b) => a.stats.probPrejuizo - b.stats.probPrejuizo)[0];
+                                
+                                // Check if the difference between the top two is significant
+                                const sortedByMean = [...dominanceResults].sort((a, b) => b.stats.vplMedio - a.stats.vplMedio);
+                                const topTwoTest = dominanceResults[0].ksTests.find((t: any) => 
+                                  (t.sim1 === sortedByMean[0].name && t.sim2 === sortedByMean[1].name) ||
+                                  (t.sim1 === sortedByMean[1].name && t.sim2 === sortedByMean[0].name)
+                                );
+                                const isSignificant = topTwoTest?.significant;
 
-                                    return (
-                                      <>
-                                        <p className="text-emerald-100 leading-relaxed">
-                                          Com base nas simulações realizadas, a simulação <strong>"{bestByMean.name}"</strong> apresenta o maior retorno esperado (VPL Médio), 
-                                          enquanto a simulação <strong>"{bestByRisk.name}"</strong> oferece o menor risco de prejuízo.
-                                          {isSignificant ? (
-                                            <span className="block mt-2 text-emerald-300 text-xs italic">
-                                              * A diferença entre os principais cenários é estatisticamente significativa (p-valor &lt; 0,05).
-                                            </span>
-                                          ) : (
-                                            <span className="block mt-2 text-emerald-300 text-xs italic">
-                                              * Os cenários são estatisticamente semelhantes em termos de distribuição de probabilidade.
-                                            </span>
-                                          )}
-                                        </p>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                                          <div className="bg-white/10 p-4 rounded-2xl border border-white/10">
-                                            <p className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold mb-1">Recomendação (Retorno)</p>
-                                            <p className="text-sm font-medium">Focar em <strong>{bestByMean.name}</strong> para maximizar o potencial de lucro.</p>
-                                          </div>
-                                          <div className="bg-white/10 p-4 rounded-2xl border border-white/10">
-                                            <p className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold mb-1">Recomendação (Segurança)</p>
-                                            <p className="text-sm font-medium">Focar em <strong>{bestByRisk.name}</strong> se a prioridade for a preservação de capital.</p>
-                                          </div>
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
+                                const inviáveis = dominanceResults.filter(sim => sim.stats.vplMedio < 0);
+                                const hasInviáveis = inviáveis.length > 0;
+
+                                return (
+                                  <div className="space-y-4 text-left">
+                                    {bestByMean.stats.vplMedio < 0 ? (
+                                      <TechnicalParecer 
+                                        title="Parecer Técnico - Inviabilidade Econômica Geral Detectada"
+                                        content="Todas as simulações selecionadas para comparação apresentam um VPL Médio negativo, indicando que o empreendimento é economicamente inviável sob as premissas atuais de todos os cenários. Recomenda-se reavaliar os custos operacionais, taxa de lotação ou preços de venda."
+                                        type="danger"
+                                      />
+                                    ) : (
+                                      <TechnicalParecer 
+                                        title="Parecer Técnico - Conclusão da Análise de Dominância"
+                                        content={`Com base nas simulações realizadas, a simulação "${bestByMean.name}" apresenta o maior retorno esperado (VPL Médio de ${formatCurrency(bestByMean.stats.vplMedio)}), enquanto a simulação "${bestByRisk.name}" oferece o menor risco de prejuízo (${bestByRisk.stats.probPrejuizo.toFixed(1)}%). ${
+                                          isSignificant 
+                                            ? 'A diferença estatística entre os principais cenários é significativa (p-valor < 0,05), confirmando a consistência da superioridade deste cenário.' 
+                                            : 'Os cenários são estatisticamente semelhantes em termos de distribuição de probabilidade das curvas de risco acumuladas.'
+                                        }`}
+                                        type="success"
+                                      />
+                                    )}
+
+                                    {hasInviáveis && bestByMean.stats.vplMedio >= 0 && (
+                                      <TechnicalParecer 
+                                        title="Alerta Técnico - Inviabilidade Econômica Detectada"
+                                        content={`As seguintes simulações selecionadas apresentam VPL Médio negativo e são consideradas economicamente inviáveis sob estas premissas: ${inviáveis.map(sim => `"${sim.name}" (VPL Médio: ${formatCurrency(sim.stats.vplMedio)}, Probabilidade de prejuízo: ${sim.stats.probPrejuizo.toFixed(1)}%)`).join(', ')}.`}
+                                        type="warning"
+                                      />
+                                    )}
+
+                                    {/* Recommendations Grid */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                      <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 hover:border-indigo-500/20 transition-all duration-200">
+                                        <p className="text-[10px] uppercase tracking-wider text-indigo-400 font-bold mb-1 font-sans">Recomendação de Retorno (VPL)</p>
+                                        {bestByMean.stats.vplMedio >= 0 ? (
+                                          <p className="text-xs font-medium text-slate-200">Focar em <strong className="text-indigo-400">"{bestByMean.name}"</strong> para maximizar o potencial de retorno financeiro e lucro.</p>
+                                        ) : (
+                                          <p className="text-xs font-medium text-slate-400">Nenhum cenário viável. Recomenda-se reestruturação profunda do plano de negócios.</p>
+                                        )}
+                                      </div>
+                                      <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 hover:border-emerald-500/20 transition-all duration-200">
+                                        <p className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold mb-1 font-sans">Recomendação de Segurança (Risco)</p>
+                                        {bestByRisk.stats.probPrejuizo < 100 ? (
+                                          <p className="text-xs font-medium text-slate-200">Focar em <strong className="text-emerald-400">"{bestByRisk.name}"</strong> se o objetivo principal for mitigar perdas e garantir maior estabilidade de caixa.</p>
+                                        ) : (
+                                          <p className="text-xs font-medium text-slate-400">Nenhum cenário viável. Recomenda-se reestruturação profunda do plano de negócios.</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </>
                         ) : (
@@ -8218,134 +8779,134 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="space-y-6"
+              className="space-y-4"
             >
-              <div className="bg-[#0f172a] p-6 rounded-2xl shadow-lg border border-slate-800/80 text-left">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-50 rounded-xl">
-                      <Zap className="w-5 h-5 text-purple-600" />
+              <div className="bg-[#0a0f1d] p-5 rounded-xl border border-slate-850 shadow-sm text-left font-sans">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                      <Zap className="w-4 h-4 text-purple-400" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-slate-100 text-xl">Calculadora de Dieta</h3>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-base font-extrabold text-purple-400 uppercase tracking-wider font-sans flex items-center gap-1.5">Calculadora de Dieta</h3>
                         <InfoTooltip text="Ferramenta de formulação de dieta baseada em programação linear (Simplex). Calcula a combinação ideal de insumos para atingir as metas nutricionais e de desempenho." />
                       </div>
-                      <p className="text-xs text-slate-400">Formulação balanceada com os mais modernos padrões globais de nutrição (NRC/NASEM 2016).</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5 font-sans">Formulação balanceada com os mais modernos padrões globais de nutrição (NRC/NASEM 2016).</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
                   {/* Cards de Perfil do Animal e Objetivo e Limites acima de Insumos */}
                   <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Perfil do Animal Card */}
-                    <div className="bg-[#121826] p-6 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
-                      <div className="flex items-center justify-between mb-6 gap-3">
-                        <div className="flex items-center gap-2">
-                          <Settings className="w-4 h-4 text-purple-400" />
-                          <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest font-sans">Perfil do Animal</h4>
+                    <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 relative overflow-hidden text-left">
+                      <div className="flex items-center justify-between mb-4 gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <Settings className="w-3.5 h-3.5 text-purple-400" />
+                          <h4 className="text-xs font-extrabold text-purple-400 uppercase tracking-wider font-sans">Perfil do Animal</h4>
                         </div>
                         <button
                           onClick={handleSyncProfileWithParameters}
-                          className="px-2.5 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-xl font-bold text-[9px] tracking-wider uppercase transition-all flex items-center justify-center gap-1 cursor-pointer border border-purple-500/15 active:scale-[0.98]"
+                          className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-lg font-bold text-[8px] tracking-wider uppercase transition-all flex items-center justify-center gap-1 cursor-pointer border border-purple-500/15 active:scale-[0.98]"
                           title="Sincronizar este perfil com os parâmetros globais da simulação"
                         >
-                          <RefreshCw className="w-3 h-3" />
-                          Sincronizar com parâmetros
+                          <RefreshCw className="w-2.5 h-2.5" />
+                          Sincronizar
                         </button>
                       </div>
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-3 font-sans">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Início (kg)</label>
+                            <label className="text-[9px] font-bold text-slate-455 uppercase block mb-1 font-sans">Início (kg)</label>
                             <input 
                               type="number"
                               value={dietAnimalProfile.weight}
                               onChange={(e) => setDietAnimalProfile(prev => ({ ...prev, weight: parseFloat(e.target.value) }))}
-                              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors font-mono"
+                              className="w-full px-2 py-1 bg-[#070a13] border border-slate-850 rounded-lg text-slate-200 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-800 transition-colors font-mono"
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Final (kg)</label>
+                            <label className="text-[9px] font-bold text-slate-455 uppercase block mb-1 font-sans">Final (kg)</label>
                             <input 
                               type="number"
                               value={dietAnimalProfile.finalWeight}
                               onChange={(e) => setDietAnimalProfile(prev => ({ ...prev, finalWeight: parseFloat(e.target.value) }))}
-                              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors font-mono"
+                              className="w-full px-2 py-1 bg-[#070a13] border border-slate-850 rounded-lg text-slate-200 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-800 transition-colors font-mono"
                             />
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">GMD Meta (kg/d)</label>
+                            <label className="text-[9px] font-bold text-slate-455 uppercase block mb-1 font-sans">GMD Meta (kg/d)</label>
                             <input 
                               type="number"
                               value={dietAnimalProfile.gmd}
                               onChange={(e) => setDietAnimalProfile(prev => ({ ...prev, gmd: parseFloat(e.target.value) }))}
-                              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors font-mono"
+                              className="w-full px-2 py-1 bg-[#070a13] border border-slate-850 rounded-lg text-slate-200 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-800 transition-colors font-mono"
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Sexo (NRC)</label>
+                            <label className="text-[9px] font-bold text-slate-455 uppercase block mb-1 font-sans">Sexo (NRC)</label>
                             <select 
                               value={dietAnimalProfile.sex}
                               onChange={(e) => setDietAnimalProfile(prev => ({ ...prev, sex: e.target.value as any }))}
-                              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors"
+                              className="w-full px-2 py-1 bg-[#070a13] border border-slate-850 rounded-lg text-slate-200 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-800 transition-colors font-sans"
                             >
-                              <option value="macho" className="bg-[#121826]">Macho Castrado</option>
-                              <option value="inteiro" className="bg-[#121826]">Macho Inteiro</option>
-                              <option value="femea" className="bg-[#121826]">Fêmea</option>
+                              <option value="macho" className="bg-[#070a13]">Macho Castrado</option>
+                              <option value="inteiro" className="bg-[#070a13]">Macho Inteiro</option>
+                              <option value="femea" className="bg-[#070a13]">Fêmea</option>
                             </select>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Raça/Genética</label>
+                            <label className="text-[9px] font-bold text-slate-455 uppercase block mb-1 font-sans">Raça/Genética</label>
                             <select 
                               value={dietAnimalProfile.raca}
                               onChange={(e) => setDietAnimalProfile(prev => ({ ...prev, raca: e.target.value as any }))}
-                              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors"
+                              className="w-full px-2 py-1 bg-[#070a13] border border-slate-850 rounded-lg text-slate-200 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-800 transition-colors font-sans"
                             >
-                              <option value="zebuino" className="bg-[#121826]">Bos Indicus (Zebu)</option>
-                              <option value="europeu" className="bg-[#121826]">Bos Taurus (Europeu)</option>
-                              <option value="cruzado" className="bg-[#121826]">Cruzamento Industrial</option>
+                              <option value="zebuino" className="bg-[#070a13]">Bos Indicus (Zebu)</option>
+                              <option value="europeu" className="bg-[#070a13]">Bos Taurus (Europeu)</option>
+                              <option value="cruzado" className="bg-[#070a13]">Cruzamento Industrial</option>
                             </select>
                           </div>
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Frame (Tamanho)</label>
+                            <label className="text-[9px] font-bold text-slate-455 uppercase block mb-1 font-sans">Frame (Tamanho)</label>
                             <select 
                               value={dietAnimalProfile.frameSize}
                               onChange={(e) => setDietAnimalProfile(prev => ({ ...prev, frameSize: e.target.value as any }))}
-                              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors"
+                              className="w-full px-2 py-1 bg-[#070a13] border border-slate-850 rounded-lg text-slate-200 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-800 transition-colors font-sans"
                             >
-                              <option value="pequeno" className="bg-[#121826]">Pequeno (Precoce)</option>
-                              <option value="medio" className="bg-[#121826]">Médio</option>
-                              <option value="grande" className="bg-[#121826]">Grande (Tardio)</option>
+                              <option value="pequeno" className="bg-[#070a13]">Pequeno (Precoce)</option>
+                              <option value="medio" className="bg-[#070a13]">Médio</option>
+                              <option value="grande" className="bg-[#070a13]">Grande (Tardio)</option>
                             </select>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Idade (Meses)</label>
+                            <label className="text-[9px] font-bold text-slate-455 uppercase block mb-1 font-sans">Idade (Meses)</label>
                             <input 
                               type="number"
                               value={dietAnimalProfile.idade}
                               onChange={(e) => setDietAnimalProfile(prev => ({ ...prev, idade: parseFloat(e.target.value) }))}
-                              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors font-mono"
+                              className="w-full px-2 py-1 bg-[#070a13] border border-slate-850 rounded-lg text-slate-200 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-800 transition-colors font-mono"
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">ECC (1-9)</label>
+                            <label className="text-[9px] font-bold text-slate-455 uppercase block mb-1 font-sans">ECC (1-9)</label>
                             <input 
                               type="number"
                               min="1" max="9" step="0.5"
                               value={dietAnimalProfile.ecc}
                               onChange={(e) => setDietAnimalProfile(prev => ({ ...prev, ecc: parseFloat(e.target.value) }))}
-                              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-700 transition-colors font-mono"
+                              className="w-full px-2 py-1 bg-[#070a13] border border-slate-850 rounded-lg text-slate-200 text-xs font-semibold outline-none focus:border-purple-500 hover:border-slate-800 transition-colors font-mono"
                             />
                           </div>
                         </div>
@@ -8353,14 +8914,14 @@ export default function App() {
                     </div>
 
                     {/* Exigências Estimadas Card */}
-                    <div className="bg-[#121826] p-6 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden flex flex-col justify-between">
+                    <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 relative overflow-hidden flex flex-col justify-between text-left">
                       <div>
-                        <div className="flex items-center justify-between mb-6">
-                          <div className="flex items-center gap-2">
-                            <BrainCircuit className="w-4 h-4 text-emerald-400" />
-                            <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest font-sans">Exigências Estimadas</h4>
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-1.5">
+                            <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+                            <h4 className="text-xs font-extrabold text-emerald-400 uppercase tracking-wider font-sans">Exigências Estimadas</h4>
                           </div>
-                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full font-mono">NRC/NASEM 2016</span>
+                          <span className="text-[8px] font-black tracking-wider uppercase text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md font-mono">NRC/NASEM 2016</span>
                         </div>
                         
                         {(() => {
@@ -8369,40 +8930,40 @@ export default function App() {
                           const cmsPercentPV = avgWeight > 0 ? (reqs.cms / avgWeight) * 100 : 0;
                           
                           return (
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="bg-slate-900/40 p-3 rounded-2xl border border-slate-800/50 col-span-2">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consumo Est. Matéria Seca (CMS)</p>
-                                <div className="flex items-baseline gap-1 mt-1">
-                                  <span className="text-xl font-black text-emerald-400 font-mono">{reqs.cms ? reqs.cms.toFixed(2) : '0.00'}</span>
-                                  <span className="text-xs text-slate-400 font-bold">kg MS/dia</span>
-                                  <span className="text-xs text-indigo-400 ml-auto font-mono font-bold">({cmsPercentPV.toFixed(2)}% do PV)</span>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="bg-[#070a13] p-2.5 rounded-lg border border-slate-850/50 col-span-2">
+                                <p className="text-[8px] font-bold text-slate-455 uppercase tracking-wider font-sans">Consumo Est. Matéria Seca (CMS)</p>
+                                <div className="flex items-baseline gap-1 mt-0.5">
+                                  <span className="text-base font-black text-emerald-400 font-mono">{reqs.cms ? reqs.cms.toFixed(2) : '0.00'}</span>
+                                  <span className="text-[10px] text-slate-455 font-bold font-sans">kg MS/dia</span>
+                                  <span className="text-[10px] text-indigo-400 ml-auto font-mono font-bold">({cmsPercentPV.toFixed(2)}% do PV)</span>
                                 </div>
                               </div>
                               
-                              <div className="bg-slate-900/40 p-3 rounded-2xl border border-slate-800/50">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mínimo PB (%)</p>
-                                <p className="text-sm font-black text-slate-100 font-mono mt-1">
+                              <div className="bg-[#070a13] p-2 rounded-lg border border-slate-850/50">
+                                <p className="text-[8px] font-bold text-slate-455 uppercase tracking-wider font-sans">Mínimo PB (%)</p>
+                                <p className="text-xs font-black text-slate-200 font-mono mt-0.5">
                                   {reqs.pbMin ? reqs.pbMin.toFixed(2) : '0.0'}%
                                 </p>
                               </div>
 
-                              <div className="bg-slate-900/40 p-3 rounded-2xl border border-slate-800/50">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mínimo NDT (%)</p>
-                                <p className="text-sm font-black text-slate-100 font-mono mt-1">
+                              <div className="bg-[#070a13] p-2 rounded-lg border border-slate-850/50">
+                                <p className="text-[8px] font-bold text-slate-455 uppercase tracking-wider font-sans">Mínimo NDT (%)</p>
+                                <p className="text-xs font-black text-slate-200 font-mono mt-0.5">
                                   {reqs.ndtMin ? reqs.ndtMin.toFixed(2) : '0.0'}%
                                 </p>
                               </div>
 
-                              <div className="bg-slate-900/40 p-3 rounded-2xl border border-slate-800/50">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mínimo Cálcio (%)</p>
-                                <p className="text-sm font-black text-slate-100 font-mono mt-1">
+                              <div className="bg-[#070a13] p-2 rounded-lg border border-slate-850/50">
+                                <p className="text-[8px] font-bold text-slate-455 uppercase tracking-wider font-sans">Mínimo Cálcio (%)</p>
+                                <p className="text-xs font-black text-slate-200 font-mono mt-0.5">
                                   {reqs.caMin ? reqs.caMin.toFixed(3) : '0.00'}%
                                 </p>
                               </div>
 
-                              <div className="bg-slate-900/40 p-3 rounded-2xl border border-slate-800/50">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mínimo Fósforo (%)</p>
-                                <p className="text-sm font-black text-slate-100 font-mono mt-1">
+                              <div className="bg-[#070a13] p-2 rounded-lg border border-slate-850/50">
+                                <p className="text-[8px] font-bold text-slate-455 uppercase tracking-wider font-sans">Mínimo Fósforo (%)</p>
+                                <p className="text-xs font-black text-slate-200 font-mono mt-0.5">
                                   {reqs.pMin ? reqs.pMin.toFixed(3) : '0.00'}%
                                 </p>
                               </div>
@@ -8411,24 +8972,24 @@ export default function App() {
                         })()}
                       </div>
                       
-                      <div className="text-[9px] text-slate-400 italic leading-relaxed border-t border-slate-800/60 pt-4 mt-4">
+                      <div className="text-[8px] text-slate-500 italic leading-relaxed border-t border-slate-800/30 pt-2.5 mt-2.5">
                         * Estimativas de exigências nutricionais baseadas nas equações do NRC (2016) calculadas automaticamente a partir do perfil definido ao lado.
                       </div>
                     </div>
                   </div>
 
                   {/* Card de Insumos - Ocupa largura total e usa paleta escura de alto contraste super legível */}
-                  <div className="lg:col-span-4 space-y-6">
-                    <div className="bg-[#121826] rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
-                      <div className="p-4 border-b border-slate-800 bg-[#0f1524] flex flex-wrap items-center justify-between gap-4">
+                  <div className="lg:col-span-4 space-y-4">
+                    <div className="bg-[#0d121f] rounded-xl border border-slate-850 overflow-hidden">
+                      <div className="p-3 bg-[#0a0f1d] border-b border-slate-850 flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <h4 className="text-sm font-bold text-slate-100 font-sans tracking-wide">Tabela de Insumos</h4>
-                          <p className="text-[10px] text-slate-400">Ative os insumos, altere preços e regule limites para o cálculo de custo mínimo</p>
+                          <h4 className="text-xs font-extrabold text-indigo-400 uppercase tracking-wider font-sans">Tabela de Insumos</h4>
+                          <p className="text-[9px] text-slate-400 mt-0.5 font-sans">Ative os insumos, altere preços e regule limites para o cálculo de custo mínimo</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           {editingDietId && (
-                            <div className="mr-1 px-2.5 py-1 bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded-xl text-[10px] font-bold flex items-center gap-1.5 shadow-sm">
-                              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                            <div className="mr-1 px-2 py-0.5 bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded-lg text-[8px] font-bold flex items-center gap-1 shadow-sm">
+                              <span className="w-1 h-1 rounded-full bg-purple-400 animate-pulse"></span>
                               <span>Editando: <strong className="text-white">{newDietName}</strong></span>
                               <button
                                 onClick={() => {
@@ -8436,7 +8997,7 @@ export default function App() {
                                   setNewDietName('');
                                   showToast('Sessão de edição concluída. Próximo salvamento criará nova dieta.', 'info');
                                 }}
-                                className="ml-1 text-slate-400 hover:text-slate-100 font-bold hover:bg-slate-800 rounded px-1 transition-all"
+                                className="ml-1 text-slate-400 hover:text-slate-100 font-bold hover:bg-slate-850 rounded px-1 transition-all"
                                 title="Salvar como nova daqui em diante"
                               >
                                 ×
@@ -8445,9 +9006,9 @@ export default function App() {
                           )}
                           <button
                             onClick={() => setIsSavedDietsModalOpen(true)}
-                            className="px-3 py-1.5 bg-slate-900 text-slate-300 border border-slate-800 rounded-xl font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1.5 text-xs cursor-pointer"
+                            className="px-2 py-1 bg-[#070a13] text-slate-300 border border-slate-800 rounded-lg font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1 text-[9px] cursor-pointer"
                           >
-                            <FolderOpen className="w-3.5 h-3.5 text-purple-400" />
+                            <FolderOpen className="w-3 h-3 text-purple-400" />
                             Carregar Dieta
                           </button>
                           <button
@@ -8458,66 +9019,65 @@ export default function App() {
                               setIsSavingDiet(true);
                             }}
                             disabled={!dietResult || !dietResult.feasible}
-                            className="px-3 py-1.5 bg-slate-900 text-slate-300 border border-slate-800 rounded-xl font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-50 cursor-pointer"
+                            className="px-2 py-1 bg-[#070a13] text-slate-300 border border-slate-800 rounded-lg font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1 text-[9px] disabled:opacity-50 cursor-pointer"
                           >
-                            <Save className="w-3.5 h-3.5 text-emerald-400" />
+                            <Save className="w-3 h-3 text-emerald-400" />
                             Salvar Dieta
                           </button>
                           <button
                             onClick={handleExportXLSX}
                             disabled={!dietResult}
-                            className="px-3 py-1.5 bg-slate-900 text-slate-300 border border-slate-800 rounded-xl font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-50 cursor-pointer"
+                            className="px-2 py-1 bg-[#070a13] text-slate-300 border border-slate-800 rounded-lg font-bold hover:bg-slate-800 hover:text-slate-100 transition-all flex items-center gap-1 text-[9px] disabled:opacity-50 cursor-pointer"
                             title="Exportar planilha Excel formatada"
                           >
-                            <Download className="w-3.5 h-3.5 text-emerald-400" />
+                            <Download className="w-3 h-3 text-emerald-400" />
                             Exportar XLSX
                           </button>
-
                         </div>
                       </div>
 
                       {/* Barra secundária de gerenciamento de insumos (Realocada para o Card Tabela de Insumos) */}
-                      <div className="px-4 py-3 bg-[#0d1322] border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+                      <div className="px-3 py-1.5 bg-[#090d16] border-b border-slate-850 flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-[8px] font-mono font-bold text-slate-455 uppercase tracking-wider flex items-center gap-1">
+                          <span className="w-1 h-1 rounded-full bg-purple-500 animate-pulse"></span>
                           Gerenciamento de Insumos
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             onClick={handleSyncMarketPrices}
-                            className="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-[10px] font-bold hover:bg-emerald-500/20 hover:text-emerald-300 transition-all flex items-center gap-1 cursor-pointer"
+                            className="px-2 py-1 bg-emerald-500/5 text-emerald-400 border border-emerald-500/10 rounded-lg text-[8px] font-bold hover:bg-emerald-500/15 hover:text-emerald-300 transition-all flex items-center gap-1 cursor-pointer"
                             title="Sincronizar preços dos insumos com o módulo de Mercado"
                           >
-                            <TrendingUp className="w-3.5 h-3.5" />
+                            <TrendingUp className="w-3 h-3" />
                             Sincronizar Mercado
                           </button>
                           <button
                             onClick={() => setDietIngredients(DEFAULT_INGREDIENTS)}
-                            className="px-2.5 py-1.5 bg-slate-900 text-slate-400 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-800 hover:text-slate-200 transition-all flex items-center gap-1 cursor-pointer"
+                            className="px-2 py-1 bg-[#070a13] text-slate-400 border border-slate-800 rounded-lg text-[8px] font-bold hover:bg-slate-800 hover:text-slate-200 transition-all flex items-center gap-1 cursor-pointer"
                             title="Resetar todos os insumos para os valores padrão"
                           >
-                            <RotateCcw className="w-3.5 h-3.5" />
+                            <RotateCcw className="w-3 h-3" />
                             Resetar Insumos
                           </button>
                           <button
                             onClick={handleAddIngredient}
-                            className="px-2.5 py-1.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-xl text-[10px] font-bold hover:bg-purple-500/20 hover:text-purple-300 transition-all flex items-center gap-1 cursor-pointer"
+                            className="px-2 py-1 bg-purple-500/5 text-purple-450 border border-purple-500/10 rounded-lg text-[8px] font-bold hover:bg-purple-500/15 hover:text-purple-350 transition-all flex items-center gap-1 cursor-pointer"
                           >
-                            <Plus className="w-3.5 h-3.5" />
+                            <Plus className="w-3 h-3" />
                             Novo Insumo
                           </button>
                           <div className="relative">
                             <button
                               onClick={() => setIsAddingFromDb(!isAddingFromDb)}
-                              className="px-2.5 py-1.5 bg-[#8b5cf6] text-white rounded-xl text-[10px] font-bold hover:bg-purple-600 transition-all flex items-center gap-1 cursor-pointer border border-purple-500/15"
+                              className="px-2 py-1 bg-purple-600/25 text-purple-300 border border-purple-500/20 rounded-lg text-[8px] font-bold hover:bg-purple-600/35 hover:text-white transition-all flex items-center gap-1 cursor-pointer"
                             >
-                              <Database className="w-3.5 h-3.5" />
+                              <Database className="w-3 h-3" />
                               Banco de Dados
                             </button>
                             {isAddingFromDb && (
-                              <div className="absolute right-0 mt-2 w-72 bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-800 z-50 max-h-96 overflow-y-auto p-3 font-sans text-left">
-                                <div className="text-[9px] font-bold text-slate-400 uppercase pb-2 border-b border-slate-800 mb-2 tracking-wider">Selecione para adicionar:</div>
-                                <div className="space-y-1.5">
+                              <div className="absolute right-0 mt-1 w-64 bg-[#0d121f] rounded-lg shadow-xl border border-slate-850 z-50 max-h-80 overflow-y-auto p-2 font-sans text-left">
+                                <div className="text-[8px] font-bold text-slate-455 uppercase pb-1.5 border-b border-slate-850 mb-1.5 tracking-wider">Selecione para adicionar:</div>
+                                <div className="space-y-1">
                                   {DEFAULT_INGREDIENTS.filter(di => !dietIngredients.some(oi => oi.name === di.name)).map(di => (
                                     <button
                                       key={di.id}
@@ -8525,14 +9085,14 @@ export default function App() {
                                         handleAddFromDb(di);
                                         setIsAddingFromDb(false);
                                       }}
-                                      className="w-full text-left px-3 py-2 bg-[#121826]/60 hover:bg-[#161e30] border border-slate-800/40 hover:border-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors flex flex-col gap-0.5"
+                                      className="w-full text-left px-2 py-1 bg-[#070a13] hover:bg-[#121826] border border-slate-850/65 text-slate-300 hover:text-white rounded-lg transition-colors flex flex-col gap-0.5"
                                     >
-                                      <span className="text-xs font-bold">{di.name}</span>
-                                      <span className="text-[9px] text-slate-500">{di.type} • PB: {di.pb}% • NDT: {di.ndt}%</span>
+                                      <span className="text-[10px] font-bold">{di.name}</span>
+                                      <span className="text-[8px] text-slate-500">{di.type} • PB: {di.pb}% • NDT: {di.ndt}%</span>
                                     </button>
                                   ))}
                                   {DEFAULT_INGREDIENTS.filter(di => !dietIngredients.some(oi => oi.name === di.name)).length === 0 && (
-                                    <div className="text-center py-4 text-[10px] text-slate-500">Todos os insumos do banco já estão na tabela.</div>
+                                    <div className="text-center py-3 text-[9px] text-slate-500 font-sans">Todos os insumos do banco já estão na tabela.</div>
                                   )}
                                 </div>
                               </div>
@@ -8542,10 +9102,10 @@ export default function App() {
                       </div>
 
                       <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-left">
-                          <thead className="bg-[#0f1524] text-slate-300 uppercase font-black font-sans tracking-wider border-b border-slate-800">
+                        <table className="w-full text-[10px] text-left">
+                          <thead className="bg-[#0a0f1d] text-slate-400 uppercase font-bold font-sans tracking-wider border-b border-slate-850">
                             <tr>
-                              <th className="px-3 py-3 w-8 text-center">
+                              <th className="px-2 py-1.5 w-6 text-center">
                                 <input 
                                   type="checkbox"
                                   checked={dietIngredients.every(ing => ing.selected)}
@@ -8553,84 +9113,84 @@ export default function App() {
                                     const checked = e.target.checked;
                                     setDietIngredients(dietIngredients.map(ing => ({ ...ing, selected: checked })));
                                   }}
-                                  className="rounded border-slate-700 bg-slate-950 text-purple-600 focus:ring-purple-500 h-4 w-4"
+                                  className="rounded border-slate-800 bg-[#070a13] text-purple-600 focus:ring-purple-500 h-3.5 w-3.5"
                                 />
                               </th>
-                              <th className="px-3 py-3 text-slate-200">
+                              <th className="px-2 py-1.5 text-slate-300">
                                 Insumo
                                 <InfoTooltip text="Nome (MS = Matéria Seca | MN = Matéria Natural)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200 font-sans">
+                              <th className="px-2 py-1.5 text-right text-slate-300 font-sans">
                                 Preço (R$/kg MN)
                                 <InfoTooltip text="Preço por kg na Matéria Natural (como alimentado)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 Teor MS (%)
                                 <InfoTooltip text="Teor de Matéria Seca do insumo" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 PB (%)
                                 <InfoTooltip text="Proteína Bruta (% da Matéria Seca)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 NDT (%)
                                 <InfoTooltip text="Nutrientes Digestíveis Totais (% da Matéria Seca)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 FDN (%)
                                 <InfoTooltip text="Fibra em Detergente Neutro (% da Matéria Seca)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 EE (%)
                                 <InfoTooltip text="Extrato Etéreo (% da Matéria Seca)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 PDR (%)
                                 <InfoTooltip text="Proteína Degradável no Rúmen (% da PB)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 Ca (%)
                                 <InfoTooltip text="Cálcio (% da Matéria Seca)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 P (%)
                                 <InfoTooltip text="Fósforo (% da Matéria Seca)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 Min (%)
                                 <InfoTooltip text="Inclusão mínima permitida na dieta (% da MS)" />
                               </th>
-                              <th className="px-3 py-3 text-right text-slate-200">
+                              <th className="px-2 py-1.5 text-right text-slate-300">
                                 Max (%)
                                 <InfoTooltip text="Inclusão máxima permitida na dieta (% da MS)" />
                               </th>
-                              <th className="px-3 py-3"></th>
+                              <th className="px-2 py-1.5 w-8"></th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-800 bg-[#121826]">
+                          <tbody className="divide-y divide-slate-850 bg-[#0d121f]">
                             {['volumoso', 'concentrado', 'mineral', 'aditivo'].map((type) => {
                               const filteredIngs = dietIngredients.filter(ing => ing.type === type);
                               if (filteredIngs.length === 0) return null;
 
                               const typeColors = {
-                                volumoso: 'bg-emerald-950/20 text-emerald-400 border-l-4 border-l-emerald-500 border-y border-slate-800/60',
-                                concentrado: 'bg-amber-950/20 text-amber-400 border-l-4 border-l-amber-500 border-y border-slate-800/60',
-                                mineral: 'bg-blue-950/20 text-blue-400 border-l-4 border-l-blue-500 border-y border-slate-800/60',
-                                aditivo: 'bg-purple-950/20 text-purple-400 border-l-4 border-l-purple-500 border-y border-slate-800/60'
+                                volumoso: 'bg-emerald-950/10 text-emerald-400 border-l-2 border-l-emerald-500 border-y border-slate-850/60',
+                                concentrado: 'bg-amber-950/10 text-amber-400 border-l-2 border-l-amber-500 border-y border-slate-850/60',
+                                mineral: 'bg-blue-950/10 text-blue-400 border-l-2 border-l-blue-500 border-y border-slate-850/60',
+                                aditivo: 'bg-purple-950/10 text-purple-400 border-l-2 border-l-purple-500 border-y border-slate-850/60'
                               };
 
                               return (
                                 <React.Fragment key={type}>
                                   <tr className={`${typeColors[type as keyof typeof typeColors]}`}>
-                                    <td colSpan={14} className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[#94a3b8]">
+                                    <td colSpan={14} className="px-3 py-1 text-[8px] font-extrabold uppercase tracking-widest text-[#94a3b8]">
                                       {type === 'volumoso' ? '🌿 Volumosos' : type === 'concentrado' ? '🌽 Concentrados' : type === 'mineral' ? '💎 Minerais' : '🧪 Aditivos'}
                                     </td>
                                   </tr>
                                   {filteredIngs.map((ing) => {
                                     const idx = dietIngredients.findIndex(oi => oi.id === ing.id);
                                     return (
-                                      <tr key={ing.id || idx} className={`hover:bg-slate-800/30 transition-colors ${!ing.selected ? 'opacity-65 bg-slate-900/40 text-slate-400' : 'text-slate-200'}`}>
-                                        <td className="px-3 py-2 text-center">
+                                      <tr key={ing.id || idx} className={`hover:bg-slate-850/30 transition-colors ${!ing.selected ? 'opacity-60 bg-slate-900/20 text-slate-400' : 'text-slate-200'}`}>
+                                        <td className="px-2 py-1 text-center">
                                           <input 
                                             type="checkbox"
                                             checked={ing.selected ?? false}
@@ -8639,10 +9199,10 @@ export default function App() {
                                               newIngs[idx].selected = e.target.checked;
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="rounded border-slate-700 bg-slate-950 text-purple-500 focus:ring-purple-500 h-4 w-4 cursor-pointer"
+                                            className="rounded border-slate-800 bg-[#070a13] text-purple-500 focus:ring-purple-500 h-3.5 w-3.5 cursor-pointer"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5">
+                                        <td className="px-1.5 py-1">
                                           <input 
                                             type="text" 
                                             value={ing.name}
@@ -8651,10 +9211,10 @@ export default function App() {
                                               newIngs[idx].name = e.target.value;
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-28 bg-slate-900/80 px-2 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 outline-none transition-all font-bold text-slate-100 rounded text-xs"
+                                            className="w-24 bg-[#070a13] px-1.5 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 outline-none transition-all font-bold text-slate-100 rounded text-[10px]"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right">
+                                        <td className="px-1.5 py-1 text-right">
                                           <input 
                                             type="number" 
                                             value={ing.price}
@@ -8663,10 +9223,10 @@ export default function App() {
                                               newIngs[idx].price = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-16 bg-slate-900/80 px-2 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all font-mono text-xs text-emerald-400 rounded"
+                                            className="w-14 bg-[#070a13] px-1.5 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all font-mono text-[10px] text-emerald-400 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.ms}
@@ -8675,10 +9235,10 @@ export default function App() {
                                               newIngs[idx].ms = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-slate-200 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.pb}
@@ -8687,10 +9247,10 @@ export default function App() {
                                               newIngs[idx].pb = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-slate-200 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.ndt}
@@ -8699,10 +9259,10 @@ export default function App() {
                                               newIngs[idx].ndt = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-slate-200 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.fdn}
@@ -8711,10 +9271,10 @@ export default function App() {
                                               newIngs[idx].fdn = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-slate-200 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.ee || 0}
@@ -8723,10 +9283,10 @@ export default function App() {
                                               newIngs[idx].ee = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-slate-200 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.pdr || 0}
@@ -8735,10 +9295,10 @@ export default function App() {
                                               newIngs[idx].pdr = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-slate-200 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.ca}
@@ -8747,10 +9307,10 @@ export default function App() {
                                               newIngs[idx].ca = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-slate-200 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.p}
@@ -8759,10 +9319,10 @@ export default function App() {
                                               newIngs[idx].p = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/60 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-slate-100 rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-slate-200 rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.minIncl || 0}
@@ -8771,10 +9331,10 @@ export default function App() {
                                               newIngs[idx].minIncl = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/80 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-sky-400 font-semibold rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-sky-400 font-semibold rounded"
                                           />
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
+                                        <td className="px-1.5 py-1 text-right font-mono">
                                           <input 
                                             type="number" 
                                             value={ing.maxIncl || 100}
@@ -8783,15 +9343,15 @@ export default function App() {
                                               newIngs[idx].maxIncl = parseFloat(e.target.value);
                                               setDietIngredients(newIngs);
                                             }}
-                                            className="w-12 bg-slate-900/80 px-1 py-1 border border-slate-800 hover:border-slate-700 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-xs font-mono text-purple-400 font-semibold rounded"
+                                            className="w-10 bg-[#070a13]/80 px-1 py-0.5 border border-slate-850 hover:border-slate-800 focus:bg-slate-950 focus:border-purple-500 text-right outline-none transition-all text-[9px] font-mono text-purple-400 font-semibold rounded"
                                           />
                                         </td>
-                                        <td className="px-3 py-2 text-center">
+                                        <td className="px-2 py-1 text-center">
                                           <button 
                                             onClick={() => handleRemoveIngredient(ing.id)}
-                                            className="p-1.5 text-slate-400 hover:text-red-400 transition-colors rounded-lg hover:bg-red-500/10"
+                                            className="p-1 text-slate-400 hover:text-red-400 transition-colors rounded-lg hover:bg-red-500/10"
                                           >
-                                            <Trash2 className="w-3.5 h-3.5" />
+                                            <Trash2 className="w-3 h-3" />
                                           </button>
                                         </td>
                                       </tr>
@@ -8804,8 +9364,8 @@ export default function App() {
                         </table>
                       </div>
                       
-                      <div className="p-4 bg-[#0f1524] border-t border-slate-800 flex flex-wrap items-center justify-between gap-4">
-                        <div className="text-[10px] text-slate-400 max-w-md italic">
+                      <div className="p-2.5 bg-[#0a0f1d] border-t border-slate-850 flex flex-wrap items-center justify-between gap-3">
+                        <div className="text-[9px] text-slate-500 max-w-md italic font-sans">
                           * Os valores nutricionais são baseados na Matéria Seca (MS). Preço base natural. Insumos obtidos de <a href="https://www.cqbal.com.br/#!/" target="_blank" rel="noopener noreferrer" className="hover:underline text-purple-400 font-bold">CQBAL 4.0</a>.
                         </div>
                       </div>
@@ -8813,62 +9373,80 @@ export default function App() {
                   </div>
 
                   {/* Objetivo e Limites Card (Realocado para baixo da Tabela de Insumos) */}
-                  <div className="lg:col-span-4 bg-[#121826] p-6 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
-                    <div className="flex items-center justify-between mb-6">
+                  <div className="lg:col-span-4 bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-xl relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <Target className="w-5 h-5 text-sky-400" />
+                        <Target className="w-4 h-4 text-sky-400" />
                         <div>
-                          <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest font-sans">Objetivo e Limites</h4>
-                          <p className="text-[10px] text-slate-400">Configure as metas de otimização e limites de volumoso para o cálculo automático</p>
+                          <h4 className="text-xs font-extrabold text-sky-400 uppercase tracking-wider font-sans">Objetivo e Limites</h4>
+                          <p className="text-[9px] text-slate-400 font-sans mt-0.5">Configure as metas de otimização e limites de volumoso para o cálculo automático</p>
                         </div>
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">Meta de Otimização</label>
-                        <div className="grid grid-cols-2 gap-2">
+                        <label className="text-[9px] font-bold text-slate-450 uppercase block mb-1">Meta de Otimização</label>
+                        <div className="grid grid-cols-3 gap-1.5">
                           <button
                             type="button"
                             onClick={() => setDietRequirements(prev => ({ ...prev, optimizationGoal: 'cost' }))}
-                            className={`py-2.5 px-3 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all border flex items-center justify-center gap-1 cursor-pointer ${
+                            className={`py-1.5 px-2 rounded-lg font-bold text-[8px] tracking-wider uppercase transition-all border flex items-center justify-center gap-1 cursor-pointer ${
                               dietRequirements.optimizationGoal === 'cost'
-                                ? "bg-purple-600/20 text-purple-300 border-purple-500/50 shadow-md shadow-purple-950/20"
+                                ? "bg-purple-600/20 text-purple-300 border-purple-500/40 shadow-md shadow-purple-950/20"
                                 : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
                             }`}
+                            title="Minimizar o custo total da ração por kg de matéria seca (MS)"
                           >
-                            <TrendingDown className="w-3.5 h-3.5" />
-                            Custo Mínimo
+                            <TrendingDown className="w-3 h-3" />
+                            Custo
+                            <InfoTooltip text="Minimizar o custo total da ração por kg de matéria seca (MS), respeitando os limites nutricionais requeridos pelo animal." />
                           </button>
                           <button
                             type="button"
                             onClick={() => setDietRequirements(prev => ({ ...prev, optimizationGoal: 'gmd' }))}
-                            className={`py-2.5 px-3 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all border flex items-center justify-center gap-1 cursor-pointer ${
+                            className={`py-1.5 px-2 rounded-lg font-bold text-[8px] tracking-wider uppercase transition-all border flex items-center justify-center gap-1 cursor-pointer ${
                               dietRequirements.optimizationGoal === 'gmd'
-                                ? "bg-purple-600/20 text-purple-300 border-purple-500/50 shadow-md shadow-purple-950/20"
+                                ? "bg-purple-600/20 text-purple-300 border-purple-500/40 shadow-md shadow-purple-950/20"
                                 : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
                             }`}
+                            title="Maximizar o ganho de peso diário estimado através de balanço nutricional"
                           >
-                            <TrendingUp className="w-3.5 h-3.5" />
-                            Meta GMD
+                            <TrendingUp className="w-3 h-3" />
+                            GMD
+                            <InfoTooltip text="Formular uma dieta focada em maximizar o Ganho Médio Diário (GMD) de peso vivo do animal, priorizando o aporte energético e proteico." />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDietRequirements(prev => ({ ...prev, optimizationGoal: 'eco' }))}
+                            className={`py-1.5 px-2 rounded-lg font-bold text-[8px] tracking-wider uppercase transition-all border flex items-center justify-center gap-1 cursor-pointer ${
+                              dietRequirements.optimizationGoal === 'eco'
+                                ? "bg-emerald-600/20 text-emerald-300 border-emerald-500/40 shadow-md shadow-emerald-950/20"
+                                : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                            }`}
+                            title="Formulação balanceada de menor pegada de carbono e excreção de nitrogênio"
+                          >
+                            <ShieldCheck className="w-3 h-3" />
+                            Eco
+                            <InfoTooltip text="Otimização eco-eficiente: minimiza as emissões potenciais de metano entérico e a excreção de compostos nitrogenados/fósforo no meio ambiente." />
                           </button>
                         </div>
                       </div>
 
                       <div className="md:col-span-2">
-                        <div className="flex justify-between mb-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Teor de Volumoso (%)</label>
-                          <span className="text-xs font-black text-emerald-400 font-mono">
+                        <div className="flex justify-between mb-1">
+                          <label className="text-[9px] font-bold text-slate-450 uppercase">Teor de Volumoso (%)</label>
+                          <span className="text-[11px] font-bold text-emerald-400 font-mono">
                             {dietRequirements.forageMin}% a {dietRequirements.forageMax}%
                           </span>
                         </div>
-                        <div className="relative w-full h-6 flex items-center">
+                        <div className="relative w-full h-5 flex items-center">
                           {/* Background Track */}
-                          <div className="absolute left-0 right-0 h-1.5 bg-slate-800 rounded-full pointer-events-none" />
+                          <div className="absolute left-0 right-0 h-1 bg-slate-800 rounded-full pointer-events-none" />
                           
                           {/* Active Interval Fill */}
                           <div 
-                            className="absolute h-1.5 bg-emerald-500 rounded-full pointer-events-none"
+                            className="absolute h-1 bg-emerald-500 rounded-full pointer-events-none"
                             style={{
                               left: `${dietRequirements.forageMin}%`,
                               right: `${100 - dietRequirements.forageMax}%`
@@ -8889,7 +9467,7 @@ export default function App() {
                                 forageMin: val
                               }));
                             }}
-                            className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-20 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-900 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-400 [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-slate-900 [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer"
+                            className="absolute w-full h-1 appearance-none bg-transparent pointer-events-none z-20 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-slate-900 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-400 [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-slate-900 [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer"
                           />
                           
                           {/* Range input for Max */}
@@ -8906,10 +9484,10 @@ export default function App() {
                                 forageMax: val
                               }));
                             }}
-                            className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-20 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-900 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-400 [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-slate-900 [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer"
+                            className="absolute w-full h-1 appearance-none bg-transparent pointer-events-none z-20 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-slate-900 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-400 [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-slate-900 [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer"
                           />
                         </div>
-                        <div className="flex justify-between text-[8px] text-slate-500 font-black uppercase tracking-wider mt-1.5 font-sans">
+                        <div className="flex justify-between text-[8px] text-slate-500 font-bold uppercase tracking-wider mt-1 font-sans">
                           <span>Apenas Concentrado (0%)</span>
                           <span>Dieta Mista</span>
                           <span>Apenas Volumoso (100%)</span>
@@ -8917,16 +9495,16 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="mt-6 pt-6 border-t border-slate-800/60 flex justify-end">
+                    <div className="mt-4 pt-4 border-t border-slate-850 flex justify-end">
                       <button
                         onClick={handleOptimize}
                         disabled={isOptimizing}
-                        className="px-8 py-3 bg-purple-600 text-white rounded-xl font-black shadow-lg shadow-purple-950/20 hover:bg-purple-500 transition-all flex items-center justify-center gap-2 uppercase tracking-wider text-xs disabled:opacity-50 cursor-pointer"
+                        className="px-6 py-2 bg-purple-600 text-white rounded-lg font-black shadow-lg shadow-purple-950/10 hover:bg-purple-500 transition-all flex items-center justify-center gap-1.5 uppercase tracking-wider text-[10px] disabled:opacity-50 cursor-pointer"
                       >
                         {isOptimizing ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                         ) : (
-                          <Zap className="w-4 h-4" />
+                          <Zap className="w-3.5 h-3.5" />
                         )}
                         Formular Dieta
                       </button>
@@ -8934,90 +9512,90 @@ export default function App() {
                   </div>
 
                   <div className="lg:col-span-4">
-                    <div className="h-px bg-slate-800 my-8" />
+                    <div className="h-px bg-slate-850 my-4" />
                   </div>
 
                   <div className="lg:col-span-4">
                       {dietResult && dietResult.feasible && (
                       <>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                          <div className="bg-[#1e1b4b]/80 border border-purple-500/25 p-3 rounded-xl text-purple-200 shadow-md text-left">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-purple-300 opacity-90 font-sans">GMD Predito</p>
-                            <p className="text-xl font-black font-mono text-purple-100">{dietResult.predictedGmd.toFixed(2)} <span className="text-xs font-normal text-purple-300 font-sans">kg/dia</span></p>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-4">
+                          <div className="bg-indigo-950/20 border border-indigo-500/20 p-2.5 rounded-lg text-indigo-200 shadow-sm text-left">
+                            <p className="text-[8px] font-bold uppercase tracking-wider text-indigo-400 font-sans">GMD Predito</p>
+                            <p className="text-lg font-black font-mono text-indigo-100">{dietResult.predictedGmd.toFixed(2)} <span className="text-[10px] font-normal text-indigo-300 font-sans">kg/dia</span></p>
                           </div>
-                          <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 shadow-sm text-left">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">Conversão</p>
-                            <p className="text-xl font-black text-slate-200 font-mono">{dietResult.feedConversion.toFixed(2)} <span className="text-xs font-normal text-slate-500">:1</span></p>
+                          <div className="bg-[#0d121f] p-2.5 rounded-lg border border-slate-850 shadow-sm text-left">
+                            <p className="text-[8px] font-bold text-slate-450 uppercase tracking-wider font-sans">Conversão</p>
+                            <p className="text-lg font-black text-slate-200 font-mono">{dietResult.feedConversion.toFixed(2)} <span className="text-[10px] font-normal text-slate-500">:1</span></p>
                           </div>
-                          <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 shadow-sm text-left">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">Consumo % PV</p>
-                            <p className="text-xl font-black text-slate-200 font-mono">{dietResult.cmsPercentageBW.toFixed(2)} <span className="text-xs font-normal text-slate-500">%</span></p>
+                          <div className="bg-[#0d121f] p-2.5 rounded-lg border border-slate-850 shadow-sm text-left">
+                            <p className="text-[8px] font-bold text-slate-450 uppercase tracking-wider font-sans">Consumo % PV</p>
+                            <p className="text-lg font-black text-slate-200 font-mono">{dietResult.cmsPercentageBW.toFixed(2)} <span className="text-[10px] font-normal text-slate-500">%</span></p>
                           </div>
-                          <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 shadow-sm text-left">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">Custo Diário</p>
-                            <p className="text-xl font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN * (dietResult.forageIntakeMN + dietResult.concentrateIntakeMN))}</p>
-                            <p className="text-[8px] text-slate-500 font-bold uppercase font-sans">R$/animal/dia</p>
+                          <div className="bg-[#0d121f] p-2.5 rounded-lg border border-slate-850 shadow-sm text-left">
+                            <p className="text-[8px] font-bold text-slate-455 uppercase tracking-wider font-sans">Custo Diário</p>
+                            <p className="text-lg font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN * (dietResult.forageIntakeMN + dietResult.concentrateIntakeMN))}</p>
+                            <p className="text-[8px] text-slate-500 font-bold uppercase font-sans mt-0.5">R$/animal/dia</p>
                           </div>
-                          <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 shadow-sm text-left">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">Custo/@ Prod.</p>
-                            <p className="text-xl font-black text-slate-200 font-mono">{formatCurrency((dietResult.totalCostMN * (dietResult.forageIntakeMN + dietResult.concentrateIntakeMN)) / (dietResult.predictedGmd / 15 * inputs.rendimentoCarcaca / 100))}</p>
-                            <p className="text-[8px] text-slate-500 font-bold uppercase font-sans">R$/@ produzida</p>
+                          <div className="bg-[#0d121f] p-2.5 rounded-lg border border-slate-850 shadow-sm text-left">
+                            <p className="text-[8px] font-bold text-slate-455 uppercase tracking-wider font-sans">Custo/@ Prod.</p>
+                            <p className="text-lg font-black text-slate-200 font-mono">{formatCurrency((dietResult.totalCostMN * (dietResult.forageIntakeMN + dietResult.concentrateIntakeMN)) / (dietResult.predictedGmd / 15 * inputs.rendimentoCarcaca / 100))}</p>
+                            <p className="text-[8px] text-slate-500 font-bold uppercase font-sans mt-0.5">R$/@ produzida</p>
                           </div>
                         </div>
 
-                        <div className="bg-[#0f172a] p-5 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-col xl:flex-row gap-6 justify-between items-stretch">
+                        <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm mb-4 flex flex-col xl:flex-row gap-4 justify-between items-stretch">
                           <div className="flex-1 overflow-x-auto">
                             <table className="w-full text-left min-w-[500px] border-collapse">
                               <thead>
-                                <tr className="border-b border-slate-800/80">
-                                  <th className="pb-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest font-sans w-1/4">Componente</th>
-                                  <th className="pb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest font-sans w-3/8">Custo da Dieta</th>
-                                  <th className="pb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest font-sans w-3/8">Consumo por Animal</th>
+                                <tr className="border-b border-slate-850">
+                                  <th className="pb-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider font-sans w-1/4">Componente</th>
+                                  <th className="pb-2 text-[9px] font-bold text-slate-450 uppercase tracking-wider font-sans w-3/8">Custo da Dieta</th>
+                                  <th className="pb-2 text-[9px] font-bold text-slate-450 uppercase tracking-wider font-sans w-3/8">Consumo por Animal</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-800/40">
+                              <tbody className="divide-y divide-slate-850/40">
                                 <tr className="hover:bg-slate-900/10 transition-colors">
-                                  <td className="py-3 text-[10px] font-bold text-slate-300 uppercase tracking-wider font-sans">Volumoso</td>
-                                  <td className="py-3">
+                                  <td className="py-2 text-[9px] font-bold text-slate-300 uppercase tracking-wider font-sans">Volumoso</td>
+                                  <td className="py-2">
                                     <div className="flex flex-col text-left">
-                                      <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.forageCostPerKgMN)}/kg MN</span>
-                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{formatCurrency(dietResult.forageCostPerKgMS)}/kg MS</span>
+                                      <span className="text-xs font-bold text-emerald-450 font-mono">{formatCurrency(dietResult.forageCostPerKgMN)}/kg MN</span>
+                                      <span className="text-[9px] text-slate-500 font-mono mt-0.5">{formatCurrency(dietResult.forageCostPerKgMS)}/kg MS</span>
                                     </div>
                                   </td>
-                                  <td className="py-3">
+                                  <td className="py-2">
                                     <div className="flex flex-col text-left">
-                                      <span className="text-sm font-black text-emerald-400 font-mono">{dietResult.forageIntakeMN.toFixed(2)} kg MN</span>
-                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{((dietResult.cms || 0) * (dietResult.foragePercentage / 100)).toFixed(2)} kg MS</span>
+                                      <span className="text-xs font-bold text-emerald-450 font-mono">{dietResult.forageIntakeMN.toFixed(2)} kg MN</span>
+                                      <span className="text-[9px] text-slate-500 font-mono mt-0.5">{((dietResult.cms || 0) * (dietResult.foragePercentage / 100)).toFixed(2)} kg MS</span>
                                     </div>
                                   </td>
                                 </tr>
                                 <tr className="hover:bg-slate-900/10 transition-colors">
-                                  <td className="py-3 text-[10px] font-bold text-slate-300 uppercase tracking-wider font-sans">Concentrado</td>
-                                  <td className="py-3">
+                                  <td className="py-2 text-[9px] font-bold text-slate-300 uppercase tracking-wider font-sans">Concentrado</td>
+                                  <td className="py-2">
                                     <div className="flex flex-col text-left">
-                                      <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.concentrateCostPerKgMN)}/kg MN</span>
-                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{formatCurrency(dietResult.concentrateCostPerKgMS)}/kg MS</span>
+                                      <span className="text-xs font-bold text-emerald-450 font-mono">{formatCurrency(dietResult.concentrateCostPerKgMN)}/kg MN</span>
+                                      <span className="text-[9px] text-slate-500 font-mono mt-0.5">{formatCurrency(dietResult.concentrateCostPerKgMS)}/kg MS</span>
                                     </div>
                                   </td>
-                                  <td className="py-3">
+                                  <td className="py-2">
                                     <div className="flex flex-col text-left">
-                                      <span className="text-sm font-black text-emerald-400 font-mono">{dietResult.concentrateIntakeMN.toFixed(2)} kg MN</span>
-                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{((dietResult.cms || 0) * (dietResult.concentratePercentage / 100)).toFixed(2)} kg MS</span>
+                                      <span className="text-xs font-bold text-emerald-450 font-mono">{dietResult.concentrateIntakeMN.toFixed(2)} kg MN</span>
+                                      <span className="text-[9px] text-slate-500 font-mono mt-0.5">{((dietResult.cms || 0) * (dietResult.concentratePercentage / 100)).toFixed(2)} kg MS</span>
                                     </div>
                                   </td>
                                 </tr>
                                 <tr className="hover:bg-slate-900/10 transition-colors bg-slate-800/10">
-                                  <td className="py-3 text-[10px] font-bold text-slate-300 uppercase tracking-wider font-sans">Média ou Total</td>
-                                  <td className="py-3">
+                                  <td className="py-2 text-[9px] font-bold text-slate-300 uppercase tracking-wider font-sans">Média ou Total</td>
+                                  <td className="py-2">
                                     <div className="flex flex-col text-left">
-                                      <span className="text-sm font-black text-emerald-400 font-mono">{formatCurrency(dietResult.totalCostMN)}/kg MN</span>
-                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{formatCurrency(dietResult.totalCost)}/kg MS</span>
+                                      <span className="text-xs font-bold text-emerald-450 font-mono">{formatCurrency(dietResult.totalCostMN)}/kg MN</span>
+                                      <span className="text-[9px] text-slate-500 font-mono mt-0.5">{formatCurrency(dietResult.totalCost)}/kg MS</span>
                                     </div>
                                   </td>
-                                  <td className="py-3">
+                                  <td className="py-2">
                                     <div className="flex flex-col text-left">
-                                      <span className="text-sm font-black text-emerald-400 font-mono">{(dietResult.forageIntakeMN + dietResult.concentrateIntakeMN).toFixed(2)} kg MN</span>
-                                      <span className="text-[9.5px] text-slate-400 font-bold font-mono mt-0.5">{(dietResult.cms || 0).toFixed(2)} kg MS</span>
+                                      <span className="text-xs font-bold text-emerald-450 font-mono">{(dietResult.forageIntakeMN + dietResult.concentrateIntakeMN).toFixed(2)} kg MN</span>
+                                      <span className="text-[9px] text-slate-500 font-mono mt-0.5">{(dietResult.cms || 0).toFixed(2)} kg MS</span>
                                     </div>
                                   </td>
                                 </tr>
@@ -9025,102 +9603,171 @@ export default function App() {
                             </table>
                           </div>
 
-                          <div className="w-full xl:w-auto flex flex-col items-center justify-center pt-4 xl:pt-0 xl:pl-6 border-t xl:border-t-0 xl:border-l border-slate-800 shrink-0">
+                          <div className="w-full xl:w-auto flex flex-col items-center justify-center pt-3 xl:pt-0 xl:pl-4 border-t xl:border-t-0 xl:border-l border-slate-850 shrink-0">
                             <button
                               onClick={handleApplyOptimizedDiet}
-                              className="w-full xl:w-auto px-5 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-purple-600 hover:from-emerald-500 hover:via-teal-500 hover:to-purple-500 text-white rounded-xl font-bold text-[10px] tracking-wide uppercase shadow-lg shadow-emerald-950/25 hover:shadow-purple-950/30 transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-500/20 active:scale-[0.98]"
+                              className="w-full xl:w-auto px-4 py-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-purple-600 hover:from-emerald-500 hover:via-teal-500 hover:to-purple-500 text-white rounded-lg font-bold text-[9px] tracking-wide uppercase shadow-md shadow-emerald-950/20 hover:shadow-purple-950/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-emerald-500/10 active:scale-[0.98]"
                             >
-                              <RefreshCw className="w-3.5 h-3.5 animate-pulse" />
+                              <RefreshCw className="w-3 h-3 animate-pulse" />
                               Sincronizar com Parâmetros
                             </button>
-                            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider mt-2 block text-center">Aplica valores formulados na simulação</span>
+                            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider mt-1.5 block text-center">Aplica valores formulados na simulação</span>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800 shadow-sm">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 text-left">Composição da Dieta (Matéria Seca - % MS)</h4>
-                            <div className="h-[200px]">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={dietResult.ingredients} layout="vertical" margin={{ left: 40 }}>
-                                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
-                                  <XAxis type="number" hide />
-                                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} width={80} />
-                                  <Tooltip 
-                                    cursor={{ fill: '#334155', opacity: 0.15 }}
-                                    contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #1e293b', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.4)' }}
-                                    formatter={(value: number) => [`${value.toFixed(2)}%`, 'Participação (MS)']}
-                                  />
-                                  <Bar dataKey="percentage" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={20}>
-                                    <LabelList dataKey="percentage" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-                                  </Bar>
-                                </BarChart>
-                              </ResponsiveContainer>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm flex flex-col justify-between">
+                            <div>
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 text-left">Composição da Dieta (Matéria Seca - % MS)</h4>
+                              <div className="h-[180px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={dietResult.ingredients} layout="vertical" margin={{ left: 30 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
+                                    <XAxis type="number" hide />
+                                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 600, fill: '#94a3b8' }} width={70} />
+                                    <Tooltip 
+                                      cursor={{ fill: '#334155', opacity: 0.15 }}
+                                      contentStyle={{ borderRadius: '8px', background: '#0a0f1d', border: '1px solid #1e293b', padding: '6px 10px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                      formatter={(value: number) => [`${value.toFixed(2)}%`, 'Participação (MS)']}
+                                    />
+                                    <Bar dataKey="percentage" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={16}>
+                                      <LabelList dataKey="percentage" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
+                                    </Bar>
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800 shadow-sm">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 text-left">Composição da Dieta (Matéria Natural - % MN)</h4>
-                            <div className="h-[200px]">
-                              {(() => {
-                                const mnData = dietResult.ingredients.map(ing => {
+                          <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm flex flex-col justify-between">
+                            <div>
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 text-left">Composição da Dieta (Matéria Natural - % MN)</h4>
+                              <div className="h-[180px]">
+                                {(() => {
+                                  const mnData = dietResult.ingredients.map(ing => {
+                                    const original = dietIngredients.find(oi => oi.name === ing.name);
+                                    return {
+                                      name: ing.name,
+                                      mnWeight: ing.percentage / (original?.ms || 100)
+                                    };
+                                  });
+                                  const totalMN = mnData.reduce((sum, d) => sum + d.mnWeight, 0);
+                                  const finalMNData = mnData.map(d => ({
+                                    name: d.name,
+                                    percentageMN: (d.mnWeight / totalMN) * 100
+                                  }));
+
+                                  return (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <BarChart data={finalMNData} layout="vertical" margin={{ left: 30 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
+                                        <XAxis type="number" hide />
+                                        <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 600, fill: '#94a3b8' }} width={70} />
+                                        <Tooltip 
+                                          cursor={{ fill: '#334155', opacity: 0.15 }}
+                                          contentStyle={{ borderRadius: '8px', background: '#0a0f1d', border: '1px solid #1e293b', padding: '6px 10px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                          formatter={(value: number) => [`${value.toFixed(2)}%`, 'Participação (MN)']}
+                                        />
+                                        <Bar dataKey="percentageMN" fill="#10b981" radius={[0, 4, 4, 0]} barSize={16}>
+                                          <LabelList dataKey="percentageMN" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
+                                        </Bar>
+                                      </BarChart>
+                                    </ResponsiveContainer>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Card Separado para o Ajuste Interativo */}
+                          <div className="bg-[#0d121f] p-3.5 rounded-xl border border-slate-850 shadow-sm col-span-1 md:col-span-2 text-left flex flex-col justify-between">
+                            <div>
+                              <div className="flex justify-between items-center flex-wrap gap-2 mb-2">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider text-left flex items-center gap-1.5">
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+                                  Ajuste Interativo (% MS da Dieta)
+                                </p>
+                                {originalDietResult && (
+                                  <button
+                                    onClick={handleRestoreOriginalDiet}
+                                    className="px-1.5 py-0.5 bg-purple-500/10 hover:bg-purple-500/20 active:bg-purple-500/30 text-purple-400 hover:text-purple-300 text-[7.5px] font-bold uppercase tracking-wider rounded border border-purple-500/20 transition-all flex items-center gap-1 cursor-pointer"
+                                    title="Restaurar valores originais calculados pelo formulador"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5" />
+                                    Original
+                                  </button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+                                {dietResult.ingredients.map((ing) => {
                                   const original = dietIngredients.find(oi => oi.name === ing.name);
-                                  return {
-                                    name: ing.name,
-                                    mnWeight: ing.percentage / (original?.ms || 100)
-                                  };
-                                });
-                                const totalMN = mnData.reduce((sum, d) => sum + d.mnWeight, 0);
-                                const finalMNData = mnData.map(d => ({
-                                  name: d.name,
-                                  percentageMN: (d.mnWeight / totalMN) * 100
-                                }));
-
-                                return (
-                                  <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={finalMNData} layout="vertical" margin={{ left: 40 }}>
-                                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#1e293b" />
-                                      <XAxis type="number" hide />
-                                      <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} width={80} />
-                                      <Tooltip 
-                                        cursor={{ fill: '#334155', opacity: 0.15 }}
-                                        contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #1e293b', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.4)' }}
-                                        formatter={(value: number) => [`${value.toFixed(2)}%`, 'Participação (Matéria Natural - MN)']}
-                                      />
-                                      <Bar dataKey="percentageMN" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20}>
-                                        <LabelList dataKey="percentageMN" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-                                      </Bar>
-                                    </BarChart>
-                                  </ResponsiveContainer>
-                                );
-                              })()}
+                                  const isVolumoso = original?.type === 'volumoso';
+                                  return (
+                                    <div key={ing.name} className="flex items-center justify-between bg-[#070a13] px-2.5 py-1 rounded-lg border border-slate-850/60 hover:border-slate-850 transition-all">
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-[10px] font-semibold text-slate-200 truncate pr-1" title={ing.name}>
+                                          {ing.name}
+                                        </span>
+                                        <span className={`text-[7px] font-bold uppercase tracking-wide w-fit ${isVolumoso ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                          {isVolumoso ? 'Volumoso' : 'Concentrado'}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleIngredientPercentageChange(ing.name, Math.max(0, parseFloat((ing.percentage - 0.1).toFixed(1))))}
+                                          className="p-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-purple-400 rounded transition-all cursor-pointer active:scale-95"
+                                          title="Diminuir 0.1%"
+                                        >
+                                          <ChevronDown className="w-3.5 h-3.5" />
+                                        </button>
+                                        <span className="w-12 text-center font-mono font-bold text-purple-400 bg-purple-500/5 py-0.5 rounded border border-purple-500/15 text-[10px]">
+                                          {ing.percentage.toFixed(1)}%
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleIngredientPercentageChange(ing.name, Math.min(100, parseFloat((ing.percentage + 0.1).toFixed(1))))}
+                                          className="p-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-purple-400 rounded transition-all cursor-pointer active:scale-95"
+                                          title="Aumentar 0.1%"
+                                        >
+                                          <ChevronUp className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center text-[7.5px] text-slate-500 font-bold uppercase pt-1.5 mt-2 border-t border-slate-850/65">
+                              <span>Redistribuição Proporcional</span>
+                              <span className="font-mono text-slate-450">Total: {dietResult.ingredients.reduce((s, i) => s + i.percentage, 0).toFixed(0)}%</span>
                             </div>
                           </div>
 
 
-                        <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800 shadow-sm col-span-1 md:col-span-2 text-left">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Acompanhamento Nutricional (NRC/NASEM 2016 vs Alcançado)</h4>
+                        <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm col-span-1 md:col-span-2 text-left">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Acompanhamento Nutricional (NRC vs Alcançado)</h4>
                             <button
                               onClick={() => setIsFullProfileModalOpen(true)}
-                              className="text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                              className="text-[9px] font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1 cursor-pointer"
                             >
-                              <Activity className="w-3 h-3" />
+                              <Activity className="w-2.5 h-2.5" />
                               Ver Perfil Completo
                             </button>
                           </div>
                           <div className="overflow-x-auto">
-                            <table className="w-full text-[10px]">
+                            <table className="w-full text-[9.5px]">
                               <thead>
-                                <tr className="text-left text-slate-400 font-bold uppercase tracking-widest border-b border-slate-800">
-                                  <th className="pb-2 px-2 text-left">Nutriente</th>
-                                  <th className="pb-2 px-2 text-center">Unidade</th>
-                                  <th className="pb-2 px-2 text-right">Exigência (Min/Max)</th>
-                                  <th className="pb-2 px-2 text-right">Alcançado</th>
-                                  <th className="pb-2 px-2 text-right">Status</th>
+                                <tr className="text-left text-slate-450 font-bold uppercase tracking-wider border-b border-slate-850">
+                                  <th className="pb-1.5 px-1.5 text-left font-sans">Nutriente</th>
+                                  <th className="pb-1.5 px-1.5 text-center font-sans">Unidade</th>
+                                  <th className="pb-1.5 px-1.5 text-right font-sans">Exigência (Min/Max)</th>
+                                  <th className="pb-1.5 px-1.5 text-right font-sans">Alcançado</th>
+                                  <th className="pb-1.5 px-1.5 text-right font-sans">Status</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-800/40">
+                              <tbody className="divide-y divide-slate-850/40">
                                 {[
                                   { label: 'Proteína Bruta', value: dietResult.nutritionalProfile.pb, min: dietRequirements.pbMin, unit: '% MS', tooltip: 'Proteína total na dieta' },
                                   { label: 'Energia (NDT)', value: dietResult.nutritionalProfile.ndt, min: dietRequirements.ndtMin, unit: '% MS', tooltip: 'Nutrientes Digestíveis Totais' },
@@ -9135,21 +9782,21 @@ export default function App() {
                                   const isAbove = item.max !== undefined && item.value > item.max;
                                   return (
                                     <tr key={i} className="hover:bg-slate-850/20 transition-colors">
-                                      <td className="py-2 px-2 font-bold text-slate-100 tracking-tight flex items-center gap-1">
+                                      <td className="py-1.5 px-1.5 font-bold text-slate-300 tracking-tight flex items-center gap-1 font-sans">
                                         {item.label}
                                         <InfoTooltip text={item.tooltip} />
                                       </td>
-                                      <td className="py-2 px-2 text-center text-slate-400">{item.unit}</td>
-                                      <td className="py-2 px-2 text-right text-slate-400 font-mono">
+                                      <td className="py-1.5 px-1.5 text-center text-slate-500 font-mono">{item.unit}</td>
+                                      <td className="py-1.5 px-1.5 text-right text-slate-450 font-mono">
                                         {item.min !== undefined && item.max !== undefined ? `${item.min.toFixed(1)} - ${item.max.toFixed(1)}` : 
                                          item.min !== undefined ? `Min ${item.min.toFixed(1)}` : 
                                          item.max !== undefined ? `Max ${item.max.toFixed(1)}` : '-'}
                                       </td>
-                                      <td className={`py-2 px-2 text-right font-black font-mono ${isBelow || isAbove ? 'text-amber-500' : 'text-purple-400'}`}>
+                                      <td className={`py-1.5 px-1.5 text-right font-black font-mono ${isBelow || isAbove ? 'text-amber-500' : 'text-purple-400'}`}>
                                         {item.value.toFixed(2)}
                                       </td>
-                                      <td className="py-2 px-2 text-right">
-                                        <span className={`text-[10px] font-black tracking-wide ${
+                                      <td className="py-1.5 px-1.5 text-right">
+                                        <span className={`text-[9px] font-black tracking-wide ${
                                           isBelow || isAbove ? 'text-amber-500' : 'text-emerald-400'
                                         }`}>
                                           {isBelow ? 'BAIXO' : isAbove ? 'ALTO' : 'OK'}
@@ -9164,28 +9811,28 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-                        <div className="bg-[#0f172a] p-5 rounded-2xl border border-slate-800 shadow-sm text-left">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                              <Factory className="w-4 h-4 text-purple-400" />
-                              <h4 className="text-xs font-black text-slate-200 uppercase tracking-wider">Fábrica de Ração</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                        <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm text-left">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-1.5">
+                              <Factory className="w-3.5 h-3.5 text-purple-400" />
+                              <h4 className="text-[10px] font-bold text-slate-200 uppercase tracking-wider">Fábrica de Ração</h4>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[9px] font-bold text-slate-450 uppercase">Lote/Batida:</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[8px] font-bold text-slate-500 uppercase">Lote:</span>
                               <input 
                                 type="number"
                                 value={factoryBatchSize}
                                 onChange={(e) => setFactoryBatchSize(parseFloat(e.target.value))}
-                                className="w-16 p-1 bg-slate-900/60 border border-slate-800 text-xs font-bold text-purple-300 rounded outline-none focus:border-purple-500"
+                                className="w-14 p-0.5 bg-[#070a13] border border-slate-800 text-[10px] font-bold text-purple-300 rounded outline-none focus:border-purple-500"
                               />
-                              <span className="text-[9px] font-bold text-slate-455 uppercase">kg</span>
+                              <span className="text-[8px] font-bold text-slate-500 uppercase">kg</span>
                             </div>
                           </div>
-                          <p className="text-[9px] text-slate-400 italic mb-4 leading-relaxed">
+                          <p className="text-[8px] text-slate-400 italic mb-3 leading-relaxed">
                             * Composição para batida de {factoryBatchSize.toLocaleString()} kg de Concentrado + Núcleo.
                           </p>
-                          <div className="space-y-2">
+                          <div className="space-y-1.5">
                             {(() => {
                               const totalConcNM = dietResult.ingredients
                                 .filter(ing => {
@@ -9206,9 +9853,9 @@ export default function App() {
                                   const original = dietIngredients.find(oi => oi.name === ing.name);
                                   const weightNMPerCycle = (ing.percentage / (original?.ms || 100)) / totalConcNM * factoryBatchSize;
                                   return (
-                                    <div key={idx} className="flex justify-between items-center py-1.5 border-b border-slate-800/60 last:border-0 hover:bg-slate-850/20 transition-colors px-1">
-                                      <span className="text-[10px] font-bold text-slate-300 uppercase">{ing.name}</span>
-                                      <span className="text-xs font-black text-purple-400 font-mono">{weightNMPerCycle.toFixed(1)} kg</span>
+                                    <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-850/60 last:border-0 hover:bg-slate-850/20 transition-colors px-1 text-[9px]">
+                                      <span className="font-bold text-slate-300 uppercase">{ing.name}</span>
+                                      <span className="font-black text-purple-400 font-mono">{weightNMPerCycle.toFixed(1)} kg</span>
                                     </div>
                                   );
                                 });
@@ -9216,26 +9863,26 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="bg-[#0f172a] p-5 rounded-2xl border border-slate-800 shadow-sm text-left">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                              <Truck className="w-4 h-4 text-emerald-400" />
-                              <h4 className="text-xs font-black text-slate-200 uppercase tracking-wider">Vagão Forrageiro</h4>
+                        <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm text-left">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-1.5">
+                              <Truck className="w-3.5 h-3.5 text-emerald-400" />
+                              <h4 className="text-[10px] font-bold text-slate-200 uppercase tracking-wider">Vagão Forrageiro</h4>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase">Capacidade:</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[8px] font-bold text-slate-500 uppercase">Cap.:</span>
                               <input 
                                 type="number"
                                 value={mixerCapacity}
                                 onChange={(e) => setMixerCapacity(parseFloat(e.target.value))}
-                                className="w-16 p-1 bg-slate-900/60 border border-slate-800 text-xs font-bold text-emerald-400 rounded outline-none focus:border-emerald-500"
+                                className="w-14 p-0.5 bg-[#070a13] border border-slate-800 text-[10px] font-bold text-emerald-400 rounded outline-none focus:border-emerald-500"
                               />
                             </div>
                           </div>
-                          <p className="text-[9px] text-slate-400 italic mb-4 leading-relaxed">
+                          <p className="text-[8px] text-slate-400 italic mb-3 leading-relaxed">
                             * Planejamento de carga para {batchSize} animais (Capacidade: {mixerCapacity.toLocaleString()} kg).
                           </p>
-                          <div className="space-y-2">
+                          <div className="space-y-1.5">
                             {[...dietResult.ingredients]
                               .sort((a, b) => {
                                 const typeA = dietIngredients.find(oi => oi.name === a.name)?.type;
@@ -9250,14 +9897,14 @@ export default function App() {
                                 const totalBatchNM = kgNM * batchSize;
                                 const numViagens = Math.ceil(totalBatchNM / mixerCapacity);
                                 return (
-                                  <div key={idx} className="flex justify-between items-center py-1.5 border-b border-slate-800/60 last:border-0 hover:bg-slate-850/20 transition-colors px-1">
+                                  <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-850/60 last:border-0 hover:bg-slate-850/20 transition-colors px-1 text-[9px]">
                                     <div className="flex flex-col">
-                                      <span className="text-[10px] font-bold text-slate-300 uppercase">{ing.name}</span>
-                                      <span className="text-[8px] text-slate-400 font-bold">{idx + 1}ª Carga {numViagens > 1 ? `(${numViagens} viagens)` : ''}</span>
+                                      <span className="font-bold text-slate-300 uppercase">{ing.name}</span>
+                                      <span className="text-[8px] text-slate-500 font-bold">{idx + 1}ª Carga {numViagens > 1 ? `(${numViagens} viag.)` : ''}</span>
                                     </div>
                                     <div className="flex flex-col items-end">
-                                      <span className="text-xs font-black text-emerald-400 font-mono">{totalBatchNM.toFixed(0)} kg NM</span>
-                                      <span className="text-[9px] text-slate-400 italic font-mono">{(totalBatchNM / numViagens).toFixed(0)} kg/viagem</span>
+                                      <span className="font-black text-emerald-400 font-mono">{totalBatchNM.toFixed(0)} kg NM</span>
+                                      <span className="text-[8px] text-slate-500 italic font-mono">{(totalBatchNM / numViagens).toFixed(0)} kg/viagem</span>
                                     </div>
                                   </div>
                                 );
@@ -9265,96 +9912,151 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="space-y-6 text-left">
-                          <div className="bg-[#0f172a] p-5 rounded-2xl border border-slate-800 shadow-sm text-center">
-                            <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">Relação Volumoso:Concentrado</p>
-                            <div className="flex justify-center items-center gap-4">
-                              <div className="text-center">
-                                <span className="text-2xl font-black text-slate-100 font-mono">{dietResult.foragePercentage.toFixed(0)}</span>
-                                <span className="text-[10px] block text-slate-400 font-black">% VOL</span>
+                        {/* Card de Ecoeficiência & Sustentabilidade */}
+                        <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm text-left flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center gap-1.5 mb-3">
+                              <Leaf className="w-3.5 h-3.5 text-emerald-400" />
+                              <h4 className="text-[10px] font-bold text-slate-200 uppercase tracking-wider">Ecoeficiência & Sustentabilidade</h4>
+                            </div>
+                            <p className="text-[8px] text-slate-400 italic mb-3 leading-relaxed">
+                              * Estimativas ambientais em tempo real baseadas na digestão dos ingredientes da dieta.
+                            </p>
+                            <div className="space-y-3">
+                              {/* Metano */}
+                              <div className="bg-emerald-500/5 border border-emerald-500/10 p-2.5 rounded-lg flex items-center justify-between">
+                                <div>
+                                  <span className="text-[8px] font-bold text-slate-400 uppercase block">Metano Entérico (CH₄)</span>
+                                  <span className="text-[10px] font-medium text-slate-300">Emissão diária por animal</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-sm font-black text-emerald-400 font-mono">{(dietResult.estimatedCh4Daily || 0).toFixed(1)} g</span>
+                                  <span className="text-[8px] block text-slate-450 font-mono">{(dietResult.estimatedCo2Daily || 0).toFixed(0)} g CO₂e</span>
+                                </div>
                               </div>
-                              <div className="h-8 w-px bg-slate-800" />
+
+                              {/* Nitrogênio */}
+                              <div className="bg-teal-500/5 border border-teal-500/10 p-2.5 rounded-lg flex items-center justify-between">
+                                <div>
+                                  <span className="text-[8px] font-bold text-slate-400 uppercase block">Balanço de Nitrogênio (N)</span>
+                                  <span className="text-[10px] font-medium text-slate-300">Excreção diária por animal</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-sm font-black text-teal-400 font-mono">{(dietResult.nitrogenBalanceDaily || 0).toFixed(1)} g N</span>
+                                  <span className="text-[8px] block text-slate-450 font-sans">Lixiviação/Volatilização</span>
+                                </div>
+                              </div>
+
+                              {/* Status de Otimização */}
+                              <div className="bg-[#070a13] p-2.5 rounded-lg border border-slate-850/80 flex items-center justify-between">
+                                <span className="text-[8px] font-bold text-slate-400 uppercase">Foco de Formulação</span>
+                                <span className={`text-[8.5px] font-black tracking-wide px-1.5 py-0.5 rounded ${
+                                  dietRequirements.optimizationGoal === 'eco' 
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/25' 
+                                    : dietRequirements.optimizationGoal === 'gmd'
+                                      ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/25'
+                                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                }`}>
+                                  {dietRequirements.optimizationGoal === 'eco' ? 'ECO-ÓTIMA' : dietRequirements.optimizationGoal === 'gmd' ? 'MÁXIMO GMD' : 'MÍNIMO CUSTO'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-[8px] text-slate-500 font-bold uppercase pt-2 mt-3 border-t border-slate-850/65 text-center">
+                            * Redução de CH₄ habilitada pela meta Eco-Ótima
+                          </div>
+                        </div>
+
+                        <div className="space-y-4 text-left">
+                          <div className="bg-[#0d121f] p-3.5 rounded-xl border border-slate-850 shadow-sm text-center">
+                            <p className="text-[8px] font-bold text-purple-400 uppercase tracking-wider mb-1">Relação Volumoso:Concentrado</p>
+                            <div className="flex justify-center items-center gap-3">
                               <div className="text-center">
-                                <span className="text-2xl font-black text-slate-100 font-mono">{dietResult.concentratePercentage.toFixed(0)}</span>
-                                <span className="text-[10px] block text-slate-400 font-black">% CONC</span>
+                                <span className="text-xl font-black text-slate-100 font-mono">{dietResult.foragePercentage.toFixed(0)}</span>
+                                <span className="text-[8px] block text-slate-400 font-bold">% VOL</span>
+                              </div>
+                              <div className="h-6 w-px bg-slate-800" />
+                              <div className="text-center">
+                                <span className="text-xl font-black text-slate-100 font-mono">{dietResult.concentratePercentage.toFixed(0)}</span>
+                                <span className="text-[8px] block text-slate-400 font-bold">% CONC</span>
                               </div>
                             </div>
                           </div>
 
-                          <div className="py-2 px-1">
-                            <div className="flex items-center gap-2 mb-4">
-                              <BookOpen className="w-4 h-4 text-purple-400" />
-                              <h4 className="text-xs font-black text-slate-100 uppercase tracking-wider">Protocolo de Adaptação</h4>
+                          <div className="py-1 px-1">
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <BookOpen className="w-3.5 h-3.5 text-purple-400" />
+                              <h4 className="text-[10px] font-bold text-slate-100 uppercase tracking-wider">Protocolo de Adaptação</h4>
                             </div>
-                            <div className="bg-indigo-950/40 border border-indigo-500/20 rounded-2xl p-4 space-y-4 shadow-inner">
-                              <div className="space-y-3">
-                                <p className="text-xs font-bold text-indigo-300 uppercase tracking-wide">Adaptação em Escada (21 dias)</p>
-                                <div className="space-y-2">
-                                  <div className="flex justify-between items-center text-xs border-b border-indigo-500/10 pb-2">
-                                    <span className="text-slate-350 font-semibold font-sans">Dia 1-7: Adapt. 1</span>
-                                    <span className="font-extrabold text-indigo-300 font-mono">60% Vol / 40% Conc</span>
+                            <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-xl p-3 space-y-3 shadow-inner">
+                              <div className="space-y-2">
+                                <p className="text-[9px] font-bold text-indigo-300 uppercase tracking-wider">Adaptação em Escada (21 dias)</p>
+                                <div className="space-y-1.5">
+                                  <div className="flex justify-between items-center text-[9.5px] border-b border-indigo-500/5 pb-1.5">
+                                    <span className="text-slate-400 font-medium font-sans">Dia 1-7: Adapt. 1</span>
+                                    <span className="font-bold text-indigo-300 font-mono">60% Vol / 40% Conc</span>
                                   </div>
-                                  <div className="flex justify-between items-center text-xs border-b border-indigo-500/10 pb-2">
-                                    <span className="text-slate-350 font-semibold font-sans">Dia 8-14: Adapt. 2</span>
-                                    <span className="font-extrabold text-indigo-300 font-mono">40% Vol / 60% Conc</span>
+                                  <div className="flex justify-between items-center text-[9.5px] border-b border-indigo-500/5 pb-1.5">
+                                    <span className="text-slate-400 font-medium font-sans">Dia 8-14: Adapt. 2</span>
+                                    <span className="font-bold text-indigo-300 font-mono">40% Vol / 60% Conc</span>
                                   </div>
-                                  <div className="flex justify-between items-center text-xs pb-1.5">
-                                    <span className="text-slate-350 font-semibold font-sans">Dia 15-21: Adapt. 3</span>
-                                    <span className="font-extrabold text-indigo-300 font-mono">20% Vol / 80% Conc</span>
+                                  <div className="flex justify-between items-center text-[9.5px] pb-1">
+                                    <span className="text-slate-400 font-medium font-sans">Dia 15-21: Adapt. 3</span>
+                                    <span className="font-bold text-indigo-300 font-mono">20% Vol / 80% Conc</span>
                                   </div>
                                 </div>
                               </div>
-                              <p className="text-[10px] text-indigo-200/60 italic leading-relaxed">
+                              <p className="text-[8px] text-indigo-200/50 italic leading-relaxed">
                                 * Protocolo sugerido. Consulte seu zootecnista para ajustes baseados na saúde ruminal e escore de fezes.
                               </p>
                             </div>
                           </div>
 
-                          <div className="py-2 px-1">
-                            <div className="flex items-center justify-between mb-3">
-                              <h4 className="text-xs font-black text-slate-100 uppercase tracking-wider">Alertas & Distúrbios</h4>
-                              <span className={`text-[10px] font-bold tracking-widest ${dietResult.alerts.length > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          <div className="py-1 px-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="text-[10px] font-bold text-slate-100 uppercase tracking-wider">Alertas & Distúrbios</h4>
+                              <span className={`text-[8.5px] font-bold tracking-wider ${dietResult.alerts.length > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                                 {dietResult.alerts.length > 0 ? `${dietResult.alerts.length} ALERTAS` : 'CONSISTENTE'}
                               </span>
                             </div>
-                            <div className="space-y-2 mt-2">
+                            <div className="space-y-1.5 mt-1">
                               {dietResult.alerts.length > 0 ? (
                                 dietResult.alerts.map((alert, i) => {
-                                  let bgClass = "bg-rose-500/10 border-rose-500/20 text-rose-200";
+                                  let bgClass = "bg-rose-500/5 border-rose-500/10 text-rose-200";
                                   let iconColor = "text-rose-400";
                                   let severityLabel = "Crítico";
 
                                   const alertUpper = alert.toUpperCase();
                                   if (alertUpper.includes("ALTO RISCO") || alertUpper.includes("LAMINITE") || alertUpper.includes("INTOXICAÇÃO")) {
-                                    bgClass = "bg-red-500/10 border-red-500/25 text-red-200";
+                                    bgClass = "bg-red-500/5 border-red-500/15 text-red-200";
                                     iconColor = "text-red-400";
                                     severityLabel = "Alto Risco";
                                   } else if (alertUpper.includes("MODERADO") || alertUpper.includes("TIMPANISMO") || alertUpper.includes("BAIXA") || alertUpper.includes("ALTA") || alertUpper.includes("ALTO")) {
-                                    bgClass = "bg-amber-500/10 border-amber-500/25 text-amber-250";
+                                    bgClass = "bg-amber-500/5 border-amber-500/15 text-amber-250";
                                     iconColor = "text-amber-400";
                                     severityLabel = "Alerta";
                                   } else {
-                                    bgClass = "bg-blue-500/10 border-blue-500/25 text-blue-200";
+                                    bgClass = "bg-blue-500/5 border-blue-500/15 text-blue-200";
                                     iconColor = "text-blue-400";
                                     severityLabel = "Atenção";
                                   }
 
                                   return (
-                                    <div key={i} className={`flex items-start gap-2.5 p-3 rounded-2xl border ${bgClass} transition-all hover:bg-slate-900/30`}>
-                                      <AlertTriangle className={`w-4 h-4 ${iconColor} mt-0.5 shrink-0`} />
-                                      <div className="space-y-1">
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/40 text-slate-100">
+                                    <div key={i} className={`flex items-start gap-2 p-2 rounded-lg border ${bgClass} transition-all hover:bg-slate-900/30`}>
+                                      <AlertTriangle className={`w-3.5 h-3.5 ${iconColor} mt-0.5 shrink-0`} />
+                                      <div className="space-y-0.5">
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.2 rounded bg-black/40 text-slate-100">
                                             {severityLabel}
                                           </span>
                                         </div>
-                                        <p className="text-xs leading-normal font-sans text-slate-300">{alert}</p>
+                                        <p className="text-[10px] leading-normal font-sans text-slate-350">{alert}</p>
                                       </div>
                                     </div>
                                   );
                                 })
                               ) : (
-                                <p className="text-xs text-slate-400 italic text-center py-4">Nenhuma inconformidade detectada ou riscos de distúrbios metabólicos.</p>
+                                <p className="text-[10px] text-slate-500 italic text-center py-3">Nenhuma inconformidade detectada ou riscos de distúrbios metabólicos.</p>
                               )}
                             </div>
                           </div>
@@ -9431,104 +10133,103 @@ export default function App() {
               className="space-y-6"
             >
               {/* Sustainability Index Header */}
-              <div className="bg-gradient-to-br from-emerald-900 to-emerald-800 p-8 rounded-3xl shadow-xl relative overflow-hidden text-white">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+              <div className="bg-[#0d121f] p-5 rounded-xl border border-slate-850 shadow-sm relative overflow-hidden text-left">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-white/10 rounded-xl backdrop-blur-md">
-                        <ShieldCheck className="w-6 h-6 text-emerald-300" />
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="p-1.5 bg-emerald-500/10 rounded-lg">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
                       </div>
-                      <h2 className="text-2xl font-black tracking-tight">Índice de Sustentabilidade Pecuária (ISP)</h2>
+                      <h2 className="text-base font-bold text-emerald-400 tracking-tight font-sans">Índice de Sustentabilidade Pecuária (ISP)</h2>
                       <InfoTooltip text="Métrica composta que avalia o desempenho socioambiental e de governança do confinamento (0-100)." />
                     </div>
-                    <p className="text-emerald-100/80 text-sm max-w-xl leading-relaxed">
+                    <p className="text-slate-300 text-[11px] max-w-xl leading-relaxed font-sans">
                       O ISP avalia o desempenho do seu confinamento em 15 indicadores-chave de sustentabilidade, 
                       alinhados com as melhores práticas globais de ESG (Environmental, Social, and Governance - Ambiental, Social e Governança) para a pecuária de corte.
                     </p>
                   </div>
-                  <div className="flex flex-col items-center justify-center bg-white/10 backdrop-blur-xl p-6 rounded-3xl border border-white/10 min-w-[200px]">
-                    <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-widest mb-1">Score Geral</p>
-                    <div className="text-6xl font-black mb-1">
+                  <div className="flex flex-col items-center justify-center bg-[#070a13] p-4 rounded-xl border border-slate-800 min-w-[160px]">
+                    <p className="text-[9px] font-bold font-mono text-slate-400 uppercase tracking-wider mb-1">Score Geral</p>
+                    <div className="text-4xl font-bold text-emerald-400 font-mono mb-1">
                       {results ? Math.round(results.indiceSustentabilidade) : '---'}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <div className="w-24 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-20 h-1 bg-slate-800 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-emerald-400 transition-all duration-1000" 
                           style={{ width: `${results ? results.indiceSustentabilidade : 0}%` }} 
                         />
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-300">/ 100</span>
+                      <span className="text-[9px] font-bold font-mono text-emerald-400">/ 100</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Environmental Pillar */}
-                <div className="lg:col-span-2 space-y-6">
-                  <div className="bg-[#121826] p-6 rounded-3xl border border-slate-800 shadow-xl">
-                    <div className="flex items-center gap-3 mb-8">
-                      <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                        <Cloud className="w-5 h-5 text-indigo-400" />
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                        <Cloud className="w-4 h-4 text-emerald-400" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-slate-100 font-display">Pilar Ambiental (E)</h3>
-                        <p className="text-xs text-slate-400">Emissões, recursos hídricos e eficiência de terra.</p>
+                        <h3 className="font-bold text-emerald-400 font-sans text-xs uppercase tracking-wider">Pilar Ambiental (E)</h3>
+                        <p className="text-[9px] text-slate-400 font-sans">Emissões, recursos hídricos e eficiência de terra.</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85 flex flex-col justify-between">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-[#182235]/15 p-3.5 rounded-xl border border-slate-850 flex flex-col justify-between">
                         <div>
-                          <div className="flex justify-between items-start mb-4">
-                            <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
+                          <div className="flex justify-between items-start mb-3">
+                            <p className="text-[8px] font-bold font-mono text-slate-400 uppercase tracking-wider flex items-center">
                               Pegada de Carbono
                               <InfoTooltip text="Total de emissões de gases de efeito estufa expressas em equivalente de CO2 para todo o lote." />
                             </p>
-                            <Cloud className="w-4 h-4 text-blue-400" />
+                            <Cloud className="w-3.5 h-3.5 text-blue-400" />
                           </div>
-                          <p className="text-2xl font-black text-slate-100 font-mono">
+                          <p className="text-lg font-bold text-slate-100 font-mono">
                             {results ? results.pegadaCarbonoTotal.toFixed(2) : '---'}
-                            <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">t CO2e/lote</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1 font-mono">t CO2e/lote</span>
                           </p>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1.5 text-[10px]">
-                          <div className="flex justify-between items-center">
+                        <div className="mt-2 pt-2 border-t border-slate-850/60 space-y-1 text-[8.5px]">
+                          <div className="flex justify-between items-center font-sans">
                             <span className="text-slate-400">Emissões Entéricas</span>
-                            <span className="font-bold text-indigo-400">IPCC Tier 1</span>
+                            <span className="font-bold text-indigo-400 font-mono text-[8px]">IPCC Tier 1</span>
                           </div>
-                          <div className="flex justify-between items-center border-t border-slate-800/30 pt-1.5">
-                            <span className="text-slate-400">Intensidade por Ganho</span>
+                          <div className="flex justify-between items-center border-t border-slate-850/30 pt-1">
+                            <span className="text-slate-400 font-sans">Intensidade por Ganho</span>
                             <span className="font-semibold text-blue-400 font-mono">
-                              {results && results.ganhoPesoTotal > 0 ? ((results.pegadaCarbonoTotal * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} kg CO2e/kg ganho
+                              {results && results.ganhoPesoTotal > 0 ? ((results.pegadaCarbonoTotal * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} kg CO2e/kg
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85 flex flex-col justify-between">
+                      <div className="bg-[#182235]/15 p-3.5 rounded-xl border border-slate-850 flex flex-col justify-between">
                         <div>
-                          <div className="flex justify-between items-start mb-4">
-                            <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
+                          <div className="flex justify-between items-start mb-3">
+                            <p className="text-[8px] font-bold font-mono text-slate-400 uppercase tracking-wider flex items-center">
                               Pegada Hídrica
                               <InfoTooltip text="Volume total de água doce utilizado por animal, incluindo consumo direto e limpeza." />
                             </p>
-                            <Droplets className="w-4 h-4 text-cyan-400" />
+                            <Droplets className="w-3.5 h-3.5 text-cyan-400" />
                           </div>
-                          <p className="text-2xl font-black text-slate-100 font-mono">
+                          <p className="text-lg font-bold text-slate-100 font-mono">
                             {results ? results.pegadaHidricaTotal.toFixed(2) : '---'}
-                            <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">m³/animal</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1 font-mono">m³/animal</span>
                           </p>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1.5 text-[10px]">
-                          <div className="flex justify-between items-center">
+                        <div className="mt-2 pt-2 border-t border-slate-850/60 space-y-1 text-[8.5px]">
+                          <div className="flex justify-between items-center font-sans">
                             <span className="text-slate-400">Consumo Direto</span>
-                            <span className="font-bold text-cyan-400">{inputs.usoAguaRecicladaPerc}% Reciclada</span>
+                            <span className="font-bold text-cyan-400 font-mono text-[8px]">{inputs.usoAguaRecicladaPerc}% Recic.</span>
                           </div>
-                          <div className="flex justify-between items-center border-t border-slate-800/30 pt-1.5">
-                            <span className="text-slate-400">Intensidade por Ganho</span>
+                          <div className="flex justify-between items-center border-t border-slate-850/30 pt-1">
+                            <span className="text-slate-400 font-sans">Intensidade por Ganho</span>
                             <span className="font-semibold text-cyan-400 font-mono">
                               {results && results.ganhoPesoTotal > 0 ? ((results.pegadaHidricaTotal * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} L/kg ganho
                             </span>
@@ -9536,27 +10237,27 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85 flex flex-col justify-between">
+                      <div className="bg-[#182235]/15 p-3.5 rounded-xl border border-slate-850 flex flex-col justify-between">
                         <div>
-                          <div className="flex justify-between items-start mb-4">
-                            <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
+                          <div className="flex justify-between items-start mb-3">
+                            <p className="text-[8px] font-bold font-mono text-slate-400 uppercase tracking-wider flex items-center">
                               Eficiência de Terra
                               <InfoTooltip text="Área necessária para produzir 1kg de carne. Quanto menor, maior a intensificação sustentável." />
                             </p>
-                            <Map className="w-4 h-4 text-purple-400" />
+                            <Map className="w-3.5 h-3.5 text-purple-400" />
                           </div>
-                          <p className="text-2xl font-black text-slate-100 font-mono">
+                          <p className="text-lg font-bold text-slate-100 font-mono">
                             {results ? results.eficienciaUsoTerra.toFixed(2) : '---'}
-                            <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">m²/kg produzido</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1 font-mono">m²/kg</span>
                           </p>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1.5 text-[10px]">
-                          <div className="flex justify-between items-center">
+                        <div className="mt-2 pt-2 border-t border-slate-850/60 space-y-1 text-[8.5px]">
+                          <div className="flex justify-between items-center font-sans">
                             <span className="text-slate-400">Intensificação</span>
-                            <span className="font-bold text-purple-400">Alta Eficiência</span>
+                            <span className="font-bold text-purple-400 font-mono text-[8px]">Alta Efic.</span>
                           </div>
-                          <div className="flex justify-between items-center border-t border-slate-800/30 pt-1.5">
-                            <span className="text-slate-400">Uso por Ganho</span>
+                          <div className="flex justify-between items-center border-t border-slate-850/30 pt-1">
+                            <span className="text-slate-400 font-sans">Uso por Ganho</span>
                             <span className="font-semibold text-purple-400 font-mono">
                               {results ? results.eficienciaUsoTerra.toFixed(2) : '---'} m²/kg ganho
                             </span>
@@ -9564,102 +10265,221 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="bg-[#182235]/30 p-5 rounded-2xl border border-slate-800/85 flex flex-col justify-between">
+                      <div className="bg-[#182235]/15 p-3.5 rounded-xl border border-slate-850 flex flex-col justify-between">
                         <div>
-                          <div className="flex justify-between items-start mb-4">
-                            <p className="text-[10px] font-bold text-slate-350 uppercase tracking-widest flex items-center">
+                          <div className="flex justify-between items-start mb-3">
+                            <p className="text-[8px] font-bold font-mono text-slate-400 uppercase tracking-wider flex items-center">
                               Emissão de Metano
                               <InfoTooltip text="Estimativa de metano entérico produzido pelos animais durante o ciclo de confinamento." />
                             </p>
-                            <Wind className="w-4 h-4 text-emerald-400" />
+                            <Wind className="w-3.5 h-3.5 text-emerald-400" />
                           </div>
-                          <p className="text-2xl font-black text-slate-100 font-mono">
+                          <p className="text-lg font-bold text-slate-100 font-mono">
                             {results ? results.emissaoMetanoKg.toFixed(2) : '---'}
-                            <span className="text-xs font-bold text-slate-400 ml-1 font-sans font-normal">kg CH4/ciclo</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1 font-mono">kg CH4</span>
                           </p>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1.5 text-[10px]">
-                          <div className="flex justify-between items-center">
-                            <span className="text-slate-400">Impacto Atmosférico</span>
-                            <span className="font-bold text-emerald-400 font-sans">GWP 25</span>
+                        <div className="mt-2 pt-2 border-t border-slate-850/60 space-y-1 text-[8.5px]">
+                          <div className="flex justify-between items-center font-sans">
+                            <span className="text-slate-400">Impacto</span>
+                            <span className="font-bold text-emerald-400 font-mono text-[8px]">GWP 25</span>
                           </div>
-                          <div className="flex justify-between items-center border-t border-slate-800/30 pt-1.5">
-                            <span className="text-slate-400">Intensidade de Metano</span>
-                            <span className="font-semibold text-emerald-400 font-mono">
-                              {results && results.ganhoPesoTotal > 0 ? (results.emissaoMetanoKg / results.ganhoPesoTotal).toFixed(3) : '---'} kg CH4/kg ganho
+                          <div className="flex justify-between items-center border-t border-slate-850/30 pt-1">
+                            <span className="text-slate-400 font-sans">Créditos de Carbono (@ R$ {inputs.precoCreditoCarbono})</span>
+                            <span className="font-semibold text-emerald-300 font-mono">
+                              +{results ? formatCurrency(results.receitaCreditoCarbono) : '---'}
                             </span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <div className="p-5 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 hover:border-emerald-500/20 transition-all shadow-sm">
-                        <h4 className="text-xs font-bold text-emerald-400 uppercase mb-4 tracking-wider">Balanço de Nutrientes</h4>
-                        <div className="space-y-4">
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="p-3.5 bg-emerald-500/5 rounded-xl border border-emerald-500/10 hover:border-emerald-500/20 transition-all shadow-sm">
+                        <h4 className="text-[9px] font-bold text-emerald-400 uppercase mb-3 tracking-wider font-sans">Balanço de Nutrientes</h4>
+                        <div className="space-y-3">
                           <div>
-                            <div className="flex justify-between text-[10px] mb-1.5 flex-wrap gap-x-2">
-                              <span className="text-slate-300 flex items-center">
+                            <div className="flex justify-between text-[8.5px] mb-1 flex-wrap gap-x-2">
+                              <span className="text-slate-300 flex items-center font-sans">
                                 Nitrogênio (N) Excretado
                                 <InfoTooltip text="Quantidade de nitrogênio eliminada via urina e fezes. Importante para gestão de efluentes." />
                               </span>
-                              <div className="text-right flex flex-col items-end">
-                                <span className="font-bold text-emerald-400 font-mono text-xs">{results ? results.balancoNitrogenio.toFixed(2) : '---'} kg/ani</span>
-                                <span className="text-[8px] text-slate-400 font-mono">
-                                  {results && results.ganhoPesoTotal > 0 ? ((results.balancoNitrogenio * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} g N/kg ganho
+                              <div className="text-right flex flex-col items-end font-mono font-bold text-emerald-400 text-[10px]">
+                                <span>{results ? results.balancoNitrogenio.toFixed(2) : '---'} kg/ani</span>
+                                <span className="text-[7.5px] text-slate-400 font-normal">
+                                  {results && results.ganhoPesoTotal > 0 ? ((results.balancoNitrogenio * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} g N/kg
                                 </span>
                               </div>
                             </div>
-                            <div className="w-full h-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-full overflow-hidden mt-1">
-                              <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full" style={{ width: '65%' }} />
+                            <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-1">
+                              <div className="h-full bg-emerald-500 rounded-full" style={{ width: '65%' }} />
                             </div>
                           </div>
                           <div>
-                            <div className="flex justify-between text-[10px] mb-1.5 flex-wrap gap-x-2">
-                              <span className="text-slate-300 flex items-center">
+                            <div className="flex justify-between text-[8.5px] mb-1 flex-wrap gap-x-2">
+                              <span className="text-slate-300 flex items-center font-sans">
                                 Fósforo (P) Excretado
                                 <InfoTooltip text="Quantidade de fósforo eliminada. O excesso pode causar eutrofização de corpos d'água." />
                               </span>
-                              <div className="text-right flex flex-col items-end">
-                                <span className="font-bold text-emerald-400 font-mono text-xs">{results ? results.balancoFosforo.toFixed(2) : '---'} kg/ani</span>
-                                <span className="text-[8px] text-slate-400 font-mono">
-                                  {results && results.ganhoPesoTotal > 0 ? ((results.balancoFosforo * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} g P/kg ganho
+                              <div className="text-right flex flex-col items-end font-mono font-bold text-emerald-400 text-[10px]">
+                                <span>{results ? results.balancoFosforo.toFixed(2) : '---'} kg/ani</span>
+                                <span className="text-[7.5px] text-slate-400 font-normal">
+                                  {results && results.ganhoPesoTotal > 0 ? ((results.balancoFosforo * 1000) / results.ganhoPesoTotal).toFixed(1) : '---'} g P/kg
                                 </span>
                               </div>
                             </div>
-                            <div className="w-full h-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-full overflow-hidden mt-1">
-                              <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400" style={{ width: '40%' }} />
+                            <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-1">
+                              <div className="h-full bg-emerald-500 rounded-full" style={{ width: '40%' }} />
                             </div>
                           </div>
                         </div>
                       </div>
-                      <div className="p-5 bg-teal-500/5 rounded-2xl border border-teal-500/10 hover:border-teal-500/20 transition-all shadow-sm">
-                        <h4 className="text-xs font-bold text-teal-400 uppercase mb-4 tracking-wider">Energia & Transporte</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] text-slate-300 flex items-center">
+                      <div className="p-3.5 bg-teal-500/5 rounded-xl border border-teal-500/10 hover:border-teal-500/20 transition-all shadow-sm">
+                        <h4 className="text-[9px] font-bold text-teal-400 uppercase mb-3 tracking-wider font-sans">Energia & Transporte</h4>
+                        <div className="space-y-2 text-[8.5px]">
+                          <div className="flex justify-between items-center font-sans">
+                            <span className="text-slate-300 flex items-center">
                               Energia Renovável
-                              <InfoTooltip text="Percentual da matriz energética da fazenda proveniente de fontes renováveis (Solar, Eólica, etc)." />
+                              <InfoTooltip text="Percentual da matriz energética da fazenda proveniente de fontes renováveis." />
                             </span>
-                            <span className="text-xs font-bold text-teal-400 font-mono">{inputs.usoEnergiaRenovavelPerc}%</span>
+                            <span className="font-bold text-teal-400 font-mono">{inputs.usoEnergiaRenovavelPerc}%</span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] text-slate-300 flex items-center">
+                          <div className="flex justify-between items-center font-sans">
+                            <span className="text-slate-300 flex items-center">
                               Distância Média
                               <InfoTooltip text="Distância média percorrida para transporte de animais e insumos." />
                             </span>
-                            <span className="text-xs font-bold text-teal-400 font-mono">{inputs.distanciaMediaTransporteKm} km</span>
+                            <span className="font-bold text-teal-400 font-mono">{inputs.distanciaMediaTransporteKm} km</span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] text-slate-300 flex items-center">
+                          <div className="flex justify-between items-center font-sans">
+                            <span className="text-slate-300 flex items-center">
                               Emissão Transporte
                               <InfoTooltip text="Emissões de CO2 estimadas decorrentes da logística de transporte." />
                             </span>
-                            <span className="text-xs font-bold text-teal-400 font-mono">
+                            <span className="font-bold text-teal-400 font-mono">
                               {results ? (inputs.distanciaMediaTransporteKm * 0.0001 * results.ganhoPesoTotal).toFixed(3) : '---'} t CO2e
                             </span>
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Carbon Neutrality & Ecological Offset Section */}
+                  <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm text-left space-y-4">
+                    {/* Card Header */}
+                    <div className="flex items-center gap-2 pb-3 border-b border-[#131c2e]/50">
+                      <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                        <TreePine className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-sans font-bold text-xs text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                          Neutralização de Emissões & Planejamento Florestal
+                          <InfoTooltip text="As estimativas de árvores e APP são calculadas com base no passivo ambiental do lote específico. Para novos lotes produzidos na fazenda, novos plantios pontuais devem ocorrer ou, alternativamente, mantém-se uma reserva florestal cuja taxa de sequestro anual cubra o total de emissões de todos os lotes do ano." />
+                        </h3>
+                        <p className="text-[10px] text-slate-400 font-sans">
+                          Estimativa do passivo ambiental e requisitos de reflorestamento / conservação para zerar a pegada de carbono do lote.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Main Calculator Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      {/* Option A: Reforestation (Trees) */}
+                      <div className="bg-[#182235]/15 p-3.5 rounded-xl border border-slate-850 flex flex-col justify-between space-y-3">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-emerald-400">
+                            <TreePine className="w-3.5 h-3.5" />
+                            <h4 className="text-[10.5px] font-bold font-sans uppercase tracking-wide">Reflorestamento Ativo</h4>
+                            <InfoTooltip text="O total de árvores refere-se a este lote. Se novos lotes forem criados, um novo plantio deve ser feito de forma incremental, ou mantida uma área que sequestre continuamente essa taxa combinada por ano." />
+                          </div>
+                          <p className="text-[9.5px] text-slate-400 font-sans leading-relaxed">
+                            Plantio de árvores nativas em áreas degradadas (ex: Mata Atlântica ou Cerrado). Cada árvore sequestra cerca de <strong className="text-slate-200">140 kg CO₂e</strong> (0.14 t) durante seus primeiros 20 anos de crescimento active.
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-850/50 flex items-baseline justify-between">
+                          <span className="text-[9.5px] text-slate-400 font-sans flex items-center gap-1">
+                            Árvores a Plantar (Lote):
+                            <InfoTooltip text="Cálculo individualizado e proporcional para neutralizar este lote. Novos plantios são requeridos a cada ciclo de novos animais para garantir neutralidade contínua." />
+                          </span>
+                          <span className="text-sm font-bold text-emerald-400 font-mono">
+                            {results ? Math.ceil(results.pegadaCarbonoTotal / 0.14).toLocaleString('pt-BR') : '---'}
+                            <span className="text-[8.5px] text-slate-500 ml-1">unidades</span>
+                          </span>
+                        </div>
+
+                        <div className="bg-[#070a13] p-1.5 rounded border border-slate-850 flex justify-between items-center text-[9px]">
+                          <span className="text-slate-500 font-sans">Métrica individual por animal:</span>
+                          <span className="font-mono text-slate-350 font-semibold">
+                            {results ? (results.pegadaCarbonoTotal / (inputs.capacidadeEstatica || 1) / 0.14).toFixed(1) : '---'} árvores/cab
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Option B: Permanent Preservation Area (APP) */}
+                      <div className="bg-[#182235]/15 p-3.5 rounded-xl border border-slate-850 flex flex-col justify-between space-y-3">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-sky-400">
+                            <Leaf className="w-3.5 h-3.5" />
+                            <h4 className="text-[10.5px] font-bold font-sans uppercase tracking-wide">Área de Preservação Permanente (APP)</h4>
+                            <InfoTooltip text="Hectares sob conservação ativa necessários para compensar as emissões do lote em um ano. Ao contrário do plantio pontual de árvores (que tem limite de 20 anos), os hectares de APP atuam como um filtro ecológico permanente. Uma vez conservada essa área florestal (por exemplo, 56 ha), ela irá neutralizar continuamente novos lotes de mesma proporção ano após ano, por tempo indeterminado, enquanto a floresta for preservada em crescimento ativo e regeneração secundária." />
+                          </div>
+                          <p className="text-[9.5px] text-slate-400 font-sans leading-relaxed">
+                            Conservação ou restauração de floresta nativa contínua (Mata Atlântica em regeneração secundária ativa). Um hectare absorve em média <strong className="text-slate-200">7,3 toneladas de CO₂e por ano</strong> (0.61 t/mês).
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-850/50 flex items-baseline justify-between">
+                          <span className="text-[9.5px] text-slate-400 font-sans flex items-center gap-1">
+                            APP Necessária (Compensação em 1 ano):
+                            <InfoTooltip text="Área de floresta nativa necessária para absorver o CO2e do lote atual em 12 meses. No longo prazo, a manutenção desta mesma área (ex: 56 hectares) anula as emissões acumuladas de novos lotes de magnitude equivalente de forma permanente, recorrente e contínua, sem data de expiração ou necessidade de novos plantios cíclicos de terras." />
+                          </span>
+                          <span className="text-sm font-bold text-sky-400 font-mono">
+                            {results ? Math.ceil(results.pegadaCarbonoTotal / 7.3).toLocaleString('pt-BR') : '---'}
+                            <span className="text-[8.5px] text-slate-500 ml-1">hectares</span>
+                          </span>
+                        </div>
+
+                        <div className="bg-[#070a13] p-1.5 rounded border border-slate-850 flex justify-between items-center text-[9px]">
+                          <span className="text-slate-500 font-sans">Área equivalente em metros quadrados:</span>
+                          <span className="font-mono text-slate-350 font-semibold">
+                            {results ? (Math.ceil(results.pegadaCarbonoTotal / 7.3) * 10000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : '---'} m²
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Summary footnote with standards references */}
+                    <div className="p-2.5 bg-slate-900/40 rounded-lg border border-slate-850 text-[9.5px] font-sans text-slate-400 leading-relaxed flex flex-col gap-2">
+                      <div className="flex items-start gap-2">
+                        <Info className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                        <p>
+                          <strong>Metodologia de Neutralização:</strong> As estimativas de sequestro e modelagem de biomassa florestal para compensação ativa na Mata Atlântica fundamentam-se nas equações alométricas de <strong className="text-slate-200">SANQUETTA et al. (2018; 2019)</strong> baseadas em DAP, altura e densidade da madeira, nas validações empíricas de taxas diferenciais de acúmulo de carbono florestal de <strong className="text-slate-200">SOUZA (2024)</strong>, e nas metodologias internacionais de crédito de carbono da <strong className="text-emerald-400">SOCIALCARBON (SCM0003 e SCM0009)</strong>.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-5.5 pt-1.5 border-t border-slate-850/60 mt-0.5">
+                        <a
+                          href="https://static1.squarespace.com/static/6161c89d030b89374bec0b70/t/6461ffbbb4e0584147397e6d/1684144060670/SOCIALCARBON-SCM0003+v1.0.pdf"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
+                        >
+                          <FileText className="w-3 h-3 text-emerald-500" />
+                          Metodologia SCM0003 PDF
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                        <span className="text-slate-700 text-[9px] select-none">|</span>
+                        <a
+                          href="https://static1.squarespace.com/static/6161c89d030b89374bec0b70/t/6870e4193335a6251ca3bd2a/1752228890156/SOCIALCARBON_SCM0009_v1.0.pdf"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
+                        >
+                          <FileText className="w-3 h-3 text-emerald-500" />
+                          Metodologia SCM0009 PDF
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
                       </div>
                     </div>
                   </div>
@@ -9877,74 +10697,56 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
-              {/* Compensation Action Card */}
-              <div className="bg-[#121826] p-8 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none">
-                  <Leaf className="w-48 h-48 text-emerald-400" />
-                </div>
-                <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
-                  <div className="w-24 h-24 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center shrink-0">
-                    <TreePine className="w-12 h-12 text-emerald-400" />
-                  </div>
-                  <div className="flex-1 text-center md:text-left">
-                    <h4 className="text-xl font-bold text-slate-100 mb-2 flex items-center justify-center md:justify-start font-display">
-                      Plano de Neutralização de Carbono
-                      <InfoTooltip text="Estratégia para compensar as emissões de gases de efeito estufa através de ativos florestais." />
-                    </h4>
-                    <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
-                      Para neutralizar as emissões deste lote ({results ? results.pegadaCarbonoTotal.toFixed(2) : '---'} t CO2e), 
-                      seria necessário o plantio de <span className="font-bold text-emerald-400">{results ? Math.ceil(results.pegadaCarbonoTotal * 7) : '---'} árvores nativas</span> ou a manutenção de 
-                      <span className="font-bold text-emerald-400 flex-inline"> {results ? (results.pegadaCarbonoTotal * 0.2).toFixed(2) : '---'} hectares</span> de mata preservada.
-                    </p>
-                  </div>
-                  <button className="px-8 py-3 bg-emerald-600 text-white rounded-2xl font-bold text-sm hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-950/20 border border-emerald-500/30 whitespace-nowrap cursor-pointer">
-                    Gerar Relatório ESG
-                  </button>
-                </div>
-              </div>
             </motion.div>
           )}
+
           {activeTab === 'market' && (
             <motion.div
               key="market"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="space-y-6"
+              className="space-y-4"
             >
-              <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/40 transition-all duration-300">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                      <Map className="w-5 h-5 text-indigo-400" />
+              {/* Termômetro de Volatilidade e Distribuição de Tendências */}
+              <MarketVolatilitySummary
+                marketPrices={marketPrices}
+                onRandomizeTrends={handleFetchMarketPrices}
+                isFetching={isFetchingMarket}
+              />
+
+              <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm relative overflow-hidden text-left">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
+                      <Map className="w-4 h-4 text-indigo-400" />
                     </div>
                     <div>
-                      <h3 className="font-display font-bold text-slate-100 text-lg tracking-tight">Inteligência de Mercado</h3>
-                      <p className="text-xs text-slate-400">Preços físicos de referência regional para subsidiar a simulação de ágio.</p>
+                      <h3 className="font-sans font-bold text-indigo-400 text-xs uppercase tracking-wider">Inteligência de Mercado</h3>
+                      <p className="text-[9px] text-slate-400 font-sans">Preços físicos de referência regional para subsidiar a simulação de ágio.</p>
                     </div>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <div className="text-[10px] text-right text-slate-500 max-w-[200px] leading-tight hidden lg:block">
-                      Fontes: <strong className="text-slate-400">CEPEA/ESALQ</strong> (Boi Gordo), <strong className="text-slate-400">SCOT</strong> & <strong className="text-slate-400">Leilões</strong> (Boi Magro).
+                    <div className="text-[9px] text-right text-slate-500 max-w-[200px] leading-tight hidden lg:block font-sans">
+                      Fontes: <strong className="text-slate-400">CEPEA/ESALQ</strong> (Boi Gordo), <strong className="text-slate-400 font-sans">SCOT</strong> & <strong className="text-slate-400 font-sans">Leilões</strong>.
                     </div>
                     <button
                       onClick={handleFetchMarketPrices}
                       disabled={isFetchingMarket}
-                      className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-md shadow-indigo-950/20 transition-all flex items-center gap-2 disabled:opacity-50 border border-indigo-500/30 cursor-pointer"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-md shadow-indigo-950/20 transition-all flex items-center gap-1.5 disabled:opacity-50 border border-indigo-500/30 cursor-pointer"
                     >
                       {isFetchingMarket ? (
-                        <RotateCcw className="w-4 h-4 animate-spin" />
+                        <RotateCcw className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <RotateCcw className="w-4 h-4" />
+                        <RotateCcw className="w-3.5 h-3.5" />
                       )}
                       Atualizar Preços
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                  <div className="lg:col-span-3 space-y-8">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                  <div className="lg:col-span-3 space-y-6">
                     {marketPrices.length > 0 ? (
                       (['Sudeste', 'Sul', 'Centro-Oeste', 'Norte', 'Nordeste'] as const).map((regionName) => {
                         const statesInRegion = {
@@ -9958,23 +10760,23 @@ export default function App() {
                         const pricesInRegion = marketPrices.filter(p => statesInRegion.includes(p.state.toUpperCase()));
                         if (pricesInRegion.length === 0) return null;
 
-                        const regionStyles: Record<string, string> = {
-                          'Sudeste': 'border-indigo-500/20 text-indigo-400 bg-indigo-500/5',
-                          'Sul': 'border-emerald-500/20 text-emerald-400 bg-emerald-500/5',
-                          'Centro-Oeste': 'border-amber-500/20 text-amber-400 bg-amber-500/5',
-                          'Norte': 'border-sky-500/20 text-sky-400 bg-sky-500/5',
-                          'Nordeste': 'border-pink-500/20 text-pink-400 bg-pink-500/5'
-                        };
+                        const regionTheme = {
+                          'Sudeste': { text: 'text-indigo-400', border: 'border-indigo-500/15', hover: 'hover:border-indigo-500/40', bg: 'bg-indigo-500/5', badgeText: 'text-indigo-400' },
+                          'Sul': { text: 'text-emerald-400', border: 'border-emerald-500/15', hover: 'hover:border-emerald-500/40', bg: 'bg-emerald-500/5', badgeText: 'text-emerald-400' },
+                          'Centro-Oeste': { text: 'text-amber-400', border: 'border-amber-500/15', hover: 'hover:border-amber-500/40', bg: 'bg-amber-500/5', badgeText: 'text-amber-400' },
+                          'Norte': { text: 'text-sky-400', border: 'border-sky-500/15', hover: 'hover:border-sky-500/40', bg: 'bg-sky-500/5', badgeText: 'text-sky-400' },
+                          'Nordeste': { text: 'text-pink-400', border: 'border-pink-500/15', hover: 'hover:border-pink-500/40', bg: 'bg-pink-500/5', badgeText: 'text-pink-400' }
+                        }[regionName];
 
                         return (
-                          <div key={regionName} className="space-y-4">
-                            <div className="flex items-center gap-3">
-                              <span className={`text-[9px] font-bold uppercase tracking-widest px-3 py-1 rounded-xl border ${regionStyles[regionName]}`}>
+                          <div key={regionName} className="space-y-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[7.5px] font-bold font-sans uppercase tracking-widest px-1.5 py-0.5 rounded-md border ${regionTheme.border} ${regionTheme.text} ${regionTheme.bg}`}>
                                 Região {regionName}
                               </span>
                               <div className="h-px flex-1 bg-gradient-to-r from-slate-800 to-transparent" />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
                               {pricesInRegion.map((price, idx) => {
                                 const stateUpper = price.state.toUpperCase();
                                 const stateArrobaMagro = (price.boiMagro * 30) / (inputs.pesoVivoInicial || 350);
@@ -9993,78 +10795,72 @@ export default function App() {
                                     key={price.state}
                                     initial={{ opacity: 0, scale: 0.95 }}
                                     animate={{ opacity: 1, scale: 1 }}
-                                    transition={{ delay: idx * 0.03 }}
-                                    className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/30 transition-all group shadow-sm text-left animate-in fade-in zoom-in-95 duration-200"
+                                    transition={{ delay: idx * 0.02 }}
+                                    className={`bg-[#0d121f]/95 p-3 rounded-lg border ${regionTheme.border} ${regionTheme.hover} transition-all group shadow-sm text-left animate-in fade-in zoom-in-95 duration-200`}
                                   >
-                                    <div className="flex justify-between items-start mb-4">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center font-bold text-indigo-400 shadow-sm border border-slate-800">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <div className={`w-5 h-5 bg-slate-950 rounded flex items-center justify-center font-mono font-bold ${regionTheme.text} text-[10px] border border-slate-800`}>
                                           {price.state}
                                         </div>
-                                        <span className="text-sm font-bold text-slate-200">Mercado {price.state}</span>
+                                        <span className={`text-[11px] font-bold ${regionTheme.text} font-sans`}>Mercado {price.state}</span>
                                       </div>
-                                      <div className={`p-1 rounded-full ${
-                                        price.trend === 'up' ? 'bg-emerald-500/10 text-emerald-400' :
-                                        price.trend === 'down' ? 'bg-rose-500/10 text-rose-400' :
-                                        'bg-slate-800 text-slate-500'
-                                      }`}>
-                                        {price.trend === 'up' ? <TrendingUp className="w-4 h-4" /> :
-                                         price.trend === 'down' ? <TrendingUp className="w-4 h-4 rotate-180" /> :
-                                         <MoreHorizontal className="w-4 h-4" />}
-                                      </div>
+                                      
+                                      {/* Animações de Transição Suave de Tendência com Framer Motion */}
+                                      <MarketTrendIndicator trend={price.trend} size="sm" showLabel={true} />
                                     </div>
-                                    <div className="space-y-3">
+                                    <div className="space-y-1.5">
                                       <div className="flex justify-between items-center text-left">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Boi Gordo (CEPEA)</span>
-                                        <span className="text-base font-bold text-slate-100 font-mono">R$ {price.boiGordo.toFixed(2)} /@</span>
+                                        <span className="text-[7.5px] font-semibold text-slate-400 uppercase font-sans tracking-wide">Boi Gordo (CEPEA)</span>
+                                        <span className="text-[10px] font-bold text-slate-100 font-mono">R$ {price.boiGordo.toFixed(2)} /@</span>
                                       </div>
                                       <div className="flex justify-between items-center text-left">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Boi Magro (SCOT)</span>
-                                        <span className="text-sm font-semibold text-slate-300 font-mono">R$ {price.boiMagro.toLocaleString('pt-BR')}</span>
+                                        <span className="text-[7.5px] font-semibold text-slate-400 uppercase font-sans tracking-wide">Boi Magro (SCOT)</span>
+                                        <span className="text-[10px] font-bold text-slate-300 font-mono">R$ {price.boiMagro.toLocaleString('pt-BR')}</span>
                                       </div>
 
                                       {/* ÁGIO ESPECÍFICO DO ESTADO */}
-                                      <div className="flex justify-between items-center pt-2.5 border-t border-slate-800/60 pb-1 text-left">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-850 pb-0.5 text-left">
+                                        <span className="text-[7.5px] font-semibold text-slate-400 uppercase font-sans tracking-wide">
                                           {stateAgio >= 0 ? 'Ágio' : 'Deságio'}
                                         </span>
-                                        <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded-lg ${
+                                        <span className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded ${
                                           stateAgio >= 0 
-                                            ? 'bg-rose-500/10 text-[#fb7185] border border-rose-500/20' 
-                                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                            ? 'bg-rose-500/5 text-rose-400 border border-rose-500/10' 
+                                            : 'bg-emerald-500/5 text-emerald-400 border border-emerald-500/10'
                                         }`}>
                                           {stateAgio >= 0 ? `+${stateAgio.toFixed(1)}%` : `${stateAgio.toFixed(1)}%`}
                                         </span>
                                       </div>
 
                                       {/* COTAÇÕES DE MILHO / SOJA */}
-                                      <div className="pt-2 border-t border-slate-800/80">
-                                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-2">Preços Principais Insumos</p>
-                                        <div className="grid grid-cols-2 gap-x-2.5">
-                                          <div className="flex flex-col p-2 bg-slate-900/60 rounded-xl border border-slate-800/60 transition-colors hover:border-slate-700/60">
-                                            <span className="text-[8px] font-semibold text-slate-450 uppercase truncate">Milho Moído</span>
-                                            <span className="text-xs font-bold text-indigo-400 font-mono mt-0.5 text-left">
-                                              R$ {milhoPrice.toFixed(2)}<span className="text-[8px] font-normal text-slate-500">/kg</span>
+                                      <div className="pt-1.5 border-t border-slate-850">
+                                        <p className="text-[7.5px] font-bold text-slate-500 uppercase mb-1 font-sans tracking-wide">Preços Principais Insumos</p>
+                                        <div className="grid grid-cols-2 gap-x-1.5">
+                                          <div className="flex flex-col p-1.5 bg-slate-950/40 rounded border border-slate-850/60 transition-colors hover:border-slate-800">
+                                            <span className="text-[7px] font-semibold text-slate-450 uppercase truncate font-sans">Milho Moído</span>
+                                            <span className="text-[9px] font-bold text-indigo-400 font-mono mt-0.5 text-left">
+                                              R$ {milhoPrice.toFixed(2)}<span className="text-[7px] font-normal text-slate-500">/kg</span>
                                             </span>
                                           </div>
-                                          <div className="flex flex-col p-2 bg-slate-900/60 rounded-xl border border-slate-800/60 transition-colors hover:border-slate-700/60">
-                                            <span className="text-[8px] font-semibold text-slate-450 uppercase truncate">Farelo Soja</span>
-                                            <span className="text-xs font-bold text-indigo-400 font-mono mt-0.5 text-left">
-                                              R$ {sojaPrice.toFixed(2)}<span className="text-[8px] font-normal text-slate-500">/kg</span>
+                                          <div className="flex flex-col p-1.5 bg-slate-950/40 rounded border border-slate-850/60 transition-colors hover:border-slate-800">
+                                            <span className="text-[7px] font-semibold text-slate-450 uppercase truncate font-sans">Farelo Soja</span>
+                                            <span className="text-[9px] font-bold text-indigo-400 font-mono mt-0.5 text-left">
+                                              R$ {sojaPrice.toFixed(2)}<span className="text-[7px] font-normal text-slate-500">/kg</span>
                                             </span>
                                           </div>
                                         </div>
                                       </div>
 
                                       {price.ingredientPrices && Object.keys(price.ingredientPrices).length > 2 && (
-                                        <div className="pt-2.5 border-t border-slate-800/80">
-                                          <p className="text-[8px] font-bold text-slate-400 uppercase mb-1.5">Outros Insumos Locais</p>
-                                          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                        <div className="pt-1.5 border-t border-slate-850">
+                                          <p className="text-[7.5px] font-bold text-slate-500 uppercase mb-0.5 font-sans tracking-wide">Outros Insumos Locais</p>
+                                          <div className="grid grid-cols-2 gap-x-1.5 gap-y-0.5">
                                             {Object.entries(price.ingredientPrices)
                                               .filter(([name]) => !["Milho Moído", "Milho Grão", "Farelo de Soja"].includes(name))
                                               .slice(0, 4)
                                               .map(([name, val]) => (
-                                                <div key={name} className="flex justify-between text-[9px]">
+                                                <div key={name} className="flex justify-between text-[7.5px] font-sans">
                                                   <span className="text-slate-400 truncate mr-1">{name}</span>
                                                   <span className="font-bold text-indigo-400 font-mono">R$ {val.toFixed(2)}</span>
                                                 </div>
@@ -10073,8 +10869,8 @@ export default function App() {
                                         </div>
                                       )}
 
-                                      <div className="pt-3 mt-3 border-t border-slate-800/80 flex justify-between items-center">
-                                        <span className="text-[9px] text-slate-500 font-mono">Ref: {price.date.split('T')[0].split('-').reverse().join('-')}</span>
+                                      <div className="pt-1.5 mt-1 border-t border-slate-850 flex justify-between items-center">
+                                        <span className="text-[7.5px] text-slate-500 font-mono">Ref: {price.date.split('T')[0].split('-').reverse().join('-')}</span>
                                         <button 
                                           onClick={() => {
                                             setInputs(prev => ({
@@ -10101,7 +10897,7 @@ export default function App() {
                                             setActiveTab('inputs');
                                             showToast(`Preços de ${price.state} aplicados na simulação e na dieta!`, 'success');
                                           }}
-                                          className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                                          className={`text-[8.5px] font-bold ${regionTheme.text} hover:opacity-80 transition-opacity font-sans`}
                                         >
                                           Usar na Simulação
                                         </button>
@@ -10115,33 +10911,32 @@ export default function App() {
                         );
                       })
                     ) : (
-                      <div className="col-span-full py-20 text-center">
-                        <div className="p-4 bg-[#121826]/40 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 border border-slate-800">
-                          <Map className="w-8 h-8 text-slate-600" />
+                      <div className="col-span-full py-16 text-center">
+                        <div className="p-3 bg-[#121826]/40 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-3 border border-slate-800">
+                          <Map className="w-6 h-6 text-slate-600" />
                         </div>
-                        <p className="text-slate-400 text-sm italic">Clique em "Atualizar Preços" para carregar dados do mercado.</p>
+                        <p className="text-slate-400 text-xs italic font-sans">Clique em "Atualizar Preços" para carregar dados do mercado.</p>
                       </div>
                     )}
                   </div>
 
-                  <div className="space-y-6">
-                    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-white p-6 rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden group">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/15 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
-                      <div className="relative z-10 space-y-4">
+                  <div className="space-y-4">
+                    <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm relative overflow-hidden group text-left">
+                      <div className="relative z-10 space-y-3">
                         <div className="flex items-center justify-between">
-                          <h4 className="font-display font-bold text-xs flex items-center gap-1.5 tracking-wider text-emerald-400">
-                            <Zap className="w-4 h-4 text-emerald-400 animate-pulse" />
+                          <h4 className="font-sans font-bold text-[10px] flex items-center gap-1.5 tracking-wider text-emerald-400 uppercase">
+                            <Zap className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
                             DICA DE MERCADO
                           </h4>
                         </div>
 
                         {/* State Selection */}
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">Escolher Cotação de Referência</label>
+                        <div className="space-y-1">
+                          <label className="text-[8px] text-slate-400 uppercase font-black tracking-wider block font-sans">Escolher Cotação de Referência</label>
                           <select
                             value={agioSelectedState}
                             onChange={(e) => setAgioSelectedState(e.target.value)}
-                            className="w-full bg-slate-900/90 border border-slate-700 text-xs text-slate-100 rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-sans"
+                            className="w-full bg-[#070a13] border border-slate-800 text-[10px] text-slate-100 rounded-lg px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-sans"
                           >
                             <option value="Médio" className="bg-slate-900 font-sans">Média de Todos os Estados</option>
                             <option value="Regiao-Sudeste" className="bg-slate-900 font-sans">Média Região Sudeste (SP, MG)</option>
@@ -10153,21 +10948,21 @@ export default function App() {
                         </div>
 
                         {/* Dica Text */}
-                        <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                        <p className="text-[10px] text-slate-300 leading-relaxed font-sans">
                           {marketStats.dicaText}
                         </p>
 
                         {/* Calculated Value Display */}
-                        <div className="p-3 bg-white/5 rounded-xl border border-white/5 backdrop-blur-xs flex items-center justify-between">
+                        <div className="p-2.5 bg-[#070a13] rounded-lg border border-slate-800 flex items-center justify-between">
                           <div>
-                            <p className="text-[9px] font-bold uppercase text-slate-400 tracking-wider mb-1">
+                            <p className="text-[8px] font-bold uppercase text-slate-400 tracking-wider mb-0.5 font-sans">
                               {marketStats.agioMedio >= 0 ? 'Ágio de Reposição' : 'Deságio de Reposição'} ({marketStats.label})
                             </p>
-                            <p className={`text-xl font-black font-mono flex items-center gap-1.5 ${
+                            <p className={`text-base font-bold font-mono flex items-center gap-1.5 ${
                                 marketStats.agioMedio >= 0 ? 'text-[#fb7185]' : 'text-emerald-400'
                             }`}>
                               {marketStats.agioMedio > 0 ? '+' : ''}{marketStats.agioMedio.toFixed(2)}%
-                              <span className={`text-[9px] font-black font-sans uppercase tracking-widest px-1.5 py-0.5 rounded-lg border ${
+                              <span className={`text-[8px] font-bold font-sans uppercase tracking-widest px-1 py-0.5 rounded-md border ${
                                 marketStats.agioMedio >= 0
                                   ? 'bg-rose-500/10 border-rose-500/20 text-[#fb7185]'
                                   : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
@@ -10177,81 +10972,81 @@ export default function App() {
                             </p>
                           </div>
                           
-                          <div className="text-right text-[10px] font-mono text-slate-400 space-y-0.5">
+                          <div className="text-right text-[8px] font-mono text-slate-400 space-y-0.5">
                             <div>@ Magro eq: R$ {marketStats.pArrobaMagro.toFixed(2)}</div>
                             <div>@ Gordo ref: R$ {marketStats.pArrobaGordo.toFixed(2)}</div>
                           </div>
                         </div>
 
                         {/* Fontes de Dados Utilizadas */}
-                        <div className="flex items-start gap-2.5 p-3 bg-slate-950/40 border border-slate-800/60 rounded-xl text-[10px] text-slate-400 backdrop-blur-xs">
-                          <BookOpen className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
-                          <div className="space-y-0.5 text-left">
-                            <span className="font-bold text-slate-300 block text-[9px] uppercase tracking-wider">Fontes dos Dados de Referência:</span>
-                            <p className="leading-tight text-[10px] text-slate-400">
-                              Os preços do <span className="text-slate-300 font-semibold">Boi Gordo</span> estão pautados na referência comercial do <span className="text-indigo-400 font-semibold">Indicador CEPEA/ESALQ (USP)</span>, média apurada para o estado de São Paulo e praças de negociação ativa. O gado de reposição (<span className="text-slate-300 font-semibold">Boi Magro</span>) adota cotações históricas calibradas das praças da <span className="text-indigo-400 font-semibold">Scot Consultoria</span> e leilões regionais de gado de corte. Os insumos (<span className="text-slate-300 font-semibold">Milho, Farelo de Soja</span>, etc.) são balizados nos preços mínimos de cooperativas agropecuárias brasileiras e preços físicos apurados pela <span className="text-indigo-400 font-semibold">CONAB</span>.
+                        <div className="flex items-start gap-2 p-2 bg-[#070a13] border border-slate-800 rounded-lg text-[9px] text-slate-400">
+                          <BookOpen className="w-3 h-3 text-indigo-400 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5 text-left font-sans">
+                            <span className="font-bold text-slate-300 block text-[8px] uppercase tracking-wider">Fontes dos Dados:</span>
+                            <p className="leading-tight text-[9px] text-slate-400">
+                              Os preços do <span className="text-slate-300 font-semibold">Boi Gordo</span> baseiam-se no <span className="text-indigo-400 font-semibold">Indicador CEPEA/ESALQ (USP)</span> para SP e praças de negociação ativa. O gado de reposição (<span className="text-slate-300 font-semibold">Boi Magro</span>) adota cotações históricas calibradas das praças da <span className="text-indigo-400 font-semibold">Scot Consultoria</span> e leilões regionais. Os insumos (<span className="text-slate-300 font-semibold">Milho, Farelo de Soja</span>, etc.) são balizados nos preços físicos mínimos apurados pela <span className="text-indigo-400 font-semibold">CONAB</span>.
                             </p>
                           </div>
                         </div>
 
                         {/* Fixed Explanation of Agio Calculation */}
-                        <div className="mt-4 p-4 bg-[#090d16] border border-slate-800 rounded-xl text-[11px] text-slate-300 space-y-3 leading-relaxed text-left">
-                          <h5 className="font-bold text-xs text-emerald-400 border-b border-slate-800/80 pb-1.5 flex items-center gap-1">
+                        <div className="p-3 bg-[#070a13] border border-slate-800 rounded-lg text-[9.5px] text-slate-300 space-y-2 leading-relaxed text-left">
+                          <h5 className="font-bold text-[10px] text-emerald-400 border-b border-slate-850 pb-1 flex items-center gap-1 font-sans uppercase tracking-wider">
                             Metodologia de Cálculo do Ágio
                           </h5>
                           
                           <div>
-                            <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">1. Conversão do Boi Magro para Arroba (@):</span>
-                            <p className="text-slate-400 leading-normal">
-                              O boi magro é negociado por cabeça (valor unitário). Para calcular o ágio em relação ao boi gordo (negociado em @), convertemos o valor do gado magro para o correspondente por arroba (@):
+                            <span className="font-bold text-slate-200 text-[8px] uppercase tracking-wider block mb-0.5 font-sans">1. Conversão do Boi Magro para @:</span>
+                            <p className="text-slate-400 leading-normal font-sans">
+                              O boi magro é negociado por cabeça. Convertemos o gado magro para o correspondente por arroba (@):
                             </p>
-                            <div className="mt-1.5 p-2 bg-slate-900 rounded-lg text-center font-mono font-bold text-emerald-400 text-[10px] border border-slate-800">
+                            <div className="mt-1 p-1 bg-slate-950 rounded-md text-center font-mono font-bold text-emerald-400 text-[8.5px] border border-slate-850">
                               Preço Arroba Magro = (Valor Boi Magro × 30) / Peso Vivo Inicial
                             </div>
-                            <p className="mt-1 text-[9px] text-slate-500 italic">
-                              * Nota técnica: Adota-se o padrão comercial de equivalência biológica onde 1 arroba live correspondente a 30kg de peso vivo (rendimento padrão de carcaça).
+                            <p className="mt-0.5 text-[7.5px] text-slate-500 italic font-sans">
+                              * Equivalência de 1 arroba live correspondente a 30kg de peso vivo (rendimento padrão).
                             </p>
                           </div>
 
                           <div>
-                            <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">2. Cálculo de Diferencial (Ágio %):</span>
-                            <p className="text-slate-400 leading-normal">
-                              O ágio representa a diferença percentual paga na arroba do animal de reposição (boi magro) sobre o preço obtido na venda do animal acabado (boi gordo):
+                            <span className="font-bold text-slate-200 text-[8px] uppercase tracking-wider block mb-0.5 font-sans">2. Diferencial (Ágio %):</span>
+                            <p className="text-slate-400 leading-normal font-sans">
+                              Representa a diferença percentual paga na arroba do animal de reposição sobre o preço obtido na venda final:
                             </p>
-                            <div className="mt-1.5 p-2 bg-slate-900 rounded-lg text-center font-mono font-bold text-emerald-400 text-[10px] border border-slate-800">
+                            <div className="mt-1 p-1 bg-slate-950 rounded-md text-center font-mono font-bold text-emerald-400 text-[8.5px] border border-slate-850">
                               Ágio (%) = [ (Preço Arroba Magro / Preço Arroba Gordo) - 1 ] × 100
                             </div>
                           </div>
 
                           <div>
-                            <span className="font-bold text-slate-200 text-[10px] uppercase tracking-wider block mb-1">3. Entendendo os Valores (Positivo vs Negativo):</span>
-                            <ul className="space-y-1 mt-1 text-[10px] text-slate-400">
+                            <span className="font-bold text-slate-200 text-[8px] uppercase tracking-wider block mb-0.5 font-sans">3. Leitura dos Valores:</span>
+                            <ul className="space-y-0.5 mt-0.5 text-[8.5px] text-slate-400 font-sans">
                               <li className="leading-snug">
-                                <span className="font-bold text-rose-400">● Ágio Positivo (+)</span>: Ocorre quando a arroba paga na reposição é mais cara que a de venda do boi gordo. Isso aumenta a pressão de custos e exige máxima eficiência de GMD e conversão.
+                                <span className="font-bold text-rose-400">● Ágio Positivo (+)</span>: Reposição mais cara que venda. Aumenta custo e exige maior GMD.
                               </li>
                               <li className="leading-snug">
-                                <span className="font-bold text-emerald-400">● Ágio Negativo (-) [Deságio]</span>: Ocorre no cenário de mercado favorável em que a reposição é comprada por valor de arroba inferior à venda final. Ajuda a expandir as margens.
+                                <span className="font-bold text-emerald-400">● Ágio Negativo (-)</span>: Reposição mais barata que venda. Expande as margens.
                               </li>
                             </ul>
                           </div>
 
-                          <div className="pt-2 border-t border-slate-800 font-mono text-[10px] text-slate-300 space-y-1">
-                            <span className="font-bold text-slate-200 block mb-1">Demonstração de Valores (Cálculo Ativo):</span>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 bg-slate-900/50 p-2.5 rounded-lg border border-slate-800/40">
+                          <div className="pt-1.5 border-t border-slate-850 font-mono text-[8.5px] text-slate-300 space-y-1">
+                            <span className="font-bold text-slate-200 block mb-0.5 font-sans uppercase text-[8px]">Demonstração Ativa:</span>
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 bg-slate-950 p-2 rounded-lg border border-slate-850/80">
                               <div>• Preço Boi Magro:</div>
                               <div className="text-right text-emerald-400 font-bold">R$ {marketStats.boiMagro.toLocaleString('pt-BR')}</div>
                               
                               <div>• Peso Vivo Inicial:</div>
                               <div className="text-right text-emerald-400 font-bold">{Math.round(marketStats.weight)} kg</div>
                               
-                              <div className="border-t border-slate-800/60 pt-0.5">• @ Reposição Eq.:</div>
-                              <div className="text-right text-emerald-400 font-bold border-t border-slate-800/60 pt-0.5">R$ {marketStats.pArrobaMagro.toFixed(2)}</div>
+                              <div className="border-t border-slate-850 pt-0.5">• @ Reposição Eq.:</div>
+                              <div className="text-right text-emerald-400 font-bold border-t border-slate-850 pt-0.5">R$ {marketStats.pArrobaMagro.toFixed(2)}</div>
                               
                               <div>• @ Boi Gordo Ref.:</div>
                               <div className="text-right text-emerald-400 font-bold">R$ {marketStats.pArrobaGordo.toFixed(2)}</div>
                               
-                              <div className="border-t border-slate-700/60 pt-1 font-semibold text-white">• Ágio Resultante:</div>
-                              <div className="text-right text-emerald-400 font-black border-t border-slate-700/60 pt-1">
+                              <div className="border-t border-slate-850 pt-0.5 font-semibold text-white">• Ágio Resultante:</div>
+                              <div className="text-right text-emerald-400 font-black border-t border-slate-850 pt-0.5">
                                 {marketStats.agioMedio > 0 ? '+' : ''}{marketStats.agioMedio.toFixed(2)}%
                               </div>
                             </div>
@@ -10260,46 +11055,63 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/80 shadow-lg hover:border-slate-700/60 transition-all duration-300">
-                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Links Úteis</h4>
-                      <div className="space-y-2">
-                        <a href="https://www.noticiasagricolas.com.br/cotacoes/boi-gordo/macho-nelore-boi-magro" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                    <div className="bg-[#0d121f] p-4 rounded-xl border border-slate-850 shadow-sm text-left">
+                      <h4 className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest mb-3 font-sans">Links Úteis</h4>
+                      <div className="space-y-1.5">
+                        <a href="https://www.noticiasagricolas.com.br/cotacoes/boi-gordo/macho-nelore-boi-magro" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-[#070a13] rounded-lg border border-slate-800 hover:border-emerald-500/50 hover:shadow-sm hover:text-emerald-400 transition-all text-[10px] font-semibold text-slate-200 font-sans">
                           Notícias Agrícolas
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://www.cepea.esalq.usp.br/br/indicador/boi-gordo.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://www.cepea.esalq.usp.br/br/indicador/boi-gordo.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-[#070a13] rounded-lg border border-slate-800 hover:border-emerald-500/50 hover:shadow-sm hover:text-emerald-400 transition-all text-[10px] font-semibold text-slate-200 font-sans">
                           Indicador CEPEA
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://www.scotconsultoria.com.br/cotacoes/boi-gordo/?ref=smnb" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://www.scotconsultoria.com.br/cotacoes/boi-gordo/?ref=smnb" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-[#070a13] rounded-lg border border-slate-800 hover:border-emerald-500/50 hover:shadow-sm hover:text-emerald-400 transition-all text-[10px] font-semibold text-slate-200 font-sans">
                           Scot Consultoria
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://www.lae-fmvz-usp.com/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://www.lae-fmvz-usp.com/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-[#070a13] rounded-lg border border-slate-800 hover:border-emerald-500/50 hover:shadow-sm hover:text-emerald-400 transition-all text-[10px] font-semibold text-slate-200 font-sans">
                           LAE - FMVZ/USP
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://br.tradingview.com/symbols/BMFBOVESPA-BGI1!/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://br.tradingview.com/symbols/BMFBOVESPA-BGI1!/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-[#070a13] rounded-lg border border-slate-800 hover:border-emerald-500/50 hover:shadow-sm hover:text-emerald-400 transition-all text-[10px] font-semibold text-slate-200 font-sans">
                           Cotações B3
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://www.ufrgs.br/nespro/cotacoes/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://www.ufrgs.br/nespro/cotacoes/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-[#070a13] rounded-lg border border-slate-800 hover:border-emerald-500/50 hover:shadow-sm hover:text-emerald-400 transition-all text-[10px] font-semibold text-slate-200 font-sans">
                           Cotações NESPRO (RS)
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://portaldeinformacoes.conab.gov.br/precos-agropecuarios.html" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://portaldeinformacoes.conab.gov.br/precos-agropecuarios.html" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-[#070a13] rounded-lg border border-slate-800 hover:border-emerald-500/50 hover:shadow-sm hover:text-emerald-400 transition-all text-[10px] font-semibold text-slate-200 font-sans">
                           CONAB - Preços Agropecuários
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </a>
-                        <a href="https://www.agrolink.com.br/cotacoes/carnes/bovinos" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-3.5 bg-[#121826]/80 rounded-xl border border-slate-800 hover:border-emerald-500/50 hover:shadow-md hover:text-emerald-400 transition-all text-xs font-semibold text-slate-200">
+                        <a href="https://www.agrolink.com.br/cotacoes/carnes/bovinos" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-[#070a13] rounded-lg border border-slate-800 hover:border-emerald-500/50 hover:shadow-sm hover:text-emerald-400 transition-all text-[10px] font-semibold text-slate-200 font-sans">
                           Agrolink - Cotações Bovinos
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </a>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'ultrasound' && (
+            <motion.div
+              key="ultrasound"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <UltrasoundSlaughterModule 
+                inputs={inputs} 
+                savedDiets={savedDiets} 
+                dietResult={dietResult} 
+                subTab={ultrasoundSubTab}
+                setSubTab={setUltrasoundSubTab}
+              />
             </motion.div>
           )}
 
@@ -10411,6 +11223,24 @@ export default function App() {
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectProperty(p.id);
+                                  setTimeout(() => {
+                                    const input = document.getElementById('prop-name-input') as HTMLInputElement | null;
+                                    if (input) {
+                                      input.focus();
+                                      input.select();
+                                    }
+                                  }, 50);
+                                  showToast(`Edição ativada! Altere os campos abaixo para atualizar os dados de "${p.nome}".`, 'success');
+                                }}
+                                className="p-1.5 hover:bg-emerald-500/10 rounded-lg text-slate-500 hover:text-emerald-400 transition-colors cursor-pointer"
+                                title="Editar dados da propriedade"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
                               {savedProperties.length > 1 && (
                                 <button
                                   onClick={(e) => {
@@ -10440,6 +11270,7 @@ export default function App() {
                       <div className="space-y-1.5">
                         <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Nome da Propriedade</label>
                         <input
+                          id="prop-name-input"
                           type="text"
                           value={property.nome}
                           onChange={(e) => handlePropertyChange('nome', e.target.value)}
@@ -10582,6 +11413,20 @@ export default function App() {
                               </button>
                             ))}
                           </div>
+                        </div>
+
+                        {/* Save Changes Button */}
+                        <div className="border-t border-slate-800/60 pt-4 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              showToast(`Propriedade rural "${property.nome}" atualizada e salva com sucesso!`, 'success');
+                            }}
+                            className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/10 active:scale-[0.98]"
+                          >
+                            <Save className="w-4 h-4" />
+                            Salvar Alterações
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -11081,12 +11926,106 @@ export default function App() {
                       </>
                     )}
                   </div>
+
+                  {/* NOVO: Correlação de Estresse Térmico vs GMD (Últimos 30 Dias) */}
+                  <div className="bg-[#0f172a] p-6 rounded-2xl border border-slate-800/85 shadow-lg space-y-5">
+                    <div className="flex items-center justify-between border-b border-slate-800/50 pb-3 flex-wrap gap-2">
+                      <div className="space-y-0.5 text-left">
+                        <h4 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                          <BarChart3 className="w-5 h-5 text-emerald-400" />
+                          Análise de Dispersão: Temperatura Média vs Ganho de Peso
+                        </h4>
+                        <p className="text-[11px] text-slate-400">
+                          Identificação de padrões de estresse térmico/frio correlacionando dados climáticos com o GMD projetado nos últimos 30 dias.
+                        </p>
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-md font-bold uppercase tracking-wider">
+                        Modelo Bioclimático
+                      </span>
+                    </div>
+
+                    <div className="h-72 w-full bg-[#0a0f1d] rounded-2xl p-4 border border-slate-850">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart
+                          margin={{
+                            top: 20,
+                            right: 20,
+                            bottom: 20,
+                            left: 10,
+                          }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                          <XAxis 
+                            type="number" 
+                            dataKey="tempMean" 
+                            name="Temperatura Média" 
+                            unit="°C" 
+                            stroke="#94a3b8" 
+                            fontSize={10}
+                            tickLine={false}
+                            axisLine={{ stroke: '#334155' }}
+                            domain={['auto', 'auto']}
+                          />
+                          <YAxis 
+                            type="number" 
+                            dataKey="gmd" 
+                            name="GMD Projetado" 
+                            unit=" kg" 
+                            stroke="#94a3b8" 
+                            fontSize={10}
+                            tickLine={false}
+                            axisLine={{ stroke: '#334155' }}
+                            domain={['auto', 'auto']}
+                          />
+                          <Tooltip content={<CustomScatterTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#ef4444' }} />
+                          <Scatter name="Dias Simulados" data={scatterData} fill="#10b981">
+                            {scatterData.map((entry, index) => {
+                              let color = '#10b981'; // Conforto Térmico (Verde)
+                              if (entry.status.includes('Emergência')) color = '#ef4444'; // Emergência (Vermelho)
+                              else if (entry.status.includes('Severo')) color = '#f59e0b'; // Estresse Severo/Frio Severo (Laranja)
+                              else if (entry.status.includes('Leve')) color = '#6366f1'; // Estresse Leve (Indigo)
+                              return <Cell key={`cell-${index}`} fill={color} strokeWidth={0} />;
+                            })}
+                          </Scatter>
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Legenda do Gráfico Personalizada */}
+                    <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 bg-[#121826]/40 p-3 rounded-xl border border-slate-850 text-[10px] font-sans">
+                      <span className="text-slate-400 font-bold uppercase tracking-wider">Legenda de Estresse:</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        <span className="text-slate-300">Conforto Térmico</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                        <span className="text-slate-300">Estresse Leve / Frio Leve</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                        <span className="text-slate-300">Estresse Severo / Frio Severo</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                        <span className="text-slate-300">Emergência Térmica</span>
+                      </div>
+                    </div>
+
+                    {/* Nota Técnica Explicativa */}
+                    <div className="bg-[#121826]/30 p-4 rounded-xl border border-slate-850/60 space-y-2 text-xs">
+                      <p className="text-slate-400 leading-relaxed font-sans text-justify">
+                        <strong>Como interpretar este gráfico:</strong> Cada ponto representa um dia do histórico de 30 dias na fazenda <strong className="text-slate-300 font-semibold">{property.nome}</strong>. Note que a nuvem de pontos revela uma correlação zootécnica clara: temperaturas que geram índices de THI elevados (zona de estresse moderado/severo) ou temperaturas de frio extremo provocam quedas acentuadas no GMD (Ganho Médio Diário), distanciando-o do planejado de <strong className="text-emerald-400 font-semibold">{(inputs.gmd || 1.5).toFixed(2)} kg/dia</strong>. Padrões dispersos no topo representam estabilidade metabólica do lote (alto conforto térmico).
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </main>
+    </div>
 
       {/* Copula Info Modal */}
       <AnimatePresence>
@@ -11402,37 +12341,63 @@ export default function App() {
             onClick={() => setIsReportModalOpen(false)}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="bg-[#0a0f1d] border border-[#131c2e] rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-blue-600 p-6 text-white">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xl font-bold flex items-center gap-2">
-                    <FileText className="w-6 h-6" />
+              <div className="border-b border-[#131c2e] p-4 bg-[#0a0f1d]">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold flex items-center gap-2 text-emerald-400 uppercase tracking-wider font-sans">
+                    <FileText className="w-4 h-4 text-emerald-400" />
                     Configurar Relatório
                   </h3>
                   <button 
                     onClick={() => setIsReportModalOpen(false)}
-                    className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+                    className="p-1 hover:bg-slate-800/60 rounded-lg transition-colors text-slate-400 hover:text-slate-200"
                   >
-                    <X className="w-6 h-6" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
-                <p className="text-blue-100 text-sm">Selecione as seções que deseja incluir no documento PDF.</p>
+                <p className="text-slate-400 text-[10px] mt-1 font-sans">Selecione as seções que deseja incluir no documento PDF.</p>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Seções do Relatório</span>
-                  <div className="flex gap-3">
+              <div className="p-4 space-y-3 bg-[#070a13]">
+                {/* Seleção de Projeto */}
+                <div className="space-y-1.5 pb-2 border-b border-[#131c2e]">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-sans">
+                    Selecionar Projeto para Relatório
+                  </label>
+                  <select
+                    value={loadedSimulationId || 'atual'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'atual') {
+                        handleReportProjectChange(null);
+                      } else {
+                        handleReportProjectChange(val);
+                      }
+                    }}
+                    className="w-full bg-[#0a0f1d] border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500 transition-all font-semibold font-sans cursor-pointer"
+                  >
+                    <option value="atual">Cenário Atual (Não salvo)</option>
+                    {savedSimulations.map(sim => (
+                      <option key={sim.id} value={sim.id}>
+                        {sim.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider font-mono">Seções do Relatório</span>
+                  <div className="flex gap-2.5">
                     <button 
                       onClick={() => setReportConfig({
                         inputs: true, results: true, riskStats: true, riskCharts: true, scenarios: true, cashflow: true, rawData: true, diet: true
                       })}
-                      className="text-[10px] font-bold text-blue-400 hover:underline"
+                      className="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 font-sans cursor-pointer"
                     >
                       Selecionar Tudo
                     </button>
@@ -11440,59 +12405,59 @@ export default function App() {
                       onClick={() => setReportConfig({
                         inputs: false, results: false, riskStats: false, riskCharts: false, scenarios: false, cashflow: false, rawData: false, diet: false
                       })}
-                      className="text-[10px] font-bold text-slate-400 hover:underline"
+                      className="text-[9px] font-bold text-slate-500 hover:text-slate-300 font-sans cursor-pointer"
                     >
                       Limpar
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 gap-2">
                   <ReportOption 
                     label="Parâmetros de Entrada" 
                     checked={reportConfig.inputs} 
                     onChange={() => setReportConfig(prev => ({ ...prev, inputs: !prev.inputs }))}
-                    icon={<Settings className="w-4 h-4" />}
+                    icon={<Settings className="w-3.5 h-3.5" />}
                   />
                   <ReportOption 
                     label="Resultados Econômicos" 
                     checked={reportConfig.results} 
                     onChange={() => setReportConfig(prev => ({ ...prev, results: !prev.results }))}
-                    icon={<DollarSign className="w-4 h-4" />}
+                    icon={<DollarSign className="w-3.5 h-3.5" />}
                     disabled={!results}
                   />
                   <ReportOption 
                     label="Estatísticas de Risco (LHS)" 
                     checked={reportConfig.riskStats} 
                     onChange={() => setReportConfig(prev => ({ ...prev, riskStats: !prev.riskStats }))}
-                    icon={<ShieldAlert className="w-4 h-4" />}
+                    icon={<ShieldAlert className="w-3.5 h-3.5" />}
                     disabled={!lhsResults}
                   />
                   <ReportOption 
                     label="Gráficos de Risco" 
                     checked={reportConfig.riskCharts} 
                     onChange={() => setReportConfig(prev => ({ ...prev, riskCharts: !prev.riskCharts }))}
-                    icon={<BarChart3 className="w-4 h-4" />}
+                    icon={<BarChart3 className="w-3.5 h-3.5" />}
                     disabled={!lhsResults}
                   />
                   <ReportOption 
                     label="Fluxo de Caixa" 
                     checked={reportConfig.cashflow} 
                     onChange={() => setReportConfig(prev => ({ ...prev, cashflow: !prev.cashflow }))}
-                    icon={<ArrowRightLeft className="w-4 h-4" />}
+                    icon={<ArrowRightLeft className="w-3.5 h-3.5" />}
                     disabled={!results}
                   />
                   <ReportOption 
                     label="Dieta Otimizada" 
                     checked={reportConfig.diet} 
                     onChange={() => setReportConfig(prev => ({ ...prev, diet: !prev.diet }))}
-                    icon={<Zap className="w-4 h-4" />}
+                    icon={<Zap className="w-3.5 h-3.5" />}
                     disabled={!dietResult}
                   />
                   <ReportOption 
                     label="Dados da Simulação (LHS)" 
                     checked={reportConfig.rawData} 
                     onChange={() => setReportConfig(prev => ({ ...prev, rawData: !prev.rawData }))}
-                    icon={<Database className="w-4 h-4" />}
+                    icon={<Database className="w-3.5 h-3.5" />}
                     disabled={!lhsResults}
                   />
                 </div>
@@ -11503,16 +12468,16 @@ export default function App() {
                     setIsReportModalOpen(false);
                   }}
                   disabled={isGeneratingReport || (!results && !lhsResults)}
-                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed mt-3 cursor-pointer"
                 >
                   {isGeneratingReport ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       Gerando PDF...
                     </>
                   ) : (
                     <>
-                      <Download className="w-5 h-5" />
+                      <Download className="w-3.5 h-3.5" />
                       Gerar Relatório Selecionado
                     </>
                   )}
@@ -11804,13 +12769,64 @@ export default function App() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-slate-100">Salvar Simulação</h2>
-                  <p className="text-xs text-slate-400">Dê um nome para identificar este projeto</p>
+                  <p className="text-xs text-slate-400">
+                    {loadedSimulationId && savedSimulations.some(s => s.id === loadedSimulationId)
+                      ? 'Selecione se deseja atualizar o projeto existente ou criar um novo'
+                      : 'Dê um nome para identificar este projeto'}
+                  </p>
                 </div>
               </div>
 
               <div className="space-y-4">
+                {loadedSimulationId && savedSimulations.some(s => s.id === loadedSimulationId) && (
+                  <div className="bg-[#0c1224] p-3 rounded-2xl border border-slate-800/80 space-y-2 mb-3">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Método de Salvamento
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 bg-slate-900/60 p-1 rounded-xl border border-slate-800/50">
+                      <button
+                        type="button"
+                        onClick={() => setSaveMode('update')}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          saveMode === 'update'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 shadow-sm font-extrabold'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 border border-transparent'
+                        }`}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Atualizar Existente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSaveMode('new');
+                          const sim = savedSimulations.find(s => s.id === loadedSimulationId);
+                          if (sim && (newSimName === sim.name || !newSimName.trim())) {
+                            setNewSimName(`${sim.name} (Cópia)`);
+                          }
+                        }}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          saveMode === 'new'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 shadow-sm font-extrabold'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 border border-transparent'
+                        }`}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Salvar como Novo
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-normal font-sans px-1">
+                      {saveMode === 'update' 
+                        ? `Atualiza os parâmetros da simulação "${savedSimulations.find(s => s.id === loadedSimulationId)?.name}" selecionada.`
+                        : 'Cria uma nova entrada na sua lista de simulações com os parâmetros atuais.'}
+                    </p>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Nome do Projeto</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">
+                    {saveMode === 'update' ? 'Nome do Projeto (Atualizar)' : 'Nome do Novo Projeto'}
+                  </label>
                   <input
                     type="text"
                     value={newSimName}
@@ -11903,10 +12919,25 @@ export default function App() {
                   savedSimulations.map((sim) => (
                     <div 
                       key={sim.id}
-                      className="group bg-[#121826] border border-slate-800/80 p-4 rounded-2xl hover:border-emerald-500/35 hover:bg-[#151c2d] transition-all flex items-center justify-between"
+                      className={`group bg-[#121826] border p-4 rounded-2xl hover:bg-[#151c2d] transition-all flex items-center justify-between ${
+                        loadedSimulationId === sim.id
+                          ? 'border-emerald-500/50 bg-emerald-500/5 shadow-inner shadow-emerald-500/5'
+                          : 'border-slate-800/80 hover:border-emerald-500/35'
+                      }`}
                     >
                       <div className="flex-1 cursor-pointer animate-none" onClick={() => loadSimulation(sim)}>
-                        <h4 className="font-bold text-slate-100 group-hover:text-emerald-400 transition-colors">{sim.name}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className={`font-bold transition-colors ${
+                            loadedSimulationId === sim.id ? 'text-emerald-400 font-extrabold' : 'text-slate-100 group-hover:text-emerald-400'
+                          }`}>
+                            {sim.name}
+                          </h4>
+                          {loadedSimulationId === sim.id && (
+                            <span className="text-[8px] bg-emerald-500/15 text-emerald-400 font-black px-2 py-0.5 rounded uppercase tracking-widest shrink-0 leading-none border border-emerald-500/10">
+                              Ativo
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-3 mt-1 font-mono text-[10px] text-slate-405">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3 text-slate-500" />
@@ -12930,6 +13961,25 @@ export default function App() {
                                 Ativa
                               </span>
                             )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectProperty(p.id);
+                                setTimeout(() => {
+                                  const input = document.getElementById('modal-prop-name-input') as HTMLInputElement | null;
+                                  if (input) {
+                                    input.focus();
+                                    input.select();
+                                  }
+                                }, 50);
+                                showToast(`Edição ativada! Altere os campos abaixo para atualizar os dados de "${p.nome}".`, 'success');
+                              }}
+                              className="p-1 hover:bg-emerald-500/10 rounded text-slate-500 hover:text-emerald-400 transition-colors cursor-pointer"
+                              title="Editar dados da propriedade"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
                             {savedProperties.length > 1 && (
                               <button
                                 type="button"
@@ -12955,12 +14005,13 @@ export default function App() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Nome da Propriedade</label>
                   <input
+                    id="modal-prop-name-input"
                     type="text"
                     value={property.nome}
                     onChange={(e) => {
                       handlePropertyChange('nome', e.target.value);
                     }}
-                    className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-205 text-xs font-semibold focus:outline-none transition-colors border-slate-800 text-slate-200"
+                    className="w-full bg-[#121826] border border-slate-800/80 focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-200 text-xs font-semibold focus:outline-none transition-colors border-slate-800"
                   />
                 </div>
 
@@ -13350,7 +14401,7 @@ function SplashScreen() {
         >
           Simu<span className="text-emerald-400">Boi</span>
         </motion.h1>
-         
+        
         <motion.p
           initial={{ y: 10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -13539,16 +14590,16 @@ function InputGroup({
       layout
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-1.5 group/input"
+      className="space-y-1 group/input text-left"
     >
-      <div className="flex justify-between items-center px-1">
-        <div className="flex items-center gap-1.5">
-          {Icon && <Icon className="w-3.5 h-3.5 text-slate-400 group-focus-within/input:text-emerald-400 transition-colors" />}
-          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+      <div className="flex justify-between items-center px-0.5">
+        <div className="flex items-center gap-1">
+          {Icon && <Icon className="w-3 h-3 text-slate-400 group-focus-within/input:text-emerald-400 transition-colors shrink-0" />}
+          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 font-sans">
             {label}
             {tooltip && (
               <div className="relative group/tooltip">
-                <HelpCircle className="w-3 h-3 text-slate-500 cursor-help hover:text-slate-300 transition-colors" />
+                <HelpCircle className="w-2.5 h-2.5 text-slate-500 cursor-help hover:text-slate-300 transition-colors" />
                 <div className={getTooltipStyles(tooltipPlacement).container}>
                   {tooltip}
                   <div className={getTooltipStyles(tooltipPlacement).arrow} />
@@ -13557,7 +14608,7 @@ function InputGroup({
             )}
           </label>
         </div>
-        {extraInfo && <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider">{extraInfo}</span>}
+        {extraInfo && <span className="text-[8px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.5 rounded uppercase tracking-wider font-mono shrink-0">{extraInfo}</span>}
       </div>
       <div className="relative">
         <input
@@ -13568,16 +14619,16 @@ function InputGroup({
           onChange={handleNumericChange}
           step={step}
           disabled={disabled}
-          className={`w-full bg-[#121826] border ${error ? 'border-red-500/80 ring-4 ring-red-500/10' : 'border-slate-800'} rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-100 placeholder-slate-500 hover:bg-[#161e30] hover:border-slate-700 focus:bg-[#0c1220] focus:outline-none focus:ring-4 ${error ? 'focus:ring-red-500/10 focus:border-red-500' : 'focus:ring-emerald-500/10 focus:border-emerald-500/80'} transition-all shadow-md ${disabled ? 'opacity-40 cursor-not-allowed bg-slate-900/60 text-slate-500' : ''} ${unit ? 'pr-12' : ''}`}
+          className={`w-full bg-[#121826] border ${error ? 'border-red-500/80 ring-4 ring-red-500/10' : 'border-slate-800'} rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-100 font-mono placeholder-slate-500 hover:bg-[#161e30] hover:border-slate-700 focus:bg-[#0c1220] focus:outline-none focus:ring-4 ${error ? 'focus:ring-red-500/10 focus:border-red-500' : 'focus:ring-emerald-500/10 focus:border-emerald-500/80'} transition-all shadow-sm ${disabled ? 'opacity-40 cursor-not-allowed bg-slate-900/60 text-slate-500' : ''} ${unit ? 'pr-10' : ''}`}
         />
         {unit && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-            <span className="text-[10px] font-bold text-slate-500 tracking-wider font-mono">{unit}</span>
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+            <span className="text-[9px] font-black text-slate-500 tracking-wider font-mono">{unit}</span>
           </div>
         )}
         {error && (
-          <div className="absolute top-full left-0 mt-1 flex items-center gap-1 text-[9px] font-bold text-red-400 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-900/40 z-10 animate-in fade-in slide-in-from-top-1">
-            <AlertCircle className="w-2.5 h-2.5" />
+          <div className="absolute top-full left-0 mt-1 flex items-center gap-1 text-[8px] font-bold text-red-400 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-900/40 z-10 animate-in fade-in slide-in-from-top-1">
+            <AlertCircle className="w-2 h-2" />
             {error}
           </div>
         )}
@@ -13586,7 +14637,7 @@ function InputGroup({
   );
 }
 
-function TechnicalParecer({ title, content, type = 'info' }: { title: string, content: string, type?: 'info' | 'warning' | 'success' }) {
+function TechnicalParecer({ title, content, type = 'info' }: { title: string, content: string, type?: 'info' | 'warning' | 'success' | 'danger' }) {
   const configs = {
     info: {
       bg: 'bg-sky-500/10 border-y border-r border-sky-500/20 border-l-sky-500',
@@ -13605,6 +14656,12 @@ function TechnicalParecer({ title, content, type = 'info' }: { title: string, co
       text: 'text-emerald-400 font-bold',
       subText: 'text-slate-300 font-medium',
       icon: <AlertCircle className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+    },
+    danger: {
+      bg: 'bg-red-500/10 border-y border-r border-red-500/20 border-l-red-500',
+      text: 'text-red-400 font-bold',
+      subText: 'text-slate-300 font-medium',
+      icon: <ShieldAlert className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
     }
   };
 
@@ -13633,6 +14690,13 @@ function ResultCard({ title, value, subValue, icon, color, tooltip }: { title: s
     purple: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
   };
 
+  const textColors: Record<string, string> = {
+    emerald: 'text-emerald-400',
+    blue: 'text-blue-400',
+    amber: 'text-amber-400',
+    purple: 'text-purple-400',
+  };
+
   const borderColors: Record<string, string> = {
     emerald: 'border-l-4 border-l-emerald-500/95',
     blue: 'border-l-4 border-l-blue-500/95',
@@ -13646,15 +14710,15 @@ function ResultCard({ title, value, subValue, icon, color, tooltip }: { title: s
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
-      className={`p-5 rounded-2xl border border-slate-800/80 bg-[#0f172a] shadow-lg group relative hover:border-slate-700/50 hover:shadow-indigo-950/5 transition-all duration-300 ${borderColors[color]}`}
+      className={`p-4 rounded-xl border border-slate-850 bg-[#0d121f] shadow-sm group relative hover:border-slate-800 hover:shadow-indigo-950/5 transition-all duration-300 ${borderColors[color]}`}
     >
-      <div className="flex items-center justify-between mb-3 shadow-[0_0_12px_rgba(0,0,0,0.15)] md:shadow-none">
-        <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">{title}</span>
-        <div className={`p-1.5 rounded-lg border ${badgeColors[color]} flex items-center justify-center shrink-0`}>
+      <div className="flex items-center justify-between mb-2 shadow-[0_0_12px_rgba(0,0,0,0.15)] md:shadow-none">
+        <span className={`text-[10px] font-extrabold uppercase tracking-wider ${textColors[color] || 'text-slate-450'}`}>{title}</span>
+        <div className={`p-1 rounded bg-opacity-10 border ${badgeColors[color]} flex items-center justify-center shrink-0`}>
           {icon}
         </div>
       </div>
-      <div className="text-2xl font-display font-extrabold text-slate-100 tracking-tight">
+      <div className="text-lg font-mono font-bold text-slate-100 tracking-tight">
         <motion.span
           key={value}
           initial={{ opacity: 0.3, y: -2 }}
@@ -13666,7 +14730,7 @@ function ResultCard({ title, value, subValue, icon, color, tooltip }: { title: s
         </motion.span>
       </div>
       {subValue && (
-        <div className="text-xs font-semibold text-slate-400 mt-1.5 flex items-center gap-1">
+        <div className="text-[10px] font-mono font-medium text-slate-400 mt-1 flex items-center gap-1">
           <motion.span
             key={subValue}
             initial={{ opacity: 0.3 }}
@@ -13680,7 +14744,7 @@ function ResultCard({ title, value, subValue, icon, color, tooltip }: { title: s
       )}
       {tooltip && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-2xl leading-relaxed border border-white/10 text-center">
-          <p className="font-bold mb-1 text-slate-200">{title}</p>
+          <p className="font-bold mb-1 text-slate-250">{title}</p>
           {tooltip}
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
         </div>
@@ -13695,15 +14759,15 @@ function ResultRow({ label, value, bold = false, tooltip, extra, dotColor }: { l
       layout
       initial={{ opacity: 0, x: -5 }}
       animate={{ opacity: 1, x: 0 }}
-      className="flex justify-between items-center py-1.5 group relative border-b border-slate-800/20 last:border-b-0"
+      className="flex justify-between items-center py-1 group relative border-b border-slate-800/10 last:border-b-0"
     >
       <div className="flex items-center gap-1.5">
-        {dotColor && <div className={`w-2 h-2 rounded-full ${dotColor}`} />}
-        <span className={`text-xs ${bold ? 'font-semibold text-slate-200' : 'text-slate-400'}`}>{label}</span>
-        {tooltip && <Info className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors cursor-help" />}
+        {dotColor && <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />}
+        <span className={`text-[10px] ${bold ? 'font-bold text-slate-200' : 'text-slate-400'}`}>{label}</span>
+        {tooltip && <Info className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 transition-colors cursor-help" />}
       </div>
-      <div className="flex items-center gap-2">
-        <span className={`text-xs font-mono ${bold ? 'font-bold text-slate-100' : 'font-medium text-slate-300'}`}>{value}</span>
+      <div className="flex items-center gap-1.5">
+        <span className={`text-[10px] font-mono ${bold ? 'font-bold text-slate-100' : 'font-medium text-slate-300'}`}>{value}</span>
         {extra}
       </div>
       {tooltip && (
@@ -13965,7 +15029,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-5 custom-scrollbar help-modal-compact">
               {activeHelpTab === 'about' ? (
                 <div className="space-y-12">
                   <section className="bg-emerald-500/5 p-8 rounded-3xl border border-emerald-500/10">
@@ -14979,6 +16043,96 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           </div>
                           <span className="text-[10px] text-slate-500 block mt-1 font-sans">* Mede o excedente residual eutofizante do fósforo excretado no meio.</span>
                         </div>
+
+                        <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-teal-500/30 transition-all text-left">
+                          <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-teal-500/20 text-teal-400 bg-teal-500/5">
+                            3. META DE OTIMIZAÇÃO ECO-ÓTIMA (MITIGAÇÃO DE METANO)
+                          </span>
+                          <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                            O algoritmo de formulação <strong>Eco-ótima</strong> penaliza os ingredientes de acordo com o seu potencial de emissão de metano entérico (<span className="font-mono">ch4Potential</span>) no vetor de custos da função objetivo da Programação Linear (LP). O modelo biológico então estima em tempo real as emissões diárias agregadas de metano e a pegada de carbono equivalente por animal:
+                          </p>
+                          <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-teal-400 select-all my-3 text-center overflow-x-auto text-left">
+                            <strong>Função Objetivo Ajustada (Minimização):</strong><br />
+                            Z = Σ [ (Preço_MS_i + ch4Potential_i × ch4PenaltyCost) × X_i ] <br /><br />
+                            <strong>Emissão diária de Metano (g CH₄/dia):</strong><br />
+                            CH₄_diário = Σ [ CMS × (Porcentagem_i / 100) × ch4Potential_i ] <br /><br />
+                            <strong>Pegada de Carbono Equivalente (g CO₂e/dia):</strong><br />
+                            CO₂e_diário = CH₄_diário × 28
+                          </div>
+                          <span className="text-[10px] text-slate-500 block mt-1 font-sans">
+                            * O custo de penalidade de metano (<span className="font-mono">ch4PenaltyCost</span>) é fixado em R$ 0.05 por g de CH₄/kg MS, agindo como um proxy econômico que induz o formulador de ração a escolher insumos termodinamicamente mais eficientes para o rúmen, diminuindo a emissão total do lote sem comprometer o GMD.
+                          </span>
+                        </div>
+
+                        <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-teal-500/30 transition-all text-left space-y-4">
+                          <div>
+                            <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-teal-500/20 text-teal-400 bg-teal-500/5">
+                              4. COMPENSAÇÃO DE CARBONO E PLANEJAMENTO FLORESTAL (APP E REFLORESTAMENTO)
+                            </span>
+                            <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                              Cálculos científicos reais utilizados para determinar a necessidade de reflorestamento e de Área de Preservação Permanente (APP) para atingir a neutralidade climática do rebanho:
+                            </p>
+                          </div>
+                          <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-teal-400 select-all my-3 text-left overflow-x-auto">
+                            <strong>1. Unidades de Árvores a Plantar (Sequestro acumulado em 20 anos):</strong><br />
+                            Árvores_Plantar = Teto[ Pegada_CO2e_Total_Lote_t / 0.14 ] <br /><br />
+                            <strong>2. Área de Preservação Permanente (APP) Necessária (ha):</strong><br />
+                            APP_Necessária_ha = Teto[ Pegada_CO2e_Total_Lote_t / 7.3 ]
+                          </div>
+
+                          <div className="p-4 bg-[#070a13] rounded-xl border border-slate-800 text-left space-y-3">
+                            <h5 className="text-xs font-bold text-slate-200 uppercase font-display flex items-center gap-1.5">
+                              <HelpCircle className="w-3.5 h-3.5 text-teal-400" />
+                              Esclarecimentos sobre Frequência, Escopo e Prazos da Compensação
+                            </h5>
+                            <div className="space-y-2.5 text-xs text-slate-400 leading-relaxed font-sans">
+                              <p>
+                                <strong className="text-slate-300">1. O reflorestamento ativo calculado é por lote de animais confinados?</strong><br />
+                                <span>Sim. O cálculo é rigorosamente proporcional às emissões cumulativas geradas pelo lote simulado durante todo o seu período de cocho (confinamento). Cada lote tem sua própria pegada de carbono total baseada na dieta, dias alimentados e quantidade de animais, gerando um passivo específico.</span>
+                              </p>
+                              <p>
+                                <strong className="text-slate-300">2. A cada novo lote de animais confinados é necessário o plantio de novas árvores?</strong><br />
+                                <span>Sim, caso opte pela compensação via plantio ativo pontual. Uma árvore nativa absorve em média 140 kg CO₂e ao longo de um ciclo longo de 20 anos. Portanto, se cada novo lote gera novas emissões adicionais de gases de efeito estufa, o produtor precisará plantar novas árvores adicionais por lote para compensar as novas emissões pontuais.</span>
+                              </p>
+                              <p>
+                                <strong className="text-teal-400 font-bold">3. Alternativa de Longo Prazo — Para quantos anos seria a manutenção/plantio de 56 hectares de APP?</strong><br />
+                                <span>A alternativa de preservação em APP não possui data de expiração ou vencimento (como os 20 anos do ciclo de crescimento das árvores individuais). Ela é uma <strong>solução permanente</strong>. Uma vez estabelecidos ou conservados os hectares estipulados (ex: 56 hectares) de floresta em regeneração secundária ativa, essa área atua como um <strong>filtro ecológico contínuo</strong>. Ela irá sequestrar a taxa de carbono calculada (7,3 t CO₂e/ha/ano) todos os anos, de forma recorrente e indefinida, enquanto a área for mantida ativa e preservada. Portanto, a manutenção permanente dessa mesma área compensa os lotes subsequentes que possuam essa magnitude de emissões a cada ano, sem necessidade de replantio periódico ou ampliação de terras.</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          <span className="text-[10px] text-slate-500 block mt-1 font-sans">
+                            * Nota metodológica: O coeficiente de 0.14 t CO₂e representa o sequestro médio de uma árvore nativa mista ao longo de 20 anos em regeneração florestal ativa (SOS Mata Atlântica, 2020; SOCIALCARBON SCM0009 v1.0). O coeficiente de 7.3 t CO₂e/ha/ano representa a taxa anual de sequestro florestal por hectare de Mata Atlântica em regeneração secundária ativa, fundamentado nas metodologias de modelagem alométrica baseada em DAP, altura e densidade da madeira de Sanquetta et al. (2018), bem como nas validações de campo sobre dinâmica diferenciada de Souza (2024) e monitoramento por sensoriamento remoto de Sanquetta et al. (2019) integrado com os padrões de conservação e restauração florestal da SOCIALCARBON (SCM0003 v1.0). O resultado de hectares é arredondado para o inteiro superior para fins de planejamento florestal e conformidade legal.
+                          </span>
+                        </div>
+
+                        <div className="bg-[#121826]/80 p-5 rounded-2xl border border-slate-800 hover:border-teal-500/30 transition-all text-left">
+                          <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-xl border border-teal-500/20 text-teal-400 bg-teal-500/5">
+                            5. EXIGÊNCIAS DO CONSUMIDOR MODERNO E INDICADORES DE MERCADO
+                          </span>
+                          <p className="text-xs text-slate-400 mt-3 font-sans leading-relaxed">
+                            Modelagem teórica-prática de conformidade que simula o atendimento às exigências ético-ambientais de nichos de mercado (Cota Hilton, marcas gourmet):
+                          </p>
+                          <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-teal-400 select-all my-3 text-left overflow-x-auto">
+                            <strong>1. Nível de Demanda do Consumidor:</strong><br />
+                            Se Escore_Bem_Estar ≥ 8 E Rastreabilidade_Total == true: Demanda = "EXTREMO"<br />
+                            Senão: Demanda = "MODERADO"<br /><br />
+                            <strong>2. Bonificação Premium (Prêmio por Arroba):</strong><br />
+                            Se Demanda == "EXTREMO": Bônus = +R$ 4.00 a R$ 12.00 por arroba (@) comercializada<br />
+                            Senão: Bônus = R$ 0.00 (commodity pura)<br /><br />
+                            <strong>3. Aproveitamento Mecânico de Carcaça:</strong><br />
+                            Se Escore_Bem_Estar ≥ 8: Rendimento_Físico = 99.5% (Manejo exemplar, sem hematomas de manejo)<br />
+                            Se 6 ≤ Escore_Bem_Estar &lt; 8: Rendimento_Físico = 96.2% (Hematomas leves de transporte/baia)<br />
+                            Se Escore_Bem_Estar &lt; 6: Rendimento_Físico = 91.8% (Perdas críticas por contusões e toalete profunda)<br /><br />
+                            <strong>4. Risco de Acidez (pH da Carne):</strong><br />
+                            Se Escore_Bem_Estar ≥ 8: Risco = "MÍNIMO" (pH ideal de 5.4 a 5.7, alta conservação a vácuo)<br />
+                            Se 6 ≤ Escore_Bem_Estar &lt; 8: Risco = "MÉDIO" (sensível ao pH)<br />
+                            Se Escore_Bem_Estar &lt; 6: Risco = "ALTO (Carne DFD)" (pH &gt; 6.0, carne escura, dura e seca por exaustão de glicogênio)
+                          </div>
+                          <span className="text-[10px] text-slate-500 block mt-1 font-sans">
+                            * Referência científica: Conforme Broom (2019) e regulamentações SISBOV/MAPA, a integração de bem-estar animal superior (Escore &gt;= 8) e rastreabilidade fidedigna blinda o pH contra glicólise ineficiente pós-morte (carne DFD) e viabiliza as maiores margens do ecossistema pecuário.
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </section>
@@ -15047,6 +16201,60 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                       <div className="bg-[#131b35]/45 p-4 rounded-xl border border-slate-800/80 text-xs text-slate-300 leading-relaxed">
                         <strong className="text-slate-100">Alerta Preditivo & Localização de Propriedades:</strong> <br />
                         O sistema conecta as geo-coordenadas (latitude e longitude) da propriedade rural cadastrada com a API meteorológica em tempo real para obter as previsões dinâmicas dos próximos 3 dias. Emite avisos imediatos de <strong>Risco de Calor Severo</strong> caso o ITU exceda as faixas críticas de tolerância da raça, ou <strong>Risco de Frio Crítico</strong> (risco de pneumonia e hipotermia) em situações de temperaturas excessivamente baixas associadas a rajadas de vento e precipitação considerável.
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* NOVO: 11. Matriz de Decisão por Janela de Abate & Otimização do Lucro Teto */}
+                  <section className="bg-[#070a13] p-8 rounded-3xl border border-slate-800 text-left">
+                    <h3 className="text-base font-bold text-slate-100 mb-6 flex items-center gap-2 font-display">
+                      <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                      11. Matriz de Decisão por Janela de Abate & Lucro Teto Determinístico
+                    </h3>
+                    <div className="prose prose-sm max-w-none text-slate-300 space-y-6 text-xs sm:text-sm leading-relaxed font-sans text-left">
+                      <p>
+                        Na aba <strong>Ultrassonografia & Otimização de Abate</strong>, a <strong>Matriz de Decisão por Janela de Abate</strong> apresenta a estratégia bioeconômica ideal de comercialização baseada na evolução diária de carcaça e margens financeiras do lote.
+                      </p>
+
+                      <div className="p-6 bg-[#0a0f1d] rounded-2xl border border-emerald-500/20 space-y-4">
+                        <h4 className="text-sm font-bold text-emerald-400 font-display uppercase tracking-wider">
+                          Em determinístico, o Lucro Teto Estimado é apenas para atingir o peso de abate definido pelo usuário?
+                        </h4>
+                        <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                          <strong className="text-emerald-300">Não.</strong> O Lucro Teto Estimado Determinístico (no ponto ótimo t*<sub>det</sub>) <strong>NÃO é fixado simplesmente no momento em que o lote atinge o peso de abate informado pelo usuário</strong>. Trata-se de uma otimização matemática dinâmica contínua desenvolvida no algoritmo do SimuBoi:
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                            <span className="text-[11px] font-bold text-amber-400 font-mono block">1. SIMULAÇÃO DIA A DIA (0 A 180 DIAS)</span>
+                            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                              O modelo simula a trajetória biológica e financeira do animal em cada dia d de cocho (de DOF 0 a 180), avaliando:
+                            </p>
+                            <ul className="list-disc pl-4 text-[11px] text-slate-400 space-y-1">
+                              <li><strong>Receita de Carcaça:</strong> Peso de Carcaça Quente (PCQ(d)) × Preço da Arroba;</li>
+                              <li><strong>Bonificação/Penalidade do Frigorífico:</strong> Regrada pela Espessura de Gordura Subcutânea (EGS(d) em mm) e pelas faixas contratuais de peso do frigorífico;</li>
+                              <li><strong>Custos Acumulados:</strong> Alimentação diária (CMS × custo/kg MS) + despesas operacionais acumuladas até o dia d.</li>
+                            </ul>
+                          </div>
+
+                          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                            <span className="text-[11px] font-bold text-emerald-400 font-mono block">2. PONTO ÓTIMO t*<sub>det</sub> (LUCRO TETO)</span>
+                            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                              O <strong>Lucro Teto Estimado</strong> é o valor máximo absoluto de lucro líquido (máx L<sub>det</sub>(d)) encontrado na simulação, ocorrendo no dia t*<sub>det</sub> onde o <em>ganho marginal de carcaça e bonificação por acabamento iguala o custo marginal de alimentação</em>.
+                            </p>
+                            <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 font-mono text-[11px] text-emerald-400 text-center">
+                              L<sub>det</sub>(d) = Receita(d) + Bônus(d) - Custos(d) <br />
+                              t*<sub>det</sub> = Dia d de Maior Lucro L<sub>det</sub>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-350">
+                          <strong className="text-slate-100 font-display">Papel do Peso Alvo Definido pelo Usuário:</strong>
+                          <p className="leading-relaxed">
+                            O peso de abate configurado pelo usuário atua como uma <strong>meta zootécnica e visual de referência</strong> no painel (para planejar metas nominais do lote). No entanto, o motor matemático indica se o ponto ótimo de máximo lucro (t*<sub>det</sub>) ocorre <em>antes</em> ou <em>depois</em> de atingir essa meta, permitindo ao produtor decidir se vale a pena estender ou antecipar o confinamento para obter a maior rentabilidade do capital.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </section>
@@ -15404,6 +16612,48 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           </h4>
                           <ul className="text-[11px] text-slate-300 space-y-4 list-disc pl-5 font-sans leading-relaxed">
                             <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SANQUETTA, C. R. et al. (2018)</strong>. Dinâmica de carbono na Mata Atlântica e modelos de estimativa de sequestro de carbono florestal. Curitiba: UFPR, 2018. (Obra base que fundamenta a modelagem alométrica, o uso de DAP, altura e densidade da madeira para estimativa de biomassa e as taxas de regeneração e estoques absolutos apresentados. Estudos de Dinâmica e Estoque por Estágio).
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SOUZA, C. (2024)</strong>. Dinâmica florestal e estoque de carbono em fragmentos de Mata Atlântica com diferentes graus de perturbação humana. 2024. Tese (Doutorado) – Universidade Estadual Paulista (UNESP). (Valida os dados de campo sobre as taxas diferenciadas de acúmulo de carbono entre Florestas Secundárias e Florestas Tardias/Maduras sob impacto antrópico).
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SANQUETTA, C. R. et al. (2019)</strong>. Dinâmica do volume, biomassa e carbono na Mata Atlântica por meio de ferramenta de detecção de mudanças. <em>Nativa</em>, v. 7, n. 4, 2019. (Aborda as metodologias de sensoriamento remoto e integração automatizada via Python e ArcGIS para monitoramento de grandes bacias e remanescentes florestais no Sul do Brasil).
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SOCIALCARBON Methodology SCM0003 v1.0 (2023)</strong>. Methodology for the conservation of Southern Brazil's native forests and mixed ombrophilous forests.
+                              <a
+                                href="https://static1.squarespace.com/static/6161c89d030b89374bec0b70/t/6461ffbbb4e0584147397e6d/1684144060670/SOCIALCARBON-SCM0003+v1.0.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                PDF Oficial
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SOCIALCARBON Methodology SCM0009 v1.0 (2025)</strong>. Methodology for carbon offset and afforestation/reforestation dynamics in subtropical biomes.
+                              <a
+                                href="https://static1.squarespace.com/static/6161c89d030b89374bec0b70/t/6870e4193335a6251ca3bd2a/1752228890156/SOCIALCARBON_SCM0009_v1.0.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[9px] font-bold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/10 transition-all font-sans whitespace-nowrap"
+                              >
+                                PDF Oficial
+                                <ExternalLink className="w-2 h-2" />
+                              </a>
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SOS MATA ATLÂNTICA (2020)</strong>. Manual de reflorestamento e compensação de carbono: cálculo de plantios florestais nativos para mitigação climática. São Paulo. (Equações oficiais de compensação por unidade arbórea equivalente a 140 kg CO₂e ao longo de um ciclo de 20 anos).
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">BROOM, D. M. (2019)</strong>. Animal welfare and beef production: From consumer demands to meat quality. <em>Revista Brasileira de Zootecnia</em>, v.48. (Interconexão entre escores de bem-estar superiores a 8,0 com redução do estresse pré-abate, prevenção de contusões, manutenção de glicogênio e preservação do pH final da carne entre 5.4 e 5.7).
+                            </li>
+                            <li className="pl-1">
+                              <strong className="text-slate-100 font-semibold font-sans">SISBOV / MAPA (2018)</strong>. Instrução Normativa nº 51/2018 - Protocolos do Sistema Brasileiro de Identificação Individual de Bovinos e Bubalinos. <em>Ministério da Agricultura, Pecuária e Abastecimento</em>. (Diretrizes para rastreabilidade oficial de rebanhos destinados à exportação premium e Cota Hilton).
+                            </li>
+                            <li className="pl-1">
                               <strong className="text-slate-100 font-semibold font-sans">PALHARES, J.C.P. et al. (2023)</strong>. Produção de bovinos de corte e soluções tecnológicas para eficiência do uso da água. Embrapa Gado de Corte, 2023.
                               <a
                                 href="https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1154075/1/Producao-bovinos-corte-solucoes-2023.pdf"
@@ -15756,10 +17006,18 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           Aba Bem-Estar & ESG (Sustentabilidade)
                         </h4>
                         <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5 text-left">
-                          <li><strong>Escore de Bem-Estar Animal:</strong> Avalie critérios estruturais de lama, espaço de cocho, sombra e sanidade (Status Requerido &ge; 8).</li>
-                          <li><strong>Rastreabilidade Individual Documentada:</strong> Simule o status do rebanho para desbloquear bônus industriais.</li>
-                          <li><strong>Bonificações de Mercado de Carne Premium:</strong> Conheça a qualificação do lote para bônus reais por arroba (Cota Hilton e marcas premium de cortes de grife).</li>
-                          <li><strong>Métrica Verde de Emissão de Metano entérico:</strong> Projete o volume volumétrico em kg e equivalentes das emissões gasosas estomacais de CO₂/CH₄ por ciclo do lote.</li>
+                          <li><strong>Escore de Bem-Estar Animal:</strong> Avalia critérios estruturais (lama, espaço de cocho, sombra e sanidade). Escores superiores a 8 qualificam o lote para bônus premium.</li>
+                          <li><strong>Rastreabilidade Individual Documentada:</strong> Monitoramento individual do nascimento ao abate (SISBOV/MAPA, 2018), essencial para desbloquear canais exigentes.</li>
+                          <li>
+                            <strong>Planejamento Florestal & Neutralização:</strong> Estima com precisão científica e equações reais o reflorestamento compensatório (140 kg CO₂e acumulado por árvore ao longo de 20 anos) e a Área de Preservação Permanente (APP) necessária (sequestro real de 7,3 t CO₂e/ha/ano).
+                            <div className="mt-2 p-3.5 bg-slate-950/80 rounded-xl border border-slate-800/80 space-y-2 text-[11px] text-slate-300">
+                              <p>• <strong>Escopo da Estimativa:</strong> Os cálculos de árvores e hectares de APP são proporcionais e específicos para as emissões totais acumuladas do <strong>lote simulado</strong> durante o período de confinamento.</p>
+                              <p>• <strong>Frequência de Compensação:</strong> Como cada novo lote adiciona novas emissões cumulativas, caso opte pela compensação direta por plantio ativo pontual, é necessário plantar novas árvores para cada novo lote. Alternativamente, a fazenda pode manter de forma contínua uma área equivalente em hectares de APP cuja taxa anual de sequestro consiga suportar a soma das emissões de todos os lotes produzidos no ano.</p>
+                              <p>• <strong>Duração da APP (Alternativa de Longo Prazo):</strong> A alternativa de preservação em APP não tem data de vencimento (ao contrário das árvores individuais). Ela é <strong>permanente</strong>. Uma vez preservados os hectares necessários (ex: 56 hectares), essa floresta atua como um sumidouro anual contínuo que compensa as emissões dos lotes recorrentemente ano após ano, por tempo indefinido, desde que a área seja conservada ativamente.</p>
+                            </div>
+                          </li>
+                          <li><strong>Exigências do Consumidor & Indicadores de Mercado:</strong> Determina em tempo real o nível de demanda do consumidor (Extremo vs. Moderado), prêmios reais por arroba (@), o aproveitamento mecânico físico de carcaças (91,8% a 99,5%) e o risco real de acidez / carne DFD com base no estresse e manejo animal.</li>
+                          <li><strong>Métrica de Metano Entérico:</strong> Projeta a emissão de CH₄ baseada nos potenciais de emissão de cada ingrediente formulado.</li>
                         </ul>
                       </div>
 
@@ -15772,6 +17030,21 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                           <li><strong>Método de Screening Morris (OAT):</strong> Identifica quais inputs biológicos e financeiros agem com relações altamente não-lineares ou sinergias no rebanho.</li>
                           <li><strong>Decomposição de Variância por Índices de Sobol:</strong> ANOVA funcional de precisão que destrincha a parcela exata do risco sob o VPL causada por cada cotação ou índice isoladamente.</li>
                           <li><strong>Visualização por dispersão e gráficos dinâmicos:</strong> Interprete graficamente a influência e o grau de acoplamento das decisões nutricionais.</li>
+                        </ul>
+                      </div>
+
+                      <div className="p-4 bg-[#070a13] rounded-2xl border border-slate-800/80">
+                        <h4 className="font-bold text-slate-100 text-sm mb-2 flex items-center gap-2 font-display">
+                          <Activity className="w-4 h-4 text-sky-400" />
+                          Aba Ultrassonografia de Carcaça & Drivers de Recomendação
+                        </h4>
+                        <ul className="text-xs text-slate-400 space-y-2 list-disc pl-5 text-left">
+                          <li><strong>Predição de EGS e Peso de Carcaça:</strong> Acompanhamento milimétrico da deposição de gordura subcutânea (EGS) e peso de carcaça ao longo do período de cocho (DOF).</li>
+                          <li>
+                            <strong>Matriz de Decisão por Janela de Abate (Ponto Determinístico vs. Peso Alvo):</strong> 
+                            <span className="text-slate-300"> O Lucro Teto Determinístico (t*<sub>det</sub>) <strong>NÃO</strong> é apenas o momento de atingir o peso alvo do usuário, mas sim o ponto de <strong>Lucro Líquido Máximo Absoluto</strong> obtido no encontro da receita de carcaça, bonificação por acabamento e custo alimentar acumulado (onde receita marginal = custo marginal). O peso alvo do usuário funciona como meta de referência visual no painel.</span>
+                          </li>
+                          <li><strong>Janela Estocástica LHS (t*<sub>LHS</sub>):</strong> Amostra 1.000 cenários probabilísticos de mercado e variabilidade do lote para definir a janela de abate com maior segurança estatística.</li>
                         </ul>
                       </div>
 
@@ -15987,6 +17260,41 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
                               </span>
                               <p className="text-[11px] leading-relaxed">
                                 Avalie a perda simulada sob a rentabilidade total. Invista em sombreamento artificial (natural ou telado de 50%), ventiladores/aspersores ou altere a dieta para maior densidade energética para amortecer as perdas de ingestão voluntária.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CENÁRIO 5 */}
+                      <div className="p-6 bg-slate-950/40 rounded-3xl border border-sky-500/10 hover:border-sky-500/25 transition-all">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="px-2.5 py-1 text-[10px] font-bold bg-sky-500/10 border border-sky-500/20 text-sky-350 rounded-lg font-mono">CASO ESTUDO 5</span>
+                          <h4 className="font-bold text-slate-100 text-sm font-display">
+                            Decisão de Abate: Lucro Teto Determinístico vs. Peso Alvo do Usuário
+                          </h4>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed font-sans mb-4">
+                          <strong>Desafio Zootécnico & Econômico:</strong> O lote atingiu o peso de abate cadastrado pelo usuário (ex: 540 kg), mas a deposição de gordura de carcaça (EGS) e o custo de alimentação ainda estão em evolução. Devo abater imediatamente ou manter no cocho?
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans text-slate-405">
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80">
+                            <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-indigo-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Como Conduzir no software:
+                            </span>
+                            <ol className="list-decimal pl-4 space-y-1">
+                              <li>Acesse a aba <strong>Ultrassonografia & Abate</strong> e localize o card <strong>Drivers de Recomendação e Explicabilidade &gt; Matriz de Decisão por Janela de Abate</strong>.</li>
+                              <li>Observe o dia ótimo indicado no <strong>Lucro Teto Determinístico (t*<sub>det</sub>)</strong>. Ele representa o ponto de lucro máximo diário (máx L<sub>det</sub>), onde a receita marginal iguala o custo marginal.</li>
+                              <li>Compare a margem do Lucro Teto no ponto t*<sub>det</sub> com o retorno obtido exatamente no dia do peso alvo do usuário.</li>
+                            </ol>
+                          </div>
+                          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/80 flex flex-col justify-between">
+                            <div>
+                              <span className="font-bold text-slate-300 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wider font-display text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ação Estratégica Recomendada:
+                              </span>
+                              <p className="text-[11px] leading-relaxed">
+                                Se t*<sub>det</sub> demonstrar que estender a alimentação gera ganho em bonificação por acabamento (EGS) superior ao custo adicional da diária de cocho, mantenha o lote até o dia do Lucro Teto. Caso o custo da diária supere o ganho de carcaça, antecipe o abate para proteger a margem financeira.
                               </p>
                             </div>
                           </div>
